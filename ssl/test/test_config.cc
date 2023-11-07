@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,7 @@
 #include <type_traits>
 
 #include <openssl/base64.h>
+#include <openssl/hmac.h>
 #include <openssl/hpke.h>
 #include <openssl/rand.h>
 #include <openssl/span.h>
@@ -44,12 +46,18 @@ namespace {
 struct Flag {
   const char *name;
   bool has_param;
+  // skip_handshaker, if true, causes this flag to be skipped when
+  // forwarding flags to the handshaker. This should be used with flags
+  // that only impact connecting to the runner.
+  bool skip_handshaker;
   // If |has_param| is false, |param| will be nullptr.
   std::function<bool(TestConfig *config, const char *param)> set_param;
 };
 
-Flag BoolFlag(const char *name, bool TestConfig::*field) {
-  return Flag{name, false, [=](TestConfig *config, const char *) -> bool {
+Flag BoolFlag(const char *name, bool TestConfig::*field,
+              bool skip_handshaker = false) {
+  return Flag{name, false, skip_handshaker,
+              [=](TestConfig *config, const char *) -> bool {
                 config->*field = true;
                 return true;
               }};
@@ -58,11 +66,10 @@ Flag BoolFlag(const char *name, bool TestConfig::*field) {
 template <typename T>
 bool StringToInt(T *out, const char *str) {
   static_assert(std::is_integral<T>::value, "not an integral type");
-  static_assert(sizeof(T) <= sizeof(long long), "type too large for long long");
 
   // |strtoull| allows leading '-' with wraparound. Additionally, both
   // functions accept empty strings and leading whitespace.
-  if (!isdigit(static_cast<unsigned char>(*str)) &&
+  if (!OPENSSL_isdigit(static_cast<unsigned char>(*str)) &&
       (!std::is_signed<T>::value || *str != '-')) {
     return false;
   }
@@ -70,15 +77,20 @@ bool StringToInt(T *out, const char *str) {
   errno = 0;
   char *end;
   if (std::is_signed<T>::value) {
+    static_assert(sizeof(T) <= sizeof(long long),
+                  "type too large for long long");
     long long value = strtoll(str, &end, 10);
-    if (value < std::numeric_limits<T>::min() ||
-        value > std::numeric_limits<T>::max()) {
+    if (value < static_cast<long long>(std::numeric_limits<T>::min()) ||
+        value > static_cast<long long>(std::numeric_limits<T>::max())) {
       return false;
     }
     *out = static_cast<T>(value);
   } else {
+    static_assert(sizeof(T) <= sizeof(unsigned long long),
+                  "type too large for unsigned long long");
     unsigned long long value = strtoull(str, &end, 10);
-    if (value > std::numeric_limits<T>::max()) {
+    if (value >
+        static_cast<unsigned long long>(std::numeric_limits<T>::max())) {
       return false;
     }
     *out = static_cast<T>(value);
@@ -89,15 +101,19 @@ bool StringToInt(T *out, const char *str) {
 }
 
 template <typename T>
-Flag IntFlag(const char *name, T TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+Flag IntFlag(const char *name, T TestConfig::*field,
+             bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 return StringToInt(&(config->*field), param);
               }};
 }
 
 template <typename T>
-Flag IntVectorFlag(const char *name, std::vector<T> TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+Flag IntVectorFlag(const char *name, std::vector<T> TestConfig::*field,
+                   bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 T value;
                 if (!StringToInt(&value, param)) {
                   return false;
@@ -107,8 +123,10 @@ Flag IntVectorFlag(const char *name, std::vector<T> TestConfig::*field) {
               }};
 }
 
-Flag StringFlag(const char *name, std::string TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+Flag StringFlag(const char *name, std::string TestConfig::*field,
+                bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 config->*field = param;
                 return true;
               }};
@@ -117,9 +135,11 @@ Flag StringFlag(const char *name, std::string TestConfig::*field) {
 // TODO(davidben): When we can depend on C++17 or Abseil, switch this to
 // std::optional or absl::optional.
 Flag OptionalStringFlag(const char *name,
-                        std::unique_ptr<std::string> TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
-                (config->*field).reset(new std::string(param));
+                        std::unique_ptr<std::string> TestConfig::*field,
+                        bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
+                (config->*field) = std::make_unique<std::string>(param);
                 return true;
               }};
 }
@@ -141,15 +161,19 @@ bool DecodeBase64(std::string *out, const std::string &in) {
   return true;
 }
 
-Flag Base64Flag(const char *name, std::string TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+Flag Base64Flag(const char *name, std::string TestConfig::*field,
+                bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 return DecodeBase64(&(config->*field), param);
               }};
 }
 
 Flag Base64VectorFlag(const char *name,
-                      std::vector<std::string> TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+                      std::vector<std::string> TestConfig::*field,
+                      bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 std::string value;
                 if (!DecodeBase64(&value, param)) {
                   return false;
@@ -161,8 +185,10 @@ Flag Base64VectorFlag(const char *name,
 
 Flag StringPairVectorFlag(
     const char *name,
-    std::vector<std::pair<std::string, std::string>> TestConfig::*field) {
-  return Flag{name, true, [=](TestConfig *config, const char *param) -> bool {
+    std::vector<std::pair<std::string, std::string>> TestConfig::*field,
+    bool skip_handshaker = false) {
+  return Flag{name, true, skip_handshaker,
+              [=](TestConfig *config, const char *param) -> bool {
                 const char *comma = strchr(param, ',');
                 if (!comma) {
                   return false;
@@ -176,7 +202,9 @@ Flag StringPairVectorFlag(
 
 std::vector<Flag> SortedFlags() {
   std::vector<Flag> flags = {
-      IntFlag("-port", &TestConfig::port),
+      IntFlag("-port", &TestConfig::port, /*skip_handshaker=*/true),
+      BoolFlag("-ipv6", &TestConfig::ipv6, /*skip_handshaker=*/true),
+      IntFlag("-shim-id", &TestConfig::shim_id, /*skip_handshaker=*/true),
       BoolFlag("-server", &TestConfig::is_server),
       BoolFlag("-dtls", &TestConfig::is_dtls),
       BoolFlag("-quic", &TestConfig::is_quic),
@@ -242,6 +270,8 @@ std::vector<Flag> SortedFlags() {
                            &TestConfig::application_settings),
       OptionalStringFlag("-expect-peer-application-settings",
                          &TestConfig::expect_peer_application_settings),
+      BoolFlag("-alps-use-new-codepoint",
+               &TestConfig::alps_use_new_codepoint),
       Base64Flag("-quic-transport-params", &TestConfig::quic_transport_params),
       Base64Flag("-expect-quic-transport-params",
                  &TestConfig::expect_quic_transport_params),
@@ -364,7 +394,7 @@ std::vector<Flag> SortedFlags() {
       IntFlag("-install-one-cert-compression-alg",
               &TestConfig::install_one_cert_compression_alg),
       BoolFlag("-reverify-on-resume", &TestConfig::reverify_on_resume),
-      BoolFlag("-enforce-rsa-key-usage", &TestConfig::enforce_rsa_key_usage),
+      BoolFlag("-ignore-rsa-key-usage", &TestConfig::ignore_rsa_key_usage),
       BoolFlag("-expect-key-usage-invalid",
                &TestConfig::expect_key_usage_invalid),
       BoolFlag("-is-handshaker-supported",
@@ -388,6 +418,7 @@ std::vector<Flag> SortedFlags() {
       IntFlag("-early-write-after-message",
               &TestConfig::early_write_after_message),
       BoolFlag("-fips-202205", &TestConfig::fips_202205),
+      BoolFlag("-wpa-202304", &TestConfig::wpa_202304),
   };
   std::sort(flags.begin(), flags.end(), [](const Flag &a, const Flag &b) {
     return strcmp(a.name, b.name) < 0;
@@ -425,11 +456,10 @@ bool ParseConfig(int argc, char **argv, bool is_shim,
                  TestConfig *out_initial,
                  TestConfig *out_resume,
                  TestConfig *out_retry) {
-  out_initial->argc = out_resume->argc = out_retry->argc = argc;
-  out_initial->argv = out_resume->argv = out_retry->argv = argv;
   for (int i = 0; i < argc; i++) {
     bool skip = false;
-    const char *name = argv[i];
+    const char *arg = argv[i];
+    const char *name = arg;
 
     // -on-shim and -on-handshaker prefixes enable flags only on the shim or
     // handshaker.
@@ -470,6 +500,13 @@ bool ParseConfig(int argc, char **argv, bool is_shim,
       param = argv[i];
     }
 
+    if (!flag->skip_handshaker) {
+      out_initial->handshaker_args.push_back(arg);
+      if (flag->has_param) {
+        out_initial->handshaker_args.push_back(param);
+      }
+    }
+
     if (!skip) {
       if (out != nullptr) {
         if (!flag->set_param(out, param)) {
@@ -488,6 +525,8 @@ bool ParseConfig(int argc, char **argv, bool is_shim,
     }
   }
 
+  out_resume->handshaker_args = out_initial->handshaker_args;
+  out_retry->handshaker_args = out_initial->handshaker_args;
   return true;
 }
 
@@ -495,25 +534,26 @@ static CRYPTO_once_t once = CRYPTO_ONCE_INIT;
 static int g_config_index = 0;
 static CRYPTO_BUFFER_POOL *g_pool = nullptr;
 
-static void init_once() {
-  g_config_index = SSL_get_ex_new_index(0, NULL, NULL, NULL, NULL);
-  if (g_config_index < 0) {
-    abort();
-  }
-  g_pool = CRYPTO_BUFFER_POOL_new();
-  if (!g_pool) {
-    abort();
-  }
+static bool InitGlobals() {
+  CRYPTO_once(&once, [] {
+    g_config_index = SSL_get_ex_new_index(0, NULL, NULL, NULL, NULL);
+    g_pool = CRYPTO_BUFFER_POOL_new();
+  });
+  return g_config_index >= 0 && g_pool != nullptr;
 }
 
 bool SetTestConfig(SSL *ssl, const TestConfig *config) {
-  CRYPTO_once(&once, init_once);
+  if (!InitGlobals()) {
+    return false;
+  }
   return SSL_set_ex_data(ssl, g_config_index, (void *)config) == 1;
 }
 
 const TestConfig *GetTestConfig(const SSL *ssl) {
-  CRYPTO_once(&once, init_once);
-  return (const TestConfig *)SSL_get_ex_data(ssl, g_config_index);
+  if (!InitGlobals()) {
+    return nullptr;
+  }
+  return static_cast<const TestConfig *>(SSL_get_ex_data(ssl, g_config_index));
 }
 
 static int LegacyOCSPCallback(SSL *ssl, void *arg) {
@@ -570,8 +610,13 @@ static int NextProtosAdvertisedCallback(SSL *ssl, const uint8_t **out,
     return SSL_TLSEXT_ERR_NOACK;
   }
 
-  *out = (const uint8_t *)config->advertise_npn.data();
-  *out_len = config->advertise_npn.size();
+  if (config->advertise_npn.size() > UINT_MAX) {
+    fprintf(stderr, "NPN value too large.\n");
+    return SSL_TLSEXT_ERR_ALERT_FATAL;
+  }
+
+  *out = reinterpret_cast<const uint8_t *>(config->advertise_npn.data());
+  *out_len = static_cast<unsigned>(config->advertise_npn.size());
   return SSL_TLSEXT_ERR_OK;
 }
 
@@ -585,8 +630,9 @@ static void MessageCallback(int is_write, int version, int content_type,
   }
 
   if (content_type == SSL3_RT_HEADER) {
-    if (len !=
-        (config->is_dtls ? DTLS1_RT_HEADER_LENGTH : SSL3_RT_HEADER_LENGTH)) {
+    size_t header_len =
+        config->is_dtls ? DTLS1_RT_HEADER_LENGTH : SSL3_RT_HEADER_LENGTH;
+    if (len != header_len) {
       fprintf(stderr, "Incorrect length for record header: %zu.\n", len);
       state->msg_callback_ok = false;
     }
@@ -923,31 +969,16 @@ static bool GetCertificate(SSL *ssl, bssl::UniquePtr<X509> *out_x509,
   return true;
 }
 
-static bool FromHexDigit(uint8_t *out, char c) {
-  if ('0' <= c && c <= '9') {
-    *out = c - '0';
-    return true;
-  }
-  if ('a' <= c && c <= 'f') {
-    *out = c - 'a' + 10;
-    return true;
-  }
-  if ('A' <= c && c <= 'F') {
-    *out = c - 'A' + 10;
-    return true;
-  }
-  return false;
-}
-
 static bool HexDecode(std::string *out, const std::string &in) {
   if ((in.size() & 1) != 0) {
     return false;
   }
 
-  std::unique_ptr<uint8_t[]> buf(new uint8_t[in.size() / 2]);
+  auto buf = std::make_unique<uint8_t[]>(in.size() / 2);
   for (size_t i = 0; i < in.size() / 2; i++) {
     uint8_t high, low;
-    if (!FromHexDigit(&high, in[i * 2]) || !FromHexDigit(&low, in[i * 2 + 1])) {
+    if (!OPENSSL_fromxdigit(&high, in[i * 2]) ||
+        !OPENSSL_fromxdigit(&low, in[i * 2 + 1])) {
       return false;
     }
     buf[i] = (high << 4) | low;
@@ -1384,16 +1415,19 @@ static bool MaybeInstallCertCompressionAlg(
 }
 
 bssl::UniquePtr<SSL_CTX> TestConfig::SetupCtx(SSL_CTX *old_ctx) const {
+  if (!InitGlobals()) {
+    return nullptr;
+  }
+
   bssl::UniquePtr<SSL_CTX> ssl_ctx(
       SSL_CTX_new(is_dtls ? DTLS_method() : TLS_method()));
   if (!ssl_ctx) {
     return nullptr;
   }
 
-  CRYPTO_once(&once, init_once);
   SSL_CTX_set0_buffer_pool(ssl_ctx.get(), g_pool);
 
-  std::string cipher_list = "ALL";
+  std::string cipher_list = "ALL:TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256";
   if (!cipher.empty()) {
     cipher_list = cipher;
     SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_CIPHER_SERVER_PREFERENCE);
@@ -1552,7 +1586,7 @@ bssl::UniquePtr<SSL_CTX> TestConfig::SetupCtx(SSL_CTX *old_ctx) const {
             if (uncompressed_len != 2 + in_len) {
               return 0;
             }
-            std::unique_ptr<uint8_t[]> buf(new uint8_t[2 + in_len]);
+            auto buf = std::make_unique<uint8_t[]>(2 + in_len);
             buf[0] = 0;
             buf[1] = 0;
             OPENSSL_memcpy(&buf[2], in, in_len);
@@ -1744,8 +1778,8 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   if (reverify_on_resume) {
     SSL_CTX_set_reverify_on_resume(ssl_ctx, 1);
   }
-  if (enforce_rsa_key_usage) {
-    SSL_set_enforce_rsa_key_usage(ssl.get(), 1);
+  if (ignore_rsa_key_usage) {
+    SSL_set_enforce_rsa_key_usage(ssl.get(), 0);
   }
   if (no_tls13) {
     SSL_set_options(ssl.get(), SSL_OP_NO_TLSv1_3);
@@ -1768,8 +1802,17 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   if (enable_ech_grease) {
     SSL_set_enable_ech_grease(ssl.get(), 1);
   }
+  if (static_cast<int>(fips_202205) + static_cast<int>(wpa_202304) > 1) {
+    fprintf(stderr, "Multiple policy options given\n");
+    return nullptr;
+  }
   if (fips_202205 && !SSL_set_compliance_policy(
                          ssl.get(), ssl_compliance_policy_fips_202205)) {
+    fprintf(stderr, "SSL_set_compliance_policy failed\n");
+    return nullptr;
+  }
+  if (wpa_202304 && !SSL_set_compliance_policy(
+                         ssl.get(), ssl_compliance_policy_wpa3_192_202304)) {
     fprintf(stderr, "SSL_set_compliance_policy failed\n");
     return nullptr;
   }
@@ -1888,38 +1931,9 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   if (!check_close_notify) {
     SSL_set_quiet_shutdown(ssl.get(), 1);
   }
-  if (!curves.empty()) {
-    std::vector<int> nids;
-    for (auto curve : curves) {
-      switch (curve) {
-        case SSL_CURVE_SECP224R1:
-          nids.push_back(NID_secp224r1);
-          break;
-
-        case SSL_CURVE_SECP256R1:
-          nids.push_back(NID_X9_62_prime256v1);
-          break;
-
-        case SSL_CURVE_SECP384R1:
-          nids.push_back(NID_secp384r1);
-          break;
-
-        case SSL_CURVE_SECP521R1:
-          nids.push_back(NID_secp521r1);
-          break;
-
-        case SSL_CURVE_X25519:
-          nids.push_back(NID_X25519);
-          break;
-
-        case SSL_CURVE_CECPQ2:
-          nids.push_back(NID_CECPQ2);
-          break;
-      }
-      if (!SSL_set1_curves(ssl.get(), &nids[0], nids.size())) {
-        return nullptr;
-      }
-    }
+  if (!curves.empty() &&
+      !SSL_set1_group_ids(ssl.get(), curves.data(), curves.size())) {
+    return nullptr;
   }
   if (initial_timeout_duration_ms > 0) {
     DTLSv1_set_initial_timeout_duration(ssl.get(), initial_timeout_duration_ms);
@@ -1932,6 +1946,9 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   }
   if (max_send_fragment > 0) {
     SSL_set_max_send_fragment(ssl.get(), max_send_fragment);
+  }
+  if (alps_use_new_codepoint) {
+    SSL_set_alps_use_new_codepoint(ssl.get(), 1);
   }
   if (quic_use_legacy_codepoint != -1) {
     SSL_set_quic_use_legacy_codepoint(ssl.get(), quic_use_legacy_codepoint);

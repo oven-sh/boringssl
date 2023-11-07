@@ -58,7 +58,9 @@
 #include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
+#include <openssl/time.h>
 
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -98,15 +100,15 @@ int ASN1_GENERALIZEDTIME_set_string(ASN1_GENERALIZEDTIME *s, const char *str) {
 }
 
 ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_set(ASN1_GENERALIZEDTIME *s,
-                                               time_t t) {
-  return ASN1_GENERALIZEDTIME_adj(s, t, 0, 0);
+                                               int64_t posix_time) {
+  return ASN1_GENERALIZEDTIME_adj(s, posix_time, 0, 0);
 }
 
 ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_adj(ASN1_GENERALIZEDTIME *s,
-                                               time_t t, int offset_day,
+                                               int64_t posix_time, int offset_day,
                                                long offset_sec) {
   struct tm data;
-  if (!OPENSSL_gmtime(&t, &data)) {
+  if (!OPENSSL_posix_to_tm(posix_time, &data)) {
     return NULL;
   }
 
@@ -122,9 +124,12 @@ ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_adj(ASN1_GENERALIZEDTIME *s,
   }
 
   char buf[16];
-  BIO_snprintf(buf, sizeof(buf), "%04d%02d%02d%02d%02d%02dZ",
-               data.tm_year + 1900, data.tm_mon + 1, data.tm_mday, data.tm_hour,
-               data.tm_min, data.tm_sec);
+  int ret = snprintf(buf, sizeof(buf), "%04d%02d%02d%02d%02d%02dZ",
+                     data.tm_year + 1900, data.tm_mon + 1, data.tm_mday,
+                     data.tm_hour, data.tm_min, data.tm_sec);
+  if (ret != (int)(sizeof(buf) - 1)) {
+    abort();  // |snprintf| should neither truncate nor write fewer bytes.
+  }
 
   int free_s = 0;
   if (s == NULL) {

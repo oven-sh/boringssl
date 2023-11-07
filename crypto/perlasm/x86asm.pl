@@ -290,7 +290,12 @@ ___
 \%ifidn __OUTPUT_FORMAT__, win32
 ___
         print @out;
-        print "\%endif\n";
+        print <<___ unless $masm;
+\%else
+; Work around https://bugzilla.nasm.us/show_bug.cgi?id=3392738
+ret
+\%endif
+___
     } else {
         my $target;
         if ($elf) {
@@ -302,24 +307,13 @@ ___
         }
 
         print <<___;
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(OPENSSL_NO_ASM)
-#define OPENSSL_NO_ASM
-#endif
-#endif
+#include <openssl/asm_base.h>
 
-#if !defined(OPENSSL_NO_ASM) && defined(__i386__) && $target
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols_asm.h>
-#endif
+#if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86) && $target
 ___
         print @out;
         print <<___;
-#endif  // !defined(OPENSSL_NO_ASM) && defined(__i386__) && $target
-#if defined(__ELF__)
-// See https://www.airs.com/blog/archives/518.
-.section .note.GNU-stack,"",\%progbits
-#endif
+#endif  // !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86) && $target
 ___
     }
 }

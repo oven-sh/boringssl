@@ -1,16 +1,18 @@
-/* Copyright (c) 2020, Google Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright (c) 2020, Google Inc.
+//
+// Permission to use, copy, modify, and/or distribute this software for any
+// purpose with or without fee is hereby granted, provided that the above
+// copyright notice and this permission notice appear in all copies.
+//
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+// SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+// OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+// CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+//go:build ignore
 
 // make_policy_certs.go generates certificates for testing policy handling.
 package main
@@ -22,6 +24,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"flag"
 	"math/big"
 	"os"
 	"time"
@@ -29,6 +32,8 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
+
+var resetFlag = flag.Bool("reset", false, "if set, regenerates certificates that already exist")
 
 var (
 	// https://davidben.net/oid
@@ -62,7 +67,17 @@ type templateAndKey struct {
 	key      *ecdsa.PrivateKey
 }
 
-func mustGenerateCertificate(path string, subject, issuer *templateAndKey) []byte {
+func mustGenerateCertificate(path string, subject, issuer *templateAndKey) {
+	if !*resetFlag {
+		// Skip if the file already exists.
+		_, err := os.Stat(path)
+		if err == nil {
+			return
+		}
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+	}
 	cert, err := x509.CreateCertificate(rand.Reader, &subject.template, &issuer.template, &subject.key.PublicKey, issuer.key)
 	if err != nil {
 		panic(err)
@@ -76,10 +91,11 @@ func mustGenerateCertificate(path string, subject, issuer *templateAndKey) []byt
 	if err != nil {
 		panic(err)
 	}
-	return cert
 }
 
 func main() {
+	flag.Parse()
+
 	notBefore, err := time.Parse(time.RFC3339, "2000-01-01T00:00:00Z")
 	if err != nil {
 		panic(err)
@@ -89,6 +105,20 @@ func main() {
 		panic(err)
 	}
 
+	root2 := templateAndKey{
+		template: x509.Certificate{
+			SerialNumber:          new(big.Int).SetInt64(1),
+			Subject:               pkix.Name{CommonName: "Policy Root 2"},
+			NotBefore:             notBefore,
+			NotAfter:              notAfter,
+			BasicConstraintsValid: true,
+			IsCA:                  true,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			KeyUsage:              x509.KeyUsageCertSign,
+			SignatureAlgorithm:    x509.ECDSAWithSHA256,
+		},
+		key: rootKey,
+	}
 	root := templateAndKey{
 		template: x509.Certificate{
 			SerialNumber:          new(big.Int).SetInt64(1),
@@ -140,6 +170,10 @@ func main() {
 	mustGenerateCertificate("policy_intermediate.pem", &intermediate, &root)
 	mustGenerateCertificate("policy_leaf.pem", &leaf, &intermediate)
 
+	// root2 is used for tests that need a longer chain, using a Root/Root2
+	// cross-sign as one of the certificates.
+	mustGenerateCertificate("policy_root2.pem", &root2, &root2)
+
 	// Introduce syntax errors in the leaf and intermediate.
 	leafInvalid := leaf
 	leafInvalid.template.PolicyIdentifiers = nil
@@ -160,14 +194,29 @@ func main() {
 	intermediateDuplicate.template.PolicyIdentifiers = []asn1.ObjectIdentifier{testOID1, testOID2, testOID2}
 	mustGenerateCertificate("policy_intermediate_duplicate.pem", &intermediateDuplicate, &root)
 
-	// A version of the intermediate that sets requireExplicitPolicy without
-	// skipping certificates.
+	// Various policy constraints with requireExplicitPolicy values.
 	b := cryptobyte.NewBuilder(nil)
 	b.AddASN1(cbasn1.SEQUENCE, func(seq *cryptobyte.Builder) {
 		seq.AddASN1Int64WithTag(0, cbasn1.Tag(0).ContextSpecific())
 	})
+	requireExplicitPolicy0 := b.BytesOrPanic()
+
+	b = cryptobyte.NewBuilder(nil)
+	b.AddASN1(cbasn1.SEQUENCE, func(seq *cryptobyte.Builder) {
+		seq.AddASN1Int64WithTag(1, cbasn1.Tag(0).ContextSpecific())
+	})
+	requireExplicitPolicy1 := b.BytesOrPanic()
+
+	b = cryptobyte.NewBuilder(nil)
+	b.AddASN1(cbasn1.SEQUENCE, func(seq *cryptobyte.Builder) {
+		seq.AddASN1Int64WithTag(2, cbasn1.Tag(0).ContextSpecific())
+	})
+	requireExplicitPolicy2 := b.BytesOrPanic()
+
+	// A version of the intermediate that sets requireExplicitPolicy, skipping
+	// zero certificates.
 	intermediateRequire := intermediate
-	intermediateRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: b.BytesOrPanic()}}
+	intermediateRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: requireExplicitPolicy0}}
 	mustGenerateCertificate("policy_intermediate_require.pem", &intermediateRequire, &root)
 
 	// Same as above, but there are no policies on the intermediate.
@@ -182,6 +231,18 @@ func main() {
 	intermediateAny := intermediate
 	intermediateAny.template.PolicyIdentifiers = []asn1.ObjectIdentifier{anyPolicyOID}
 	mustGenerateCertificate("policy_intermediate_any.pem", &intermediateAny, &root)
+
+	// Other requireExplicitPolicy values, on the leaf and intermediate.
+	intermediateRequire = intermediate
+	intermediateRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: requireExplicitPolicy1}}
+	mustGenerateCertificate("policy_intermediate_require1.pem", &intermediateRequire, &root)
+	intermediateRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: requireExplicitPolicy2}}
+	mustGenerateCertificate("policy_intermediate_require2.pem", &intermediateRequire, &root)
+	leafRequire := leaf
+	leafRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: requireExplicitPolicy0}}
+	mustGenerateCertificate("policy_leaf_require.pem", &leafRequire, &intermediate)
+	leafRequire.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: requireExplicitPolicy1}}
+	mustGenerateCertificate("policy_leaf_require1.pem", &leafRequire, &intermediate)
 
 	leafAny := leaf
 	leafAny.template.PolicyIdentifiers = []asn1.ObjectIdentifier{anyPolicyOID}
@@ -227,6 +288,9 @@ func main() {
 	intermediateMapped.template.PolicyIdentifiers = []asn1.ObjectIdentifier{anyPolicyOID}
 	mustGenerateCertificate("policy_intermediate_mapped_any.pem", &intermediateMapped, &root)
 
+	intermediateMapped.template.PolicyIdentifiers = []asn1.ObjectIdentifier{testOID3}
+	mustGenerateCertificate("policy_intermediate_mapped_oid3.pem", &intermediateMapped, &root)
+
 	// Leaves which assert more specific OIDs, to test intermediate_mapped.
 	leafSingle := leaf
 	leafSingle.template.PolicyIdentifiers = []asn1.ObjectIdentifier{testOID1}
@@ -240,9 +304,22 @@ func main() {
 	leafSingle.template.PolicyIdentifiers = []asn1.ObjectIdentifier{testOID5}
 	mustGenerateCertificate("policy_leaf_oid5.pem", &leafSingle, &intermediate)
 
-	// TODO(davidben): Generate more certificates to test policy validation more
-	// extensively, including an intermediate with constraints. For now this
-	// just tests the basic case.
+	leafNone := leaf
+	leafNone.template.PolicyIdentifiers = nil
+	mustGenerateCertificate("policy_leaf_none.pem", &leafNone, &intermediate)
+
+	// Make version of Root, signed by Root 2, with policy mapping inhibited.
+	// This can be combined with intermediateMapped to test the combination.
+	b = cryptobyte.NewBuilder(nil)
+	b.AddASN1(cbasn1.SEQUENCE, func(seq *cryptobyte.Builder) {
+		seq.AddASN1Int64WithTag(0, cbasn1.Tag(1).ContextSpecific())
+	})
+	inhibitPolicyMapping0 := b.BytesOrPanic()
+
+	inhibitMapping := root
+	inhibitMapping.template.PolicyIdentifiers = []asn1.ObjectIdentifier{anyPolicyOID}
+	inhibitMapping.template.ExtraExtensions = []pkix.Extension{{Id: policyConstraintsOID, Value: inhibitPolicyMapping0}}
+	mustGenerateCertificate("policy_root_cross_inhibit_mapping.pem", &inhibitMapping, &root2)
 }
 
 const leafKeyPEM = `-----BEGIN PRIVATE KEY-----

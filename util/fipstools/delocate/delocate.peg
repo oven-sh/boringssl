@@ -12,9 +12,16 @@
 # OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 # CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
 
-# This is a rough parser for x86-64 and ppc64le assembly designed to work with
+# This is a rough parser for x86-64 and aarch64 assembly designed to work with
 # https://github.com/pointlander/peg. delocate.go has a go:generate line for
 # rebuilding delocate.peg.go from this file.
+
+# To regenerate delocate.peg.go:
+#
+# go install github.com/pointlander/peg@latest
+# ~/go/bin/peg <path-to-this-file>
+#
+# this will generate delocate.peg.go next to delocate.peg.
 
 package main
 
@@ -38,19 +45,16 @@ Arg <- QuotedArg / [[0-9a-z%+\-*_@.]]*
 QuotedArg <- '"' QuotedText '"'
 QuotedText <- (EscapedChar / [^"])*
 LabelContainingDirective <- LabelContainingDirectiveName WS SymbolArgs
-LabelContainingDirectiveName <- ".xword" / ".word" / ".long" / ".set" / ".byte" / ".8byte" / ".4byte" / ".quad" / ".tc" / ".localentry" / ".size" / ".type" / ".uleb128" / ".sleb128"
+LabelContainingDirectiveName <- ".xword" / ".word" / ".hword" / ".long" / ".set" / ".byte" / ".8byte" / ".4byte" / ".quad" / ".tc" / ".localentry" / ".size" / ".type" / ".uleb128" / ".sleb128"
 SymbolArgs <- SymbolArg ((WS? ',' WS?) SymbolArg)*
-SymbolShift <- ('<<' / '>>') WS? [0-9]+
-SymbolArg <- (OpenParen WS?)? (
-               Offset /
-               SymbolType /
-               (Offset / LocalSymbol / SymbolName / Dot) (WS? Operator WS? (Offset / LocalSymbol / SymbolName))* /
-               LocalSymbol TCMarker? /
-               SymbolName Offset /
-               SymbolName TCMarker?)
-             (WS? CloseParen)? (WS? SymbolShift)?
+
+SymbolArg <- SymbolExpr
+SymbolExpr <- SymbolAtom (WS? SymbolOperator WS? SymbolExpr)?
+SymbolAtom <- Offset / SymbolType / LocalSymbol TCMarker? / SymbolName Offset / SymbolName TCMarker? / Dot / OpenParen WS? SymbolExpr WS? CloseParen
+SymbolOperator <- '+' / '-' / '|' / '<<' / '>>'
 OpenParen <- '('
 CloseParen <- ')'
+
 SymbolType <- [@%] ('function' / 'object')
 Dot <- '.'
 TCMarker <- '[TC]'

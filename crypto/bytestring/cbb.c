@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include <openssl/mem.h>
+#include <openssl/err.h>
 
 #include "../internal.h"
 
@@ -77,11 +78,13 @@ static int cbb_buffer_reserve(struct cbb_buffer_st *base, uint8_t **out,
   size_t newlen = base->len + len;
   if (newlen < base->len) {
     // Overflow
+    OPENSSL_PUT_ERROR(CRYPTO, ERR_R_OVERFLOW);
     goto err;
   }
 
   if (newlen > base->cap) {
     if (!base->can_resize) {
+      OPENSSL_PUT_ERROR(CRYPTO, ERR_R_OVERFLOW);
       goto err;
     }
 
@@ -121,6 +124,7 @@ static int cbb_buffer_add(struct cbb_buffer_st *base, uint8_t **out,
 
 int CBB_finish(CBB *cbb, uint8_t **out_data, size_t *out_len) {
   if (cbb->is_child) {
+    OPENSSL_PUT_ERROR(CRYPTO, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
   }
 
@@ -149,6 +153,29 @@ static struct cbb_buffer_st *cbb_get_base(CBB *cbb) {
     return cbb->u.child.base;
   }
   return &cbb->u.base;
+}
+
+static void cbb_on_error(CBB *cbb) {
+  // Due to C's lack of destructors and |CBB|'s auto-flushing API, a failing
+  // |CBB|-taking function may leave a dangling pointer to a child |CBB|. As a
+  // result, the convention is callers may not write to |CBB|s that have failed.
+  // But, as a safety measure, we lock the |CBB| into an error state. Once the
+  // error bit is set, |cbb->child| will not be read.
+  //
+  // TODO(davidben): This still isn't quite ideal. A |CBB| function *outside*
+  // this file may originate an error while the |CBB| points to a local child.
+  // In that case we don't set the error bit and are reliant on the error
+  // convention. Perhaps we allow |CBB_cleanup| on child |CBB|s and make every
+  // child's |CBB_cleanup| set the error bit if unflushed. That will be
+  // convenient for C++ callers, but very tedious for C callers. So C callers
+  // perhaps should get a |CBB_on_error| function that can be, less tediously,
+  // stuck in a |goto err| block.
+  cbb_get_base(cbb)->error = 1;
+
+  // Clearing the pointer is not strictly necessary, but GCC's dangling pointer
+  // warning does not know |cbb->child| will not be read once |error| is set
+  // above.
+  cbb->child = NULL;
 }
 
 // CBB_flush recurses and then writes out any pending length prefix. The
@@ -191,6 +218,7 @@ int CBB_flush(CBB *cbb) {
     assert (child->pending_len_len == 1);
 
     if (len > 0xfffffffe) {
+      OPENSSL_PUT_ERROR(CRYPTO, ERR_R_OVERFLOW);
       // Too large.
       goto err;
     } else if (len > 0xffffff) {
@@ -229,6 +257,7 @@ int CBB_flush(CBB *cbb) {
     len >>= 8;
   }
   if (len != 0) {
+    OPENSSL_PUT_ERROR(CRYPTO, ERR_R_OVERFLOW);
     goto err;
   }
 
@@ -238,7 +267,7 @@ int CBB_flush(CBB *cbb) {
   return 1;
 
 err:
-  base->error = 1;
+  cbb_on_error(cbb);
   return 0;
 }
 
@@ -414,7 +443,7 @@ static int cbb_add_u(CBB *cbb, uint64_t v, size_t len_len) {
 
   // |v| must fit in |len_len| bytes.
   if (v != 0) {
-    cbb_get_base(cbb)->error = 1;
+    cbb_on_error(cbb);
     return 0;
   }
 
@@ -473,7 +502,7 @@ int CBB_add_asn1_uint64(CBB *cbb, uint64_t value) {
 int CBB_add_asn1_uint64_with_tag(CBB *cbb, uint64_t value, CBS_ASN1_TAG tag) {
   CBB child;
   if (!CBB_add_asn1(cbb, &child, tag)) {
-    return 0;
+    goto err;
   }
 
   int started = 0;
@@ -487,21 +516,25 @@ int CBB_add_asn1_uint64_with_tag(CBB *cbb, uint64_t value, CBS_ASN1_TAG tag) {
       // If the high bit is set, add a padding byte to make it
       // unsigned.
       if ((byte & 0x80) && !CBB_add_u8(&child, 0)) {
-        return 0;
+        goto err;
       }
       started = 1;
     }
     if (!CBB_add_u8(&child, byte)) {
-      return 0;
+      goto err;
     }
   }
 
   // 0 is encoded as a single 0, not the empty string.
   if (!started && !CBB_add_u8(&child, 0)) {
-    return 0;
+    goto err;
   }
 
   return CBB_flush(cbb);
+
+err:
+  cbb_on_error(cbb);
+  return 0;
 }
 
 int CBB_add_asn1_int64(CBB *cbb, int64_t value) {
@@ -523,14 +556,18 @@ int CBB_add_asn1_int64_with_tag(CBB *cbb, int64_t value, CBS_ASN1_TAG tag) {
 
   CBB child;
   if (!CBB_add_asn1(cbb, &child, tag)) {
-    return 0;
+    goto err;
   }
   for (int i = start; i >= 0; i--) {
     if (!CBB_add_u8(&child, bytes[i])) {
-      return 0;
+      goto err;
     }
   }
   return CBB_flush(cbb);
+
+err:
+  cbb_on_error(cbb);
+  return 0;
 }
 
 int CBB_add_asn1_octet_string(CBB *cbb, const uint8_t *data, size_t data_len) {
@@ -538,6 +575,7 @@ int CBB_add_asn1_octet_string(CBB *cbb, const uint8_t *data, size_t data_len) {
   if (!CBB_add_asn1(cbb, &child, CBS_ASN1_OCTETSTRING) ||
       !CBB_add_bytes(&child, data, data_len) ||
       !CBB_flush(cbb)) {
+    cbb_on_error(cbb);
     return 0;
   }
 
@@ -549,6 +587,7 @@ int CBB_add_asn1_bool(CBB *cbb, int value) {
   if (!CBB_add_asn1(cbb, &child, CBS_ASN1_BOOLEAN) ||
       !CBB_add_u8(&child, value != 0 ? 0xff : 0) ||
       !CBB_flush(cbb)) {
+    cbb_on_error(cbb);
     return 0;
   }
 
@@ -560,30 +599,15 @@ int CBB_add_asn1_bool(CBB *cbb, int value) {
 // component and the dot, so |cbs| may be passed into the function again for the
 // next value.
 static int parse_dotted_decimal(CBS *cbs, uint64_t *out) {
-  *out = 0;
-  int seen_digit = 0;
-  for (;;) {
-    // Valid terminators for a component are the end of the string or a
-    // non-terminal dot. If the string ends with a dot, this is not a valid OID
-    // string.
-    uint8_t u;
-    if (!CBS_get_u8(cbs, &u) ||
-        (u == '.' && CBS_len(cbs) > 0)) {
-      break;
-    }
-    if (u < '0' || u > '9' ||
-        // Forbid stray leading zeros.
-        (seen_digit && *out == 0) ||
-        // Check for overflow.
-        *out > UINT64_MAX / 10 ||
-        *out * 10 > UINT64_MAX - (u - '0')) {
-      return 0;
-    }
-    *out = *out * 10 + (u - '0');
-    seen_digit = 1;
+  if (!CBS_get_u64_decimal(cbs, out)) {
+    return 0;
   }
-  // The empty string is not a legal OID component.
-  return seen_digit;
+
+  // The integer must have either ended at the end of the string, or a
+  // non-terminal dot, which should be consumed. If the string ends with a dot,
+  // this is not a valid OID string.
+  uint8_t dot;
+  return !CBS_get_u8(cbs, &dot) || (dot == '.' && CBS_len(cbs) > 0);
 }
 
 int CBB_add_asn1_oid_from_text(CBB *cbb, const char *text, size_t len) {
@@ -649,6 +673,7 @@ int CBB_flush_asn1_set_of(CBB *cbb) {
   CBS_init(&cbs, CBB_data(cbb), CBB_len(cbb));
   while (CBS_len(&cbs) != 0) {
     if (!CBS_get_any_asn1_element(&cbs, NULL, NULL, NULL)) {
+      OPENSSL_PUT_ERROR(CRYPTO, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
       return 0;
     }
     num_children++;
@@ -657,16 +682,13 @@ int CBB_flush_asn1_set_of(CBB *cbb) {
   if (num_children < 2) {
     return 1;  // Nothing to do. This is the common case for X.509.
   }
-  if (num_children > ((size_t)-1) / sizeof(CBS)) {
-    return 0;  // Overflow.
-  }
 
   // Parse out the children and sort. We alias them into a copy of so they
   // remain valid as we rewrite |cbb|.
   int ret = 0;
   size_t buf_len = CBB_len(cbb);
   uint8_t *buf = OPENSSL_memdup(CBB_data(cbb), buf_len);
-  CBS *children = OPENSSL_malloc(num_children * sizeof(CBS));
+  CBS *children = OPENSSL_calloc(num_children, sizeof(CBS));
   if (buf == NULL || children == NULL) {
     goto err;
   }

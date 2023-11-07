@@ -217,8 +217,8 @@ extern "C" {
 #define Hw(t) ((BN_ULONG)((t) >> BN_BITS2))
 #endif
 
-// bn_minimal_width returns the minimal value of |bn->top| which fits the
-// value of |bn|.
+// bn_minimal_width returns the minimal number of words needed to represent
+// |bn|.
 int bn_minimal_width(const BIGNUM *bn);
 
 // bn_set_minimal_width sets |bn->width| to |bn_minimal_width(bn)|. If |bn| is
@@ -234,7 +234,7 @@ int bn_wexpand(BIGNUM *bn, size_t words);
 // than a number of words.
 int bn_expand(BIGNUM *bn, size_t bits);
 
-// bn_resize_words adjusts |bn->top| to be |words|. It returns one on success
+// bn_resize_words adjusts |bn->width| to be |words|. It returns one on success
 // and zero on allocation error or if |bn|'s value is too large.
 OPENSSL_EXPORT int bn_resize_words(BIGNUM *bn, size_t words);
 
@@ -262,6 +262,12 @@ int bn_fits_in_words(const BIGNUM *bn, size_t num);
 // bn_copy_words copies the value of |bn| to |out| and returns one if the value
 // is representable in |num| words. Otherwise, it returns zero.
 int bn_copy_words(BN_ULONG *out, size_t num, const BIGNUM *bn);
+
+// bn_assert_fits_in_bytes asserts that |bn| fits in |num| bytes. This is a
+// no-op in release builds, but triggers an assert in debug builds, and
+// declassifies all bytes which are therefore known to be zero in constant-time
+// validation.
+void bn_assert_fits_in_bytes(const BIGNUM *bn, size_t num);
 
 // bn_mul_add_words multiples |ap| by |w|, adds the result to |rp|, and places
 // the result in |rp|. |ap| and |rp| must both be |num| words long. It returns
@@ -425,12 +431,11 @@ void bn_power5(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *table,
 
 uint64_t bn_mont_n0(const BIGNUM *n);
 
-// bn_mod_exp_base_2_consttime calculates r = 2**p (mod n). |p| must be larger
-// than log_2(n); i.e. 2**p must be larger than |n|. |n| must be positive and
-// odd. |p| and the bit width of |n| are assumed public, but |n| is otherwise
-// treated as secret.
-int bn_mod_exp_base_2_consttime(BIGNUM *r, unsigned p, const BIGNUM *n,
-                                BN_CTX *ctx);
+// bn_mont_ctx_set_RR_consttime initializes |mont->RR|. It returns one on
+// success and zero on error. |mont->N| and |mont->n0| must have been
+// initialized already. The bit width of |mont->N| is assumed public, but
+// |mont->N| is otherwise treated as secret.
+int bn_mont_ctx_set_RR_consttime(BN_MONT_CTX *mont, BN_CTX *ctx);
 
 #if defined(_MSC_VER)
 #if defined(OPENSSL_X86_64)
@@ -594,6 +599,13 @@ OPENSSL_EXPORT int bn_is_relatively_prime(int *out_relatively_prime,
 OPENSSL_EXPORT int bn_lcm_consttime(BIGNUM *r, const BIGNUM *a, const BIGNUM *b,
                                     BN_CTX *ctx);
 
+// bn_mont_ctx_init zero-initialies |mont|.
+void bn_mont_ctx_init(BN_MONT_CTX *mont);
+
+// bn_mont_ctx_cleanup releases memory associated with |mont|, without freeing
+// |mont| itself.
+void bn_mont_ctx_cleanup(BN_MONT_CTX *mont);
+
 
 // Constant-time modular arithmetic.
 //
@@ -651,6 +663,15 @@ int bn_mod_inverse_prime(BIGNUM *out, const BIGNUM *a, const BIGNUM *p,
 // protecting the exponent.
 int bn_mod_inverse_secret_prime(BIGNUM *out, const BIGNUM *a, const BIGNUM *p,
                                 BN_CTX *ctx, const BN_MONT_CTX *mont_p);
+
+// BN_MONT_CTX_set_locked takes |lock| and checks whether |*pmont| is NULL. If
+// so, it creates a new |BN_MONT_CTX| and sets the modulus for it to |mod|. It
+// then stores it as |*pmont|. It returns one on success and zero on error. Note
+// this function assumes |mod| is public.
+//
+// If |*pmont| is already non-NULL then it does nothing and returns one.
+int BN_MONT_CTX_set_locked(BN_MONT_CTX **pmont, CRYPTO_MUTEX *lock,
+                           const BIGNUM *mod, BN_CTX *bn_ctx);
 
 
 // Low-level operations for small numbers.

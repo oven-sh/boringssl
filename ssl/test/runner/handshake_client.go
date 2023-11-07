@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"boringssl.googlesource.com/boringssl/ssl/test/runner/hpke"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 const echBadPayloadByte = 0xff
@@ -33,7 +34,7 @@ type clientHandshakeState struct {
 	echHPKEContext *hpke.Context
 	suite          *cipherSuite
 	finishedHash   finishedHash
-	keyShares      map[CurveID]ecdhCurve
+	keyShares      map[CurveID]kemImplementation
 	masterSecret   []byte
 	session        *ClientSessionState
 	finishedBytes  []byte
@@ -71,9 +72,12 @@ func replaceClientHello(hello *clientHelloMsg, in []byte) (*clientHelloMsg, erro
 	// Replace |newHellos|'s key shares with those of |hello|. For simplicity,
 	// we require their lengths match, which is satisfied by matching the
 	// DefaultCurves setting to the selection in the replacement ClientHello.
-	bb := newByteBuilder()
+	bb := cryptobyte.NewBuilder(nil)
 	hello.marshalKeyShares(bb)
-	keyShares := bb.finish()
+	keyShares, err := bb.Bytes()
+	if err != nil {
+		return nil, err
+	}
 	if len(keyShares) != len(newHello.keySharesRaw) {
 		return nil, errors.New("tls: ClientHello key share length is inconsistent with DefaultCurves setting")
 	}
@@ -98,7 +102,7 @@ func (c *Conn) clientHandshake() error {
 
 	hs := &clientHandshakeState{
 		c:         c,
-		keyShares: make(map[CurveID]ecdhCurve),
+		keyShares: make(map[CurveID]kemImplementation),
 	}
 
 	// Pick a session to resume.
@@ -626,8 +630,15 @@ func (hs *clientHandshakeState) createClientHello(innerHello *clientHelloMsg, ec
 		hello.secureRenegotiation = nil
 	}
 
-	for protocol := range c.config.ApplicationSettings {
-		hello.alpsProtocols = append(hello.alpsProtocols, protocol)
+	if c.config.ALPSUseNewCodepoint.IncludeNew() {
+		for protocol := range c.config.ApplicationSettings {
+			hello.alpsProtocols = append(hello.alpsProtocols, protocol)
+		}
+	}
+	if c.config.ALPSUseNewCodepoint.IncludeOld() {
+		for protocol := range c.config.ApplicationSettings {
+			hello.alpsProtocolsOld = append(hello.alpsProtocolsOld, protocol)
+		}
 	}
 
 	if maxVersion >= VersionTLS13 {
@@ -643,11 +654,11 @@ func (hs *clientHandshakeState) createClientHello(innerHello *clientHelloMsg, ec
 				if !curvesToSend[curveID] {
 					continue
 				}
-				curve, ok := curveForCurveID(curveID, c.config)
+				kem, ok := kemForCurveID(curveID, c.config)
 				if !ok {
 					continue
 				}
-				publicKey, err := curve.offer(c.config.rand())
+				publicKey, err := kem.generate(c.config.rand())
 				if err != nil {
 					return nil, err
 				}
@@ -663,7 +674,7 @@ func (hs *clientHandshakeState) createClientHello(innerHello *clientHelloMsg, ec
 					group:       curveID,
 					keyExchange: publicKey,
 				})
-				hs.keyShares[curveID] = curve
+				hs.keyShares[curveID] = kem
 
 				if c.config.Bugs.DuplicateKeyShares {
 					hello.keyShares = append(hello.keyShares, hello.keyShares[len(hello.keyShares)-1])
@@ -925,7 +936,7 @@ func (hs *clientHandshakeState) encryptClientHello(hello, innerHello *clientHell
 	return nil
 }
 
-func (hs *clientHandshakeState) checkECHConfirmation(msg interface{}, hello *clientHelloMsg, finishedHash *finishedHash) bool {
+func (hs *clientHandshakeState) checkECHConfirmation(msg any, hello *clientHelloMsg, finishedHash *finishedHash) bool {
 	var offset int
 	var raw, label []byte
 	if hrr, ok := msg.(*helloRetryRequestMsg); ok {
@@ -950,7 +961,7 @@ func (hs *clientHandshakeState) checkECHConfirmation(msg interface{}, hello *cli
 	return bytes.Equal(confirmation, raw[offset:offset+echAcceptConfirmationLength])
 }
 
-func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
+func (hs *clientHandshakeState) doTLS13Handshake(msg any) error {
 	c := hs.c
 
 	// The first message may be a ServerHello or HelloRetryRequest.
@@ -992,6 +1003,10 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
 
 	if haveHelloRetryRequest {
 		hs.writeServerHash(helloRetryRequest.marshal())
+
+		if !bytes.Equal(hs.hello.sessionID, helloRetryRequest.sessionID) {
+			return errors.New("tls: ClientHello and HelloRetryRequest session IDs did not match.")
+		}
 
 		if c.config.Bugs.FailIfHelloRetryRequested {
 			return errors.New("tls: unexpected HelloRetryRequest")
@@ -1093,7 +1108,7 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
 	}
 
 	if !bytes.Equal(hs.hello.sessionID, hs.serverHello.sessionID) {
-		return errors.New("tls: session IDs did not match.")
+		return errors.New("tls: ClientHello and ServerHello session IDs did not match.")
 	}
 
 	// Resolve PSK and compute the early secret.
@@ -1122,7 +1137,7 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
 	// Resolve ECDHE and compute the handshake secret.
 	ecdheSecret := zeroSecret
 	if !c.config.Bugs.MissingKeyShare && !c.config.Bugs.SecondClientHelloMissingKeyShare {
-		curve, ok := hs.keyShares[hs.serverHello.keyShare.group]
+		kem, ok := hs.keyShares[hs.serverHello.keyShare.group]
 		if !ok {
 			c.sendAlert(alertHandshakeFailure)
 			return errors.New("tls: server selected an unsupported group")
@@ -1130,7 +1145,7 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
 		c.curveID = hs.serverHello.keyShare.group
 
 		var err error
-		ecdheSecret, err = curve.finish(hs.serverHello.keyShare.keyExchange)
+		ecdheSecret, err = kem.decap(hs.serverHello.keyShare.keyExchange)
 		if err != nil {
 			return err
 		}
@@ -1398,6 +1413,13 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg interface{}) error {
 			clientEncryptedExtensions.applicationSettings = c.localApplicationSettings
 		}
 	}
+	if encryptedExtensions.extensions.hasApplicationSettingsOld || (c.config.Bugs.SendApplicationSettingsWithEarlyData && c.hasApplicationSettingsOld) {
+		hasEncryptedExtensions = true
+		if !c.config.Bugs.OmitClientApplicationSettings {
+			clientEncryptedExtensions.hasApplicationSettingsOld = true
+			clientEncryptedExtensions.applicationSettingsOld = c.localApplicationSettingsOld
+		}
+	}
 	if c.config.Bugs.SendExtraClientEncryptedExtension {
 		hasEncryptedExtensions = true
 		clientEncryptedExtensions.customExtension = []byte{0}
@@ -1529,15 +1551,15 @@ func (hs *clientHandshakeState) applyHelloRetryRequest(helloRetryRequest *helloR
 			c.sendAlert(alertHandshakeFailure)
 			return errors.New("tls: received invalid HelloRetryRequest")
 		}
-		curve, ok := curveForCurveID(group, c.config)
+		kem, ok := kemForCurveID(group, c.config)
 		if !ok {
 			return errors.New("tls: Unable to get curve requested in HelloRetryRequest")
 		}
-		publicKey, err := curve.offer(c.config.rand())
+		publicKey, err := kem.generate(c.config.rand())
 		if err != nil {
 			return err
 		}
-		hs.keyShares[group] = curve
+		hs.keyShares[group] = kem
 		hello.keyShares = []keyShareEntry{{
 			group:       group,
 			keyExchange: publicKey,
@@ -1897,7 +1919,7 @@ func (hs *clientHandshakeState) establishKeys() error {
 
 	clientMAC, serverMAC, clientKey, serverKey, clientIV, serverIV :=
 		keysFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.hello.random, hs.serverHello.random, hs.suite.macLen, hs.suite.keyLen, hs.suite.ivLen(c.vers))
-	var clientCipher, serverCipher interface{}
+	var clientCipher, serverCipher any
 	var clientHash, serverHash macFunction
 	if hs.suite.cipher != nil {
 		clientCipher = hs.suite.cipher(clientKey, clientIV, false /* not for reading */)
@@ -2050,7 +2072,11 @@ func (hs *clientHandshakeState) processServerExtensions(serverExtensions *server
 		c.quicTransportParamsLegacy = serverExtensions.quicTransportParamsLegacy
 	}
 
-	if serverExtensions.hasApplicationSettings {
+	if serverExtensions.hasApplicationSettings && serverExtensions.hasApplicationSettingsOld {
+		return errors.New("tls: server negotiated both old and new application settings together")
+	}
+
+	if serverExtensions.hasApplicationSettings || serverExtensions.hasApplicationSettingsOld {
 		if c.vers < VersionTLS13 {
 			return errors.New("tls: server sent application settings at invalid version")
 		}
@@ -2064,14 +2090,26 @@ func (hs *clientHandshakeState) processServerExtensions(serverExtensions *server
 		if !ok {
 			return errors.New("tls: server sent application settings for invalid protocol")
 		}
-		c.hasApplicationSettings = true
-		c.localApplicationSettings = settings
-		c.peerApplicationSettings = serverExtensions.applicationSettings
+
+		if serverExtensions.hasApplicationSettings {
+			c.hasApplicationSettings = true
+			c.localApplicationSettings = settings
+			c.peerApplicationSettings = serverExtensions.applicationSettings
+		}
+
+		if serverExtensions.hasApplicationSettingsOld {
+			c.hasApplicationSettingsOld = true
+			c.localApplicationSettingsOld = settings
+			c.peerApplicationSettingsOld = serverExtensions.applicationSettingsOld
+		}
 	} else if serverExtensions.hasEarlyData {
 		// 0-RTT connections inherit application settings from the session.
 		c.hasApplicationSettings = hs.session.hasApplicationSettings
 		c.localApplicationSettings = hs.session.localApplicationSettings
 		c.peerApplicationSettings = hs.session.peerApplicationSettings
+		c.hasApplicationSettingsOld = hs.session.hasApplicationSettingsOld
+		c.localApplicationSettingsOld = hs.session.localApplicationSettingsOld
+		c.peerApplicationSettingsOld = hs.session.peerApplicationSettingsOld
 	}
 
 	return nil

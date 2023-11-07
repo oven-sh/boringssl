@@ -70,13 +70,11 @@
 
 
 BIO *BIO_new(const BIO_METHOD *method) {
-  BIO *ret = OPENSSL_malloc(sizeof(BIO));
+  BIO *ret = OPENSSL_zalloc(sizeof(BIO));
   if (ret == NULL) {
-    OPENSSL_PUT_ERROR(BIO, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
 
-  OPENSSL_memset(ret, 0, sizeof(BIO));
   ret->method = method;
   ret->shutdown = 1;
   ret->references = 1;
@@ -424,7 +422,7 @@ int BIO_indent(BIO *bio, unsigned indent, unsigned max_indent) {
 }
 
 static int print_bio(const char *str, size_t len, void *bio) {
-  return BIO_write((BIO *)bio, str, len);
+  return BIO_write_all((BIO *)bio, str, len);
 }
 
 void ERR_print_errors(BIO *bio) {
@@ -463,9 +461,11 @@ static int bio_read_all(BIO *bio, uint8_t **out, size_t *out_len,
       OPENSSL_free(*out);
       return 0;
     }
-    const size_t todo = len - done;
-    assert(todo < INT_MAX);
-    const int n = BIO_read(bio, *out + done, todo);
+    size_t todo = len - done;
+    if (todo > INT_MAX) {
+      todo = INT_MAX;
+    }
+    const int n = BIO_read(bio, *out + done, (int)todo);
     if (n == 0) {
       *out_len = done;
       return 1;
@@ -609,7 +609,6 @@ int BIO_read_asn1(BIO *bio, uint8_t **out, size_t *out_len, size_t max_len) {
 
   *out = OPENSSL_malloc(len);
   if (*out == NULL) {
-    OPENSSL_PUT_ERROR(ASN1, ERR_R_MALLOC_FAILURE);
     return 0;
   }
   OPENSSL_memcpy(*out, header, header_len);
@@ -628,23 +627,22 @@ void BIO_set_retry_special(BIO *bio) {
 
 int BIO_set_write_buffer_size(BIO *bio, int buffer_size) { return 0; }
 
-static struct CRYPTO_STATIC_MUTEX g_index_lock = CRYPTO_STATIC_MUTEX_INIT;
+static CRYPTO_MUTEX g_index_lock = CRYPTO_MUTEX_INIT;
 static int g_index = BIO_TYPE_START;
 
 int BIO_get_new_index(void) {
-  CRYPTO_STATIC_MUTEX_lock_write(&g_index_lock);
+  CRYPTO_MUTEX_lock_write(&g_index_lock);
   // If |g_index| exceeds 255, it will collide with the flags bits.
   int ret = g_index > 255 ? -1 : g_index++;
-  CRYPTO_STATIC_MUTEX_unlock_write(&g_index_lock);
+  CRYPTO_MUTEX_unlock_write(&g_index_lock);
   return ret;
 }
 
 BIO_METHOD *BIO_meth_new(int type, const char *name) {
-  BIO_METHOD *method = OPENSSL_malloc(sizeof(BIO_METHOD));
+  BIO_METHOD *method = OPENSSL_zalloc(sizeof(BIO_METHOD));
   if (method == NULL) {
     return NULL;
   }
-  OPENSSL_memset(method, 0, sizeof(BIO_METHOD));
   method->type = type;
   method->name = name;
   return method;
