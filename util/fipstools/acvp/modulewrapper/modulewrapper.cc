@@ -1745,6 +1745,8 @@ static const EVP_MD *HashFromName(Span<const uint8_t> name) {
     return EVP_sha384();
   } else if (StringEq(name, "SHA2-512")) {
     return EVP_sha512();
+  } else if (StringEq(name, "SHA2-512/224")) {
+    return EVP_sha512_224();
   } else if (StringEq(name, "SHA2-512/256")) {
     return EVP_sha512_256();
   } else {

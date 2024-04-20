@@ -193,6 +193,30 @@ DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512) {
 }
 
 
+static void sha512_224_init(EVP_MD_CTX *ctx) {
+  BCM_sha512_224_init(reinterpret_cast<SHA512_CTX *>(ctx->md_data));
+}
+
+static void sha512_224_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
+  BCM_sha512_224_update(reinterpret_cast<SHA512_CTX *>(ctx->md_data), data, count);
+}
+
+static void sha512_224_final(EVP_MD_CTX *ctx, uint8_t *md) {
+  BCM_sha512_224_final(md, reinterpret_cast<SHA512_CTX *>(ctx->md_data));
+}
+
+DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512_224) {
+  out->type = NID_sha512_224;
+  out->md_size = BCM_SHA512_224_DIGEST_LENGTH;
+  out->flags = 0;
+  out->init = sha512_224_init;
+  out->update = sha512_224_update;
+  out->final = sha512_224_final;
+  out->block_size = 128;
+  out->ctx_size = sizeof(SHA512_CTX);
+}
+
+
 static void sha512_256_init(EVP_MD_CTX *ctx) {
   BCM_sha512_256_init(reinterpret_cast<SHA512_CTX *>(ctx->md_data));
 }

@@ -214,6 +214,19 @@ bcm_infallible BCM_sha512_final(uint8_t out[BCM_SHA512_DIGEST_LENGTH],
 bcm_infallible BCM_sha512_transform(SHA512_CTX *sha,
                                     const uint8_t block[BCM_SHA512_CBLOCK]);
 
+// SHA-512-224
+//
+// See https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf section 5.3.6
+
+#define BCM_SHA512_224_DIGEST_LENGTH 28
+// add an extra define here since 'sha512_final_impl' asserts that the intermediary work buffer has a length % 8
+// once the hashing is done its free to be truncated to the define above losslessly
+#define BCM_SHA512_224_DIGEST_BUFFER_LENGTH 32
+
+
+bcm_infallible BCM_sha512_224_init(SHA512_CTX *sha);
+bcm_infallible BCM_sha512_224_update(SHA512_CTX *sha, const void *data, size_t len);
+bcm_infallible BCM_sha512_224_final(uint8_t out[BCM_SHA512_224_DIGEST_BUFFER_LENGTH], SHA512_CTX *sha);
 
 // SHA-512-256
 //
