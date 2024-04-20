@@ -108,6 +108,24 @@ int SHA512_Init(SHA512_CTX *sha) {
   return 1;
 }
 
+int SHA512_224_Init(SHA512_CTX *sha) {
+  sha->h[0] = UINT64_C(0x8C3D37C819544DA2);
+  sha->h[1] = UINT64_C(0x73E1996689DCD4D6);
+  sha->h[2] = UINT64_C(0x1DFAB7AE32FF9C82);
+  sha->h[3] = UINT64_C(0x679DD514582F9FCF);
+  sha->h[4] = UINT64_C(0x0F6D2B697BD44DA8);
+  sha->h[5] = UINT64_C(0x77E36F7304C48942);
+  sha->h[6] = UINT64_C(0x3F9D85A86A1D36C8);
+  sha->h[7] = UINT64_C(0x1112E6AD91D692A1);
+
+  sha->Nl = 0;
+  sha->Nh = 0;
+  sha->num = 0;
+  sha->md_len = SHA512_224_DIGEST_BUFFER_LENGTH;
+  return 1;
+}
+
+
 int SHA512_256_Init(SHA512_CTX *sha) {
   sha->h[0] = UINT64_C(0x22312194fc2bf72c);
   sha->h[1] = UINT64_C(0x9f555fa3c84c64c2);
@@ -145,6 +163,16 @@ uint8_t *SHA512(const uint8_t *data, size_t len,
   return out;
 }
 
+uint8_t *SHA512_224(const uint8_t *data, size_t len,
+                    uint8_t out[SHA512_224_DIGEST_BUFFER_LENGTH]) {
+  SHA512_CTX ctx;
+  SHA512_224_Init(&ctx);
+  SHA512_224_Update(&ctx, data, len);
+  SHA512_224_Final(out, &ctx);
+  OPENSSL_cleanse(&ctx, sizeof(ctx));
+  return out;
+}
+
 uint8_t *SHA512_256(const uint8_t *data, size_t len,
                     uint8_t out[SHA512_256_DIGEST_LENGTH]) {
   SHA512_CTX ctx;
@@ -172,8 +200,19 @@ int SHA384_Update(SHA512_CTX *sha, const void *data, size_t len) {
   return SHA512_Update(sha, data, len);
 }
 
+int SHA512_224_Update(SHA512_CTX *sha, const void *data, size_t len) {
+  return SHA512_Update(sha, data, len);
+}
+
 int SHA512_256_Update(SHA512_CTX *sha, const void *data, size_t len) {
   return SHA512_Update(sha, data, len);
+}
+
+int SHA512_224_Final(uint8_t out[SHA512_224_DIGEST_BUFFER_LENGTH], SHA512_CTX *sha) {
+  // This function must be paired with |SHA512_224_Init|, which sets
+  // |sha->md_len| to |SHA512_224_DIGEST_BUFFER_LENGTH|.
+  assert(sha->md_len == SHA512_224_DIGEST_BUFFER_LENGTH);
+  return sha512_final_impl(out, SHA512_224_DIGEST_BUFFER_LENGTH, sha);
 }
 
 int SHA512_256_Final(uint8_t out[SHA512_256_DIGEST_LENGTH], SHA512_CTX *sha) {

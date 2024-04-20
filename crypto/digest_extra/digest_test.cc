@@ -53,6 +53,7 @@ static const MD sha224 = { "SHA224", &EVP_sha224, &SHA224 };
 static const MD sha256 = { "SHA256", &EVP_sha256, &SHA256 };
 static const MD sha384 = { "SHA384", &EVP_sha384, &SHA384 };
 static const MD sha512 = { "SHA512", &EVP_sha512, &SHA512 };
+static const MD sha512_224 = { "SHA512-224", &EVP_sha512_224, &SHA512_224 };
 static const MD sha512_256 = { "SHA512-256", &EVP_sha512_256, &SHA512_256 };
 static const MD md5_sha1 = { "MD5-SHA1", &EVP_md5_sha1, nullptr };
 static const MD blake2b256 = { "BLAKE2b-256", &EVP_blake2b256, nullptr };

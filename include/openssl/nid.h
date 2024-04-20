@@ -4255,6 +4255,11 @@ extern "C" {
 #define SN_X25519Kyber768Draft00 "X25519Kyber768Draft00"
 #define NID_X25519Kyber768Draft00 964
 
+#define SN_sha512_224 "SHA512-224"
+#define LN_sha512_224 "sha512-224"
+#define NID_sha512_224 1094
+#define OBJ_sha512_224 2L, 16L, 840L, 1L, 101L, 3L, 4L, 2L, 5L
+
 
 #if defined(__cplusplus)
 } /* extern C */
