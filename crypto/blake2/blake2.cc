@@ -167,3 +167,62 @@ void BLAKE2B256(const uint8_t *data, size_t len,
   BLAKE2B256_Update(&ctx, data, len);
   BLAKE2B256_Final(out, &ctx);
 }
+
+
+void BLAKE2B512_Init(BLAKE2B_CTX *b2b) {
+  OPENSSL_memset(b2b, 0, sizeof(BLAKE2B_CTX));
+
+  static_assert(sizeof(kIV) == sizeof(b2b->h), "");
+  OPENSSL_memcpy(&b2b->h, kIV, sizeof(kIV));
+
+  // https://tools.ietf.org/html/rfc7693#section-2.5
+  b2b->h[0] ^= 0x01010000 | BLAKE2B512_DIGEST_LENGTH;
+}
+
+void BLAKE2B512_Update(BLAKE2B_CTX *b2b, const void *in_data, size_t len) {
+  const uint8_t *data = reinterpret_cast<const uint8_t *>(in_data);
+  size_t todo = sizeof(b2b->block) - b2b->block_used;
+  if (todo > len) {
+    todo = len;
+  }
+  OPENSSL_memcpy(&b2b->block[b2b->block_used], data, todo);
+  b2b->block_used += todo;
+  data += todo;
+  len -= todo;
+
+  if (!len) {
+    return;
+  }
+
+  // More input remains therefore we must have filled |b2b->block|.
+  assert(b2b->block_used == BLAKE2B_CBLOCK);
+  blake2b_transform(b2b, b2b->block, BLAKE2B_CBLOCK,
+                    /*is_final_block=*/0);
+  b2b->block_used = 0;
+
+  while (len > BLAKE2B_CBLOCK) {
+    blake2b_transform(b2b, data, BLAKE2B_CBLOCK, /*is_final_block=*/0);
+    data += BLAKE2B_CBLOCK;
+    len -= BLAKE2B_CBLOCK;
+  }
+
+  OPENSSL_memcpy(b2b->block, data, len);
+  b2b->block_used = len;
+}
+
+void BLAKE2B512_Final(uint8_t out[BLAKE2B512_DIGEST_LENGTH], BLAKE2B_CTX *b2b) {
+  OPENSSL_memset(&b2b->block[b2b->block_used], 0,
+                 sizeof(b2b->block) - b2b->block_used);
+  blake2b_transform(b2b, b2b->block, b2b->block_used,
+                    /*is_final_block=*/1);
+  static_assert(BLAKE2B512_DIGEST_LENGTH <= sizeof(b2b->h), "");
+  memcpy(out, b2b->h, BLAKE2B512_DIGEST_LENGTH);
+}
+
+void BLAKE2B512(const uint8_t *data, size_t len,
+                uint8_t out[BLAKE2B512_DIGEST_LENGTH]) {
+  BLAKE2B_CTX ctx;
+  BLAKE2B512_Init(&ctx);
+  BLAKE2B512_Update(&ctx, data, len);
+  BLAKE2B512_Final(out, &ctx);
+}
