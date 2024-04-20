@@ -57,6 +57,7 @@ static const MD sha512_224 = { "SHA512-224", &EVP_sha512_224, &SHA512_224 };
 static const MD sha512_256 = { "SHA512-256", &EVP_sha512_256, &SHA512_256 };
 static const MD md5_sha1 = { "MD5-SHA1", &EVP_md5_sha1, nullptr };
 static const MD blake2b256 = { "BLAKE2b-256", &EVP_blake2b256, nullptr };
+static const MD blake2b512 = { "BLAKE2b-512", &EVP_blake2b512, nullptr };
 
 struct DigestTestVector {
   // md is the digest to test.
