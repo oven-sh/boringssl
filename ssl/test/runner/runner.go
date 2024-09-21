@@ -374,7 +374,7 @@ func createDelegatedCredential(parent *Credential, config delegatedCredentialCon
 	addUint24LengthPrefixedBytes(dc, pubBytes)
 
 	var dummyConfig Config
-	parentSignature, err := signMessage(VersionTLS13, parent.PrivateKey, &dummyConfig, config.algo, delegatedCredentialSignedMessage(dc.BytesOrPanic(), config.algo, parent.Leaf.Raw))
+	parentSignature, err := signMessage(false /* server */, VersionTLS13, parent.PrivateKey, &dummyConfig, config.algo, delegatedCredentialSignedMessage(dc.BytesOrPanic(), config.algo, parent.Leaf.Raw))
 	if err != nil {
 		panic(err)
 	}
@@ -437,6 +437,16 @@ const (
 	clientTest testType = iota
 	serverTest
 )
+
+func (t testType) String() string {
+	switch t {
+	case clientTest:
+		return "Client"
+	case serverTest:
+		return "Server"
+	}
+	panic(fmt.Sprintf("bad test type %d", t))
+}
 
 type protocol int
 
@@ -1738,16 +1748,16 @@ func runTest(dispatcher *shimDispatcher, statusChan chan statusMsg, test *testCa
 		case failed && !test.shouldFail:
 			msg = "unexpected failure"
 		case !failed && test.shouldFail:
-			msg = "unexpected success"
+			msg = fmt.Sprintf("unexpected success (wanted failure with %q / %q)", expectedError, test.expectedLocalError)
 		case failed && !correctFailure:
-			msg = "bad error (wanted '" + expectedError + "' / '" + test.expectedLocalError + "')"
+			msg = fmt.Sprintf("bad error (wanted %q / %q)", expectedError, test.expectedLocalError)
 		case mustFail:
 			msg = "test failure"
 		default:
 			panic("internal error")
 		}
 
-		return fmt.Errorf("%s: local error '%s', child error '%s', stdout:\n%s\nstderr:\n%s\n%s", msg, localErrString, childErrString, stdout, stderr, extraStderr)
+		return fmt.Errorf("%s: local error %q, child error %q, stdout:\n%s\nstderr:\n%s\n%s", msg, localErrString, childErrString, stdout, stderr, extraStderr)
 	}
 
 	if len(extraStderr) > 0 || (!failed && len(stderr) > 0) {
@@ -1835,6 +1845,8 @@ var tlsVersions = []tlsVersion{
 		version:     VersionTLS13,
 		excludeFlag: "-no-tls13",
 		hasQUIC:     true,
+		hasDTLS:     true,
+		versionDTLS: VersionDTLS125Experimental,
 		versionWire: VersionTLS13,
 	},
 }
@@ -2353,7 +2365,7 @@ read alert 1 0
 		{
 			protocol:      dtls,
 			name:          "DisableEverything-DTLS",
-			flags:         []string{"-no-tls12", "-no-tls1"},
+			flags:         []string{"-no-tls13", "-no-tls12", "-no-tls1"},
 			shouldFail:    true,
 			expectedError: ":NO_SUPPORTED_VERSIONS_ENABLED:",
 		},
@@ -2723,7 +2735,7 @@ read alert 1 0
 			name:     "SplitFragments-Boundary-DTLS",
 			config: Config{
 				Bugs: ProtocolBugs{
-					SplitFragments: dtlsRecordHeaderLen,
+					SplitFragments: dtlsMaxRecordHeaderLen,
 				},
 			},
 			shouldFail:    true,
@@ -2734,7 +2746,7 @@ read alert 1 0
 			name:     "SplitFragments-Body-DTLS",
 			config: Config{
 				Bugs: ProtocolBugs{
-					SplitFragments: dtlsRecordHeaderLen + 1,
+					SplitFragments: dtlsMaxRecordHeaderLen + 1,
 				},
 			},
 			shouldFail:    true,
@@ -3219,10 +3231,13 @@ read alert 1 0
 			},
 			resumeSession: true,
 		},
+		// TODO(crbug.com/boringssl/715): This test and the next shouldn't be
+		// restricted to a max version of TLS 1.2, but they're broken in DTLS 1.3.
 		{
 			protocol: dtls,
 			name:     "DTLS-SendExtraFinished",
 			config: Config{
+				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
 					SendExtraFinished: true,
 				},
@@ -3234,6 +3249,7 @@ read alert 1 0
 			protocol: dtls,
 			name:     "DTLS-SendExtraFinished-Reordered",
 			config: Config{
+				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
 					MaxHandshakeRecordLength:  2,
 					ReorderHandshakeFragments: true,
@@ -3704,6 +3720,86 @@ read alert 1 0
 		shouldFail:    true,
 		expectedError: ":UNEXPECTED_COMPATIBILITY_MODE:",
 	})
+
+	// Clients should reject DTLS 1.3 ServerHellos that echo the legacy
+	// session ID.
+	testCases = append(testCases, testCase{
+		protocol:      dtls,
+		name:          "DTLS13CompatibilityMode-EchoSessionID",
+		resumeSession: true,
+		config: Config{
+			MaxVersion: VersionTLS12,
+		},
+		resumeConfig: &Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				DTLS13EchoSessionID: true,
+			},
+		},
+		shouldFail:    true,
+		expectedError: ":DECODE_ERROR:",
+	})
+
+	// DTLS 1.3 should work with record headers that don't set the
+	// length bit or that use the short sequence number format.
+	testCases = append(testCases, testCase{
+		testType: clientTest,
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-NoLength-Client",
+		config: Config{
+			MinVersion:                 VersionTLS13,
+			DTLSRecordHeaderOmitLength: true,
+		},
+	})
+	testCases = append(testCases, testCase{
+		testType: serverTest,
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-NoLength-Server",
+		config: Config{
+			MinVersion:                 VersionTLS13,
+			DTLSRecordHeaderOmitLength: true,
+		},
+	})
+	testCases = append(testCases, testCase{
+		testType: clientTest,
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-ShortSeqNums-Client",
+		config: Config{
+			MinVersion:          VersionTLS13,
+			DTLSUseShortSeqNums: true,
+		},
+	})
+	testCases = append(testCases, testCase{
+		testType: serverTest,
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-ShortSeqNums-Server",
+		config: Config{
+			MinVersion:          VersionTLS13,
+			DTLSUseShortSeqNums: true,
+		},
+	})
+	testCases = append(testCases, testCase{
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-OldHeader",
+		config: Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				DTLSUsePlaintextRecordHeader: true,
+			},
+		},
+		expectMessageDropped: true,
+	})
+	testCases = append(testCases, testCase{
+		protocol: dtls,
+		name:     "DTLS13RecordHeader-CIDBit",
+		config: Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				DTLS13RecordHeaderSetCIDBit: true,
+			},
+		},
+		expectMessageDropped: true,
+	})
 }
 
 func addTestForCipherSuite(suite testCipherSuite, ver tlsVersion, protocol protocol) {
@@ -3767,51 +3863,53 @@ func addTestForCipherSuite(suite testCipherSuite, ver tlsVersion, protocol proto
 	// Verify exporters interoperate.
 	exportKeyingMaterial := 1024
 
-	testCases = append(testCases, testCase{
-		testType: serverTest,
-		protocol: protocol,
-		name:     prefix + ver.name + "-" + suite.name + "-server",
-		config: Config{
-			MinVersion:           ver.version,
-			MaxVersion:           ver.version,
-			CipherSuites:         []uint16{suite.id},
-			Credential:           cert,
-			PreSharedKey:         []byte(psk),
-			PreSharedKeyIdentity: pskIdentity,
-			Bugs: ProtocolBugs{
-				AdvertiseAllConfiguredCiphers: true,
+	if ver.version != VersionTLS13 || !ver.hasDTLS {
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + ver.name + "-" + suite.name + "-server",
+			config: Config{
+				MinVersion:           ver.version,
+				MaxVersion:           ver.version,
+				CipherSuites:         []uint16{suite.id},
+				Credential:           cert,
+				PreSharedKey:         []byte(psk),
+				PreSharedKeyIdentity: pskIdentity,
+				Bugs: ProtocolBugs{
+					AdvertiseAllConfiguredCiphers: true,
+				},
 			},
-		},
-		shimCertificate:      cert,
-		flags:                flags,
-		resumeSession:        true,
-		shouldFail:           shouldFail,
-		expectedError:        expectedServerError,
-		exportKeyingMaterial: exportKeyingMaterial,
-	})
+			shimCertificate:      cert,
+			flags:                flags,
+			resumeSession:        true,
+			shouldFail:           shouldFail,
+			expectedError:        expectedServerError,
+			exportKeyingMaterial: exportKeyingMaterial,
+		})
 
-	testCases = append(testCases, testCase{
-		testType: clientTest,
-		protocol: protocol,
-		name:     prefix + ver.name + "-" + suite.name + "-client",
-		config: Config{
-			MinVersion:           ver.version,
-			MaxVersion:           ver.version,
-			CipherSuites:         serverCipherSuites,
-			Credential:           cert,
-			PreSharedKey:         []byte(psk),
-			PreSharedKeyIdentity: pskIdentity,
-			Bugs: ProtocolBugs{
-				IgnorePeerCipherPreferences: shouldFail,
-				SendCipherSuite:             sendCipherSuite,
+		testCases = append(testCases, testCase{
+			testType: clientTest,
+			protocol: protocol,
+			name:     prefix + ver.name + "-" + suite.name + "-client",
+			config: Config{
+				MinVersion:           ver.version,
+				MaxVersion:           ver.version,
+				CipherSuites:         serverCipherSuites,
+				Credential:           cert,
+				PreSharedKey:         []byte(psk),
+				PreSharedKeyIdentity: pskIdentity,
+				Bugs: ProtocolBugs{
+					IgnorePeerCipherPreferences: shouldFail,
+					SendCipherSuite:             sendCipherSuite,
+				},
 			},
-		},
-		flags:                flags,
-		resumeSession:        true,
-		shouldFail:           shouldFail,
-		expectedError:        expectedClientError,
-		exportKeyingMaterial: exportKeyingMaterial,
-	})
+			flags:                flags,
+			resumeSession:        true,
+			shouldFail:           shouldFail,
+			expectedError:        expectedClientError,
+			exportKeyingMaterial: exportKeyingMaterial,
+		})
+	}
 
 	if shouldFail {
 		return
@@ -4875,40 +4973,76 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 		})
 	}
 
-	// TLS 1.3 basic handshake shapes. DTLS 1.3 isn't supported yet.
-	if config.protocol != dtls {
-		tests = append(tests, testCase{
-			name: "TLS13-1RTT-Client",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
-			},
-			resumeSession:        true,
-			resumeRenewedSession: true,
+	// TLS 1.3 basic handshake shapes.
+	tests = append(tests, testCase{
+		name: "TLS13-1RTT-Client",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+		},
+		resumeSession:        true,
+		resumeRenewedSession: true,
+		// 0-RTT being disabled overrides all other 0-RTT reasons.
+		flags: []string{"-expect-early-data-reason", "disabled"},
+	})
+
+	tests = append(tests, testCase{
+		testType: serverTest,
+		name:     "TLS13-1RTT-Server",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+		},
+		resumeSession:        true,
+		resumeRenewedSession: true,
+		flags: []string{
+			// TLS 1.3 uses tickets, so the session should not be
+			// cached statefully.
+			"-expect-no-session-id",
 			// 0-RTT being disabled overrides all other 0-RTT reasons.
-			flags: []string{"-expect-early-data-reason", "disabled"},
-		})
+			"-expect-early-data-reason", "disabled",
+		},
+	})
 
-		tests = append(tests, testCase{
-			testType: serverTest,
-			name:     "TLS13-1RTT-Server",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
+	tests = append(tests, testCase{
+		name: "TLS13-HelloRetryRequest-Client",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+			// P-384 requires a HelloRetryRequest against BoringSSL's default
+			// configuration. Assert this with ExpectMissingKeyShare.
+			CurvePreferences: []CurveID{CurveP384},
+			Bugs: ProtocolBugs{
+				ExpectMissingKeyShare: true,
 			},
-			resumeSession:        true,
-			resumeRenewedSession: true,
-			flags: []string{
-				// TLS 1.3 uses tickets, so the session should not be
-				// cached statefully.
-				"-expect-no-session-id",
-				// 0-RTT being disabled overrides all other 0-RTT reasons.
-				"-expect-early-data-reason", "disabled",
-			},
-		})
+		},
+		// Cover HelloRetryRequest during an ECDHE-PSK resumption.
+		resumeSession: true,
+		flags:         []string{"-expect-hrr"},
+	})
 
+	tests = append(tests, testCase{
+		testType: serverTest,
+		name:     "TLS13-HelloRetryRequest-Server",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+			// Require a HelloRetryRequest for every curve.
+			DefaultCurves: []CurveID{},
+		},
+		// Cover HelloRetryRequest during an ECDHE-PSK resumption.
+		resumeSession: true,
+		flags:         []string{"-expect-hrr"},
+	})
+
+	// TODO(crbug.com/boringssl/715): The -NoResume tests here are copies
+	// of the above tests, but without resumeSession set. These exist to
+	// test HRR in DTLS 1.3, because tests DTLS 1.3 tests with resumption
+	// enabled are skipped due to lack of support for resumption. Once we
+	// support resumption in DTLS 1.3, these can be deleted.
+	if config.protocol == dtls {
 		tests = append(tests, testCase{
-			name: "TLS13-HelloRetryRequest-Client",
+			name: "TLS13-HelloRetryRequest-Client-NoResume",
 			config: Config{
 				MaxVersion: VersionTLS13,
 				MinVersion: VersionTLS13,
@@ -4919,56 +5053,53 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 					ExpectMissingKeyShare: true,
 				},
 			},
-			// Cover HelloRetryRequest during an ECDHE-PSK resumption.
-			resumeSession: true,
-			flags:         []string{"-expect-hrr"},
+			flags: []string{"-expect-hrr"},
 		})
-
 		tests = append(tests, testCase{
 			testType: serverTest,
-			name:     "TLS13-HelloRetryRequest-Server",
+			name:     "TLS13-HelloRetryRequest-Server-NoResume",
 			config: Config{
 				MaxVersion: VersionTLS13,
 				MinVersion: VersionTLS13,
 				// Require a HelloRetryRequest for every curve.
 				DefaultCurves: []CurveID{},
 			},
-			// Cover HelloRetryRequest during an ECDHE-PSK resumption.
-			resumeSession: true,
-			flags:         []string{"-expect-hrr"},
+			flags: []string{"-expect-hrr"},
 		})
+	}
 
-		// Tests that specify a MaxEarlyDataSize don't work with QUIC.
-		if config.protocol != quic {
-			tests = append(tests, testCase{
-				testType: clientTest,
-				name:     "TLS13-EarlyData-TooMuchData-Client",
-				config: Config{
-					MaxVersion:       VersionTLS13,
-					MinVersion:       VersionTLS13,
-					MaxEarlyDataSize: 2,
+	// TLS 1.3 early data tests. DTLS 1.3 doesn't support early data yet.
+	// These tests are disabled for QUIC as well because they test features
+	// that do not apply to QUIC's use of TLS 1.3.
+	//
+	// TODO(crbug.com/boringssl/715): Enable these tests for DTLS once we
+	// support early data in DTLS 1.3.
+	if config.protocol != dtls && config.protocol != quic {
+		tests = append(tests, testCase{
+			testType: clientTest,
+			name:     "TLS13-EarlyData-TooMuchData-Client",
+			config: Config{
+				MaxVersion:       VersionTLS13,
+				MinVersion:       VersionTLS13,
+				MaxEarlyDataSize: 2,
+			},
+			resumeConfig: &Config{
+				MaxVersion:       VersionTLS13,
+				MinVersion:       VersionTLS13,
+				MaxEarlyDataSize: 2,
+				Bugs: ProtocolBugs{
+					ExpectEarlyData: [][]byte{[]byte(shimInitialWrite[:2])},
 				},
-				resumeConfig: &Config{
-					MaxVersion:       VersionTLS13,
-					MinVersion:       VersionTLS13,
-					MaxEarlyDataSize: 2,
-					Bugs: ProtocolBugs{
-						ExpectEarlyData: [][]byte{[]byte(shimInitialWrite[:2])},
-					},
-				},
-				resumeShimPrefix: shimInitialWrite[2:],
-				resumeSession:    true,
-				earlyData:        true,
-			})
-		}
+			},
+			resumeShimPrefix: shimInitialWrite[2:],
+			resumeSession:    true,
+			earlyData:        true,
+		})
 
 		// Unfinished writes can only be tested when operations are async. EarlyData
 		// can't be tested as part of an ImplicitHandshake in this case since
 		// otherwise the early data will be sent as normal data.
-		//
-		// Note application data is external in QUIC, so unfinished writes do not
-		// apply.
-		if config.async && !config.implicitHandshake && config.protocol != quic {
+		if config.async && !config.implicitHandshake {
 			tests = append(tests, testCase{
 				testType: clientTest,
 				name:     "TLS13-EarlyData-UnfinishedWrite-Client",
@@ -5007,25 +5138,23 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 		}
 
 		// Early data has no size limit in QUIC.
-		if config.protocol != quic {
-			tests = append(tests, testCase{
-				testType: serverTest,
-				name:     "TLS13-MaxEarlyData-Server",
-				config: Config{
-					MaxVersion: VersionTLS13,
-					MinVersion: VersionTLS13,
-					Bugs: ProtocolBugs{
-						SendEarlyData:           [][]byte{bytes.Repeat([]byte{1}, 14336+1)},
-						ExpectEarlyDataAccepted: true,
-					},
+		tests = append(tests, testCase{
+			testType: serverTest,
+			name:     "TLS13-MaxEarlyData-Server",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					SendEarlyData:           [][]byte{bytes.Repeat([]byte{1}, 14336+1)},
+					ExpectEarlyDataAccepted: true,
 				},
-				messageCount:  2,
-				resumeSession: true,
-				earlyData:     true,
-				shouldFail:    true,
-				expectedError: ":TOO_MUCH_READ_EARLY_DATA:",
-			})
-		}
+			},
+			messageCount:  2,
+			resumeSession: true,
+			earlyData:     true,
+			shouldFail:    true,
+			expectedError: ":TOO_MUCH_READ_EARLY_DATA:",
+		})
 	}
 
 	// TLS client auth.
@@ -5683,7 +5812,7 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 			expectedError:        halfHelloRequestError,
 		})
 
-		// NPN on client and server; results in post-handshake message.
+		// NPN on client and server; results in post-ChangeCipherSpec message.
 		tests = append(tests, testCase{
 			name: "NPN-Client",
 			config: Config{
@@ -5711,6 +5840,73 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 			resumeSession: true,
 			expectations: connectionExpectations{
 				nextProto:     "bar",
+				nextProtoType: npn,
+			},
+		})
+
+		// The client may select no protocol after seeing the server list.
+		tests = append(tests, testCase{
+			name: "NPN-Client-ClientSelectEmpty",
+			config: Config{
+				MaxVersion: VersionTLS12,
+				NextProtos: []string{"foo"},
+			},
+			flags:         []string{"-select-empty-next-proto"},
+			resumeSession: true,
+			expectations: connectionExpectations{
+				noNextProto:   true,
+				nextProtoType: npn,
+			},
+		})
+		tests = append(tests, testCase{
+			testType: serverTest,
+			name:     "NPN-Server-ClientSelectEmpty",
+			config: Config{
+				MaxVersion:          VersionTLS12,
+				NextProtos:          []string{"no-match"},
+				NoFallbackNextProto: true,
+			},
+			flags: []string{
+				"-advertise-npn", "\x03foo\x03bar\x03baz",
+				"-expect-no-next-proto",
+			},
+			resumeSession: true,
+			expectations: connectionExpectations{
+				noNextProto:   true,
+				nextProtoType: npn,
+			},
+		})
+
+		// The server may negotiate NPN, despite offering no protocols. In this
+		// case, the server must still be prepared for the client to select a
+		// fallback protocol.
+		tests = append(tests, testCase{
+			name: "NPN-Client-ServerAdvertiseEmpty",
+			config: Config{
+				MaxVersion:               VersionTLS12,
+				NegotiateNPNWithNoProtos: true,
+			},
+			flags:         []string{"-select-next-proto", "foo"},
+			resumeSession: true,
+			expectations: connectionExpectations{
+				nextProto:     "foo",
+				nextProtoType: npn,
+			},
+		})
+		tests = append(tests, testCase{
+			testType: serverTest,
+			name:     "NPN-Server-ServerAdvertiseEmpty",
+			config: Config{
+				MaxVersion: VersionTLS12,
+				NextProtos: []string{"foo"},
+			},
+			flags: []string{
+				"-advertise-empty-npn",
+				"-expect-next-proto", "foo",
+			},
+			resumeSession: true,
+			expectations: connectionExpectations{
+				nextProto:     "foo",
 				nextProtoType: npn,
 			},
 		})
@@ -6079,8 +6275,6 @@ read alert 1 0
 		}
 	}
 	if config.protocol == dtls {
-		// TODO(davidben): DTLS 1.3 will want a similar thing for
-		// HelloRetryRequest.
 		tests = append(tests, testCase{
 			name: "SkipHelloVerifyRequest",
 			config: Config{
@@ -6089,6 +6283,29 @@ read alert 1 0
 					SkipHelloVerifyRequest: true,
 				},
 			},
+		})
+		tests = append(tests, testCase{
+			name: "DTLS13-HelloVerifyRequest",
+			config: Config{
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					ForceHelloVerifyRequest: true,
+				},
+			},
+			shouldFail:    true,
+			expectedError: ":INVALID_MESSAGE:",
+		})
+		tests = append(tests, testCase{
+			name: "DTLS13-HelloVerifyRequestEmptyCookie",
+			config: Config{
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					ForceHelloVerifyRequest:       true,
+					EmptyHelloVerifyRequestCookie: true,
+				},
+			},
+			shouldFail:    true,
+			expectedError: ":INVALID_MESSAGE:",
 		})
 	}
 
@@ -6512,7 +6729,8 @@ func addVersionNegotiationTests() {
 		name:     "VersionTooLow-DTLS",
 		config: Config{
 			Bugs: ProtocolBugs{
-				SendClientVersion: 0xffff,
+				SendClientVersion:     0xffff,
+				OmitSupportedVersions: true,
 			},
 		},
 		shouldFail:    true,
@@ -6732,6 +6950,18 @@ func addMinimumVersionTests() {
 }
 
 func addExtensionTests() {
+	exampleCertificate := generateSingleCertChain(&x509.Certificate{
+		SerialNumber: big.NewInt(57005),
+		Subject: pkix.Name{
+			CommonName: "test cert",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		DNSNames:              []string{"example.com"},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}, &ecdsaP256Key)
+
 	// Repeat extensions tests at all versions.
 	for _, protocol := range []protocol{tls, dtls, quic} {
 		for _, ver := range allVersions(protocol) {
@@ -6775,6 +7005,7 @@ func addExtensionTests() {
 					Bugs: ProtocolBugs{
 						ExpectServerName: "example.com",
 					},
+					Credential: &exampleCertificate,
 				},
 				flags: []string{"-host-name", "example.com"},
 			})
@@ -6814,6 +7045,7 @@ func addExtensionTests() {
 					Bugs: ProtocolBugs{
 						SendServerNameAck: true,
 					},
+					Credential: &exampleCertificate,
 				},
 				flags:         []string{"-host-name", "example.com"},
 				resumeSession: true,
@@ -8120,7 +8352,7 @@ func addExtensionTests() {
 						},
 						flags: []string{
 							"-max-version",
-							strconv.Itoa(int(ver.versionWire)),
+							ver.shimFlag(protocol),
 							"-quic-transport-params",
 							base64FlagValue([]byte{3, 4}),
 							"-quic-use-legacy-codepoint", useCodepointFlag,
@@ -8435,8 +8667,10 @@ func addExtensionTests() {
 			differentSCTList = append(differentSCTList, testSCTList...)
 			differentSCTList[len(differentSCTList)-1] ^= 1
 
-			// The SCT extension did not specify that it must only be sent on resumption as it
-			// should have, so test that we tolerate but ignore it.
+			// The SCT extension did not specify that it must only be sent on the inital handshake as it
+			// should have, so test that we tolerate but ignore it. This is only an issue pre-1.3, since
+			// SCTs are sent in the CertificateEntry message in 1.3, whereas they were previously sent
+			// in an extension in the ServerHello pre-1.3.
 			testCases = append(testCases, testCase{
 				protocol: protocol,
 				name:     "SendSCTListOnResume-" + suffix,
@@ -9935,6 +10169,7 @@ var testSignatureAlgorithms = []struct {
 }{
 	{"RSA_PKCS1_SHA1", signatureRSAPKCS1WithSHA1, &rsaCertificate, 0},
 	{"RSA_PKCS1_SHA256", signatureRSAPKCS1WithSHA256, &rsaCertificate, 0},
+	{"RSA_PKCS1_SHA256_LEGACY", signatureRSAPKCS1WithSHA256Legacy, &rsaCertificate, 0},
 	{"RSA_PKCS1_SHA384", signatureRSAPKCS1WithSHA384, &rsaCertificate, 0},
 	{"RSA_PKCS1_SHA512", signatureRSAPKCS1WithSHA512, &rsaCertificate, 0},
 	{"ECDSA_SHA1", signatureECDSAWithSHA1, &ecdsaP256Certificate, CurveP256},
@@ -9989,61 +10224,95 @@ func addSignatureAlgorithmTests() {
 				continue
 			}
 
-			var shouldFail, rejectByDefault bool
-			// ecdsa_sha1 does not exist in TLS 1.3.
-			if ver.version >= VersionTLS13 && alg.id == signatureECDSAWithSHA1 {
-				shouldFail = true
-			}
-			// RSA-PKCS1 does not exist in TLS 1.3.
-			if ver.version >= VersionTLS13 && hasComponent(alg.name, "PKCS1") {
-				shouldFail = true
-			}
-			// SHA-224 has been removed from TLS 1.3 and, in 1.3,
-			// the curve has to match the hash size.
-			if ver.version >= VersionTLS13 && alg.curve == CurveP224 {
-				shouldFail = true
-			}
-
-			// By default, BoringSSL does not enable ecdsa_sha1, ecdsa_secp521_sha512, and ed25519.
-			if alg.id == signatureECDSAWithSHA1 || alg.id == signatureECDSAWithP521AndSHA512 || alg.id == signatureEd25519 {
-				rejectByDefault = true
-			}
-
-			var curveFlags []string
-			var runnerCurves []CurveID
-			if alg.curve != 0 && ver.version <= VersionTLS12 {
-				// In TLS 1.2, the ECDH curve list also constrains ECDSA keys. Ensure the
-				// corresponding curve is enabled. Also include X25519 to ensure the shim
-				// and runner have something in common for ECDH.
-				curveFlags = flagInts("-curves", []int{int(CurveX25519), int(alg.curve)})
-				runnerCurves = []CurveID{CurveX25519, alg.curve}
-			}
-
-			var signError, signLocalError, verifyError, verifyLocalError, defaultError, defaultLocalError string
-			if shouldFail {
-				signError = ":NO_COMMON_SIGNATURE_ALGORITHMS:"
-				signLocalError = "remote error: handshake failure"
-				verifyError = ":WRONG_SIGNATURE_TYPE:"
-				verifyLocalError = "remote error"
-				rejectByDefault = true
-			}
-			if rejectByDefault {
-				defaultError = ":WRONG_SIGNATURE_TYPE:"
-				defaultLocalError = "remote error"
-			}
-
 			suffix := "-" + alg.name + "-" + ver.name
+			for _, signTestType := range []testType{clientTest, serverTest} {
+				signPrefix := "Client-"
+				verifyPrefix := "Server-"
+				verifyTestType := serverTest
+				if signTestType == serverTest {
+					verifyTestType = clientTest
+					signPrefix, verifyPrefix = verifyPrefix, signPrefix
+				}
 
-			for _, testType := range []testType{clientTest, serverTest} {
-				prefix := "Client-"
-				if testType == serverTest {
-					prefix = "Server-"
+				var shouldFail bool
+				isTLS12PKCS1 := hasComponent(alg.name, "PKCS1") && !hasComponent(alg.name, "LEGACY")
+				isTLS13PKCS1 := hasComponent(alg.name, "PKCS1") && hasComponent(alg.name, "LEGACY")
+
+				// TLS 1.3 removes a number of signature algorithms.
+				if ver.version >= VersionTLS13 && (alg.curve == CurveP224 || alg.id == signatureECDSAWithSHA1 || isTLS12PKCS1) {
+					shouldFail = true
+				}
+
+				// The backported RSA-PKCS1 code points only exist for TLS 1.3
+				// client certificates.
+				if (ver.version < VersionTLS13 || signTestType == serverTest) && isTLS13PKCS1 {
+					shouldFail = true
+				}
+
+				// By default, BoringSSL does not sign with these algorithms.
+				signDefault := !shouldFail
+				if isTLS13PKCS1 {
+					signDefault = false
+				}
+
+				// By default, BoringSSL does not accept these algorithms.
+				verifyDefault := !shouldFail
+				if alg.id == signatureECDSAWithSHA1 || alg.id == signatureECDSAWithP521AndSHA512 || alg.id == signatureEd25519 || isTLS13PKCS1 {
+					verifyDefault = false
+				}
+
+				var curveFlags []string
+				var runnerCurves []CurveID
+				if alg.curve != 0 && ver.version <= VersionTLS12 {
+					// In TLS 1.2, the ECDH curve list also constrains ECDSA keys. Ensure the
+					// corresponding curve is enabled. Also include X25519 to ensure the shim
+					// and runner have something in common for ECDH.
+					curveFlags = flagInts("-curves", []int{int(CurveX25519), int(alg.curve)})
+					runnerCurves = []CurveID{CurveX25519, alg.curve}
+				}
+
+				signError := func(shouldFail bool) string {
+					if !shouldFail {
+						return ""
+					}
+					// In TLS 1.3, the shim should report no common signature algorithms if
+					// it cannot generate a signature. In TLS 1.2 servers, signature
+					// algorithm and cipher selection are integrated, so it is reported as
+					// no shared cipher.
+					if ver.version <= VersionTLS12 && signTestType == serverTest {
+						return ":NO_SHARED_CIPHER:"
+					}
+					return ":NO_COMMON_SIGNATURE_ALGORITHMS:"
+				}
+				signLocalError := func(shouldFail bool) string {
+					if !shouldFail {
+						return ""
+					}
+					// The shim should send handshake_failure when it cannot
+					// negotiate parameters.
+					return "remote error: handshake failure"
+				}
+				verifyError := func(shouldFail bool) string {
+					if !shouldFail {
+						return ""
+					}
+					// If the shim rejects the signature algorithm, but the
+					// runner forcibly selects it anyway, the shim should notice.
+					return ":WRONG_SIGNATURE_TYPE:"
+				}
+				verifyLocalError := func(shouldFail bool) string {
+					if !shouldFail {
+						return ""
+					}
+					// The shim should send an illegal_parameter alert if the runner
+					// uses a signature algorithm it isn't allowed to use.
+					return "remote error: illegal parameter"
 				}
 
 				// Test the shim using the algorithm for signing.
 				signTest := testCase{
-					testType: testType,
-					name:     prefix + "Sign" + suffix,
+					testType: signTestType,
+					name:     signPrefix + "Sign" + suffix,
 					config: Config{
 						MaxVersion:       ver.version,
 						CurvePreferences: runnerCurves,
@@ -10056,8 +10325,33 @@ func addSignatureAlgorithmTests() {
 					shimCertificate:    cert,
 					flags:              curveFlags,
 					shouldFail:         shouldFail,
-					expectedError:      signError,
-					expectedLocalError: signLocalError,
+					expectedError:      signError(shouldFail),
+					expectedLocalError: signLocalError(shouldFail),
+					expectations: connectionExpectations{
+						peerSignatureAlgorithm: alg.id,
+					},
+				}
+
+				// Test whether the shim enables the algorithm by default.
+				signDefaultTest := testCase{
+					testType: signTestType,
+					name:     signPrefix + "SignDefault" + suffix,
+					config: Config{
+						MaxVersion:       ver.version,
+						CurvePreferences: runnerCurves,
+						VerifySignatureAlgorithms: []signatureAlgorithm{
+							fakeSigAlg1,
+							alg.id,
+							fakeSigAlg2,
+						},
+					},
+					// cert has been configured with the specified algorithm,
+					// while alg.baseCert uses the defaults.
+					shimCertificate:    alg.baseCert,
+					flags:              curveFlags,
+					shouldFail:         !signDefault,
+					expectedError:      signError(!signDefault),
+					expectedLocalError: signLocalError(!signDefault),
 					expectations: connectionExpectations{
 						peerSignatureAlgorithm: alg.id,
 					},
@@ -10066,8 +10360,8 @@ func addSignatureAlgorithmTests() {
 				// Test that the shim will select the algorithm when configured to only
 				// support it.
 				negotiateTest := testCase{
-					testType: testType,
-					name:     prefix + "Sign-Negotiate" + suffix,
+					testType: signTestType,
+					name:     signPrefix + "Sign-Negotiate" + suffix,
 					config: Config{
 						MaxVersion:                ver.version,
 						CurvePreferences:          runnerCurves,
@@ -10080,24 +10374,26 @@ func addSignatureAlgorithmTests() {
 					},
 				}
 
-				if testType == serverTest {
+				if signTestType == serverTest {
 					// TLS 1.2 servers only sign on some cipher suites.
 					signTest.config.CipherSuites = signingCiphers
+					signDefaultTest.config.CipherSuites = signingCiphers
 					negotiateTest.config.CipherSuites = signingCiphers
 				} else {
 					// TLS 1.2 clients only sign when the server requests certificates.
 					signTest.config.ClientAuth = RequireAnyClientCert
+					signDefaultTest.config.ClientAuth = RequireAnyClientCert
 					negotiateTest.config.ClientAuth = RequireAnyClientCert
 				}
-				testCases = append(testCases, signTest)
+				testCases = append(testCases, signTest, signDefaultTest)
 				if ver.version >= VersionTLS12 && !shouldFail {
 					testCases = append(testCases, negotiateTest)
 				}
 
 				// Test the shim using the algorithm for verifying.
 				verifyTest := testCase{
-					testType: testType,
-					name:     prefix + "Verify" + suffix,
+					testType: verifyTestType,
+					name:     verifyPrefix + "Verify" + suffix,
 					config: Config{
 						MaxVersion: ver.version,
 						Credential: cert,
@@ -10113,8 +10409,8 @@ func addSignatureAlgorithmTests() {
 					// algorithm is reported on both handshakes.
 					resumeSession:      !shouldFail,
 					shouldFail:         shouldFail,
-					expectedError:      verifyError,
-					expectedLocalError: verifyLocalError,
+					expectedError:      verifyError(shouldFail),
+					expectedLocalError: verifyLocalError(shouldFail),
 				}
 				if alg.id != 0 {
 					verifyTest.flags = append(verifyTest.flags, "-expect-peer-signature-algorithm", strconv.Itoa(int(alg.id)))
@@ -10124,16 +10420,16 @@ func addSignatureAlgorithmTests() {
 
 				// Test whether the shim expects the algorithm enabled by default.
 				defaultTest := testCase{
-					testType: testType,
-					name:     prefix + "VerifyDefault" + suffix,
+					testType: verifyTestType,
+					name:     verifyPrefix + "VerifyDefault" + suffix,
 					config: Config{
 						MaxVersion: ver.version,
 						Credential: cert,
 						Bugs: ProtocolBugs{
-							SkipECDSACurveCheck:          rejectByDefault,
-							IgnoreSignatureVersionChecks: rejectByDefault,
+							SkipECDSACurveCheck:          !verifyDefault,
+							IgnoreSignatureVersionChecks: !verifyDefault,
 							// Some signature algorithms may not be advertised.
-							IgnorePeerSignatureAlgorithmPreferences: rejectByDefault,
+							IgnorePeerSignatureAlgorithmPreferences: !verifyDefault,
 						},
 					},
 					flags: append(
@@ -10142,16 +10438,16 @@ func addSignatureAlgorithmTests() {
 					),
 					// Resume the session to assert the peer signature
 					// algorithm is reported on both handshakes.
-					resumeSession:      !rejectByDefault,
-					shouldFail:         rejectByDefault,
-					expectedError:      defaultError,
-					expectedLocalError: defaultLocalError,
+					resumeSession:      verifyDefault,
+					shouldFail:         !verifyDefault,
+					expectedError:      verifyError(!verifyDefault),
+					expectedLocalError: verifyLocalError(!verifyDefault),
 				}
 
 				// Test whether the shim handles invalid signatures for this algorithm.
 				invalidTest := testCase{
-					testType: testType,
-					name:     prefix + "InvalidSignature" + suffix,
+					testType: verifyTestType,
+					name:     verifyPrefix + "InvalidSignature" + suffix,
 					config: Config{
 						MaxVersion: ver.version,
 						Credential: cert,
@@ -10168,7 +10464,7 @@ func addSignatureAlgorithmTests() {
 					invalidTest.flags = append(invalidTest.flags, "-verify-prefs", strconv.Itoa(int(alg.id)))
 				}
 
-				if testType == serverTest {
+				if verifyTestType == serverTest {
 					// TLS 1.2 servers only verify when they request client certificates.
 					verifyTest.flags = append(verifyTest.flags, "-require-any-client-certificate")
 					defaultTest.flags = append(defaultTest.flags, "-require-any-client-certificate")
@@ -11521,101 +11817,191 @@ var testCurves = []struct {
 	{"P-521", CurveP521},
 	{"X25519", CurveX25519},
 	{"Kyber", CurveX25519Kyber768},
+	{"MLKEM", CurveX25519MLKEM768},
 }
 
 const bogusCurve = 0x1234
 
 func isPqGroup(r CurveID) bool {
-	return r == CurveX25519Kyber768
+	return r == CurveX25519Kyber768 || r == CurveX25519MLKEM768
+}
+
+func isECDHGroup(r CurveID) bool {
+	return r == CurveP224 || r == CurveP256 || r == CurveP384 || r == CurveP521
+}
+
+func isX25519Group(r CurveID) bool {
+	return r == CurveX25519 || r == CurveX25519Kyber768 || r == CurveX25519MLKEM768
 }
 
 func addCurveTests() {
+	// A set of cipher suites that ensures some curve-using mode is used.
+	// Without this, servers may fall back to RSA key exchange.
+	ecdheCiphers := []uint16{
+		TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		TLS_AES_256_GCM_SHA384,
+	}
+
 	for _, curve := range testCurves {
 		for _, ver := range tlsVersions {
 			if isPqGroup(curve.id) && ver.version < VersionTLS13 {
 				continue
 			}
+			for _, testType := range []testType{clientTest, serverTest} {
+				suffix := fmt.Sprintf("%s-%s-%s", testType, curve.name, ver.name)
 
-			suffix := curve.name + "-" + ver.name
-
-			testCases = append(testCases, testCase{
-				name: "CurveTest-Client-" + suffix,
-				config: Config{
-					MaxVersion: ver.version,
-					CipherSuites: []uint16{
-						TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-						TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-						TLS_AES_256_GCM_SHA384,
-					},
-					CurvePreferences: []CurveID{curve.id},
-				},
-				flags: append(
-					[]string{"-expect-curve-id", strconv.Itoa(int(curve.id))},
-					flagInts("-curves", shimConfig.AllCurves)...,
-				),
-				expectations: connectionExpectations{
-					curveID: curve.id,
-				},
-			})
-			testCases = append(testCases, testCase{
-				testType: serverTest,
-				name:     "CurveTest-Server-" + suffix,
-				config: Config{
-					MaxVersion: ver.version,
-					CipherSuites: []uint16{
-						TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-						TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-						TLS_AES_256_GCM_SHA384,
-					},
-					CurvePreferences: []CurveID{curve.id},
-				},
-				flags: append(
-					[]string{"-expect-curve-id", strconv.Itoa(int(curve.id))},
-					flagInts("-curves", shimConfig.AllCurves)...,
-				),
-				expectations: connectionExpectations{
-					curveID: curve.id,
-				},
-			})
-
-			if curve.id != CurveX25519 && !isPqGroup(curve.id) {
 				testCases = append(testCases, testCase{
-					name: "CurveTest-Client-Compressed-" + suffix,
+					testType: testType,
+					name:     "CurveTest-" + suffix,
 					config: Config{
-						MaxVersion: ver.version,
-						CipherSuites: []uint16{
-							TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-							TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-							TLS_AES_256_GCM_SHA384,
-						},
+						MaxVersion:       ver.version,
+						CipherSuites:     ecdheCiphers,
+						CurvePreferences: []CurveID{curve.id},
+					},
+					flags: append(
+						[]string{"-expect-curve-id", strconv.Itoa(int(curve.id))},
+						flagInts("-curves", shimConfig.AllCurves)...,
+					),
+					expectations: connectionExpectations{
+						curveID: curve.id,
+					},
+				})
+
+				badKeyShareLocalError := "remote error: error decoding message"
+				if testType == clientTest && ver.version >= VersionTLS13 {
+					// If the shim is a TLS 1.3 client and the runner sends a bad
+					// key share, the runner never reads the client's cleartext
+					// alert because the runner has already started encrypting by
+					// the time the client sees it.
+					badKeyShareLocalError = "local error: bad record MAC"
+				}
+
+				testCases = append(testCases, testCase{
+					testType: testType,
+					name:     "CurveTest-Invalid-TruncateKeyShare-" + suffix,
+					config: Config{
+						MaxVersion:       ver.version,
+						CipherSuites:     ecdheCiphers,
 						CurvePreferences: []CurveID{curve.id},
 						Bugs: ProtocolBugs{
-							SendCompressedCoordinates: true,
+							TruncateKeyShare: true,
 						},
 					},
-					flags:         flagInts("-curves", shimConfig.AllCurves),
-					shouldFail:    true,
-					expectedError: ":BAD_ECPOINT:",
+					flags:              flagInts("-curves", shimConfig.AllCurves),
+					shouldFail:         true,
+					expectedError:      ":BAD_ECPOINT:",
+					expectedLocalError: badKeyShareLocalError,
 				})
+
 				testCases = append(testCases, testCase{
-					testType: serverTest,
-					name:     "CurveTest-Server-Compressed-" + suffix,
+					testType: testType,
+					name:     "CurveTest-Invalid-PadKeyShare-" + suffix,
 					config: Config{
-						MaxVersion: ver.version,
-						CipherSuites: []uint16{
-							TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-							TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-							TLS_AES_256_GCM_SHA384,
-						},
+						MaxVersion:       ver.version,
+						CipherSuites:     ecdheCiphers,
 						CurvePreferences: []CurveID{curve.id},
 						Bugs: ProtocolBugs{
-							SendCompressedCoordinates: true,
+							PadKeyShare: true,
 						},
 					},
-					flags:         flagInts("-curves", shimConfig.AllCurves),
-					shouldFail:    true,
-					expectedError: ":BAD_ECPOINT:",
+					flags:              flagInts("-curves", shimConfig.AllCurves),
+					shouldFail:         true,
+					expectedError:      ":BAD_ECPOINT:",
+					expectedLocalError: badKeyShareLocalError,
 				})
+
+				if isECDHGroup(curve.id) {
+					testCases = append(testCases, testCase{
+						testType: testType,
+						name:     "CurveTest-Invalid-Compressed-" + suffix,
+						config: Config{
+							MaxVersion:       ver.version,
+							CipherSuites:     ecdheCiphers,
+							CurvePreferences: []CurveID{curve.id},
+							Bugs: ProtocolBugs{
+								SendCompressedCoordinates: true,
+							},
+						},
+						flags:              flagInts("-curves", shimConfig.AllCurves),
+						shouldFail:         true,
+						expectedError:      ":BAD_ECPOINT:",
+						expectedLocalError: badKeyShareLocalError,
+					})
+					testCases = append(testCases, testCase{
+						testType: testType,
+						name:     "CurveTest-Invalid-NotOnCurve-" + suffix,
+						config: Config{
+							MaxVersion:       ver.version,
+							CipherSuites:     ecdheCiphers,
+							CurvePreferences: []CurveID{curve.id},
+							Bugs: ProtocolBugs{
+								ECDHPointNotOnCurve: true,
+							},
+						},
+						flags:              flagInts("-curves", shimConfig.AllCurves),
+						shouldFail:         true,
+						expectedError:      ":BAD_ECPOINT:",
+						expectedLocalError: badKeyShareLocalError,
+					})
+				}
+
+				if isX25519Group(curve.id) {
+					// Implementations should mask off the high order bit in X25519.
+					testCases = append(testCases, testCase{
+						testType: testType,
+						name:     "CurveTest-SetX25519HighBit-" + suffix,
+						config: Config{
+							MaxVersion:       ver.version,
+							CipherSuites:     ecdheCiphers,
+							CurvePreferences: []CurveID{curve.id},
+							Bugs: ProtocolBugs{
+								SetX25519HighBit: true,
+							},
+						},
+						flags: flagInts("-curves", shimConfig.AllCurves),
+						expectations: connectionExpectations{
+							curveID: curve.id,
+						},
+					})
+
+					// Implementations should reject low order points.
+					testCases = append(testCases, testCase{
+						testType: testType,
+						name:     "CurveTest-Invalid-LowOrderX25519Point-" + suffix,
+						config: Config{
+							MaxVersion:       ver.version,
+							CipherSuites:     ecdheCiphers,
+							CurvePreferences: []CurveID{curve.id},
+							Bugs: ProtocolBugs{
+								LowOrderX25519Point: true,
+							},
+						},
+						flags:              flagInts("-curves", shimConfig.AllCurves),
+						shouldFail:         true,
+						expectedError:      ":BAD_ECPOINT:",
+						expectedLocalError: badKeyShareLocalError,
+					})
+				}
+
+				if curve.id == CurveX25519MLKEM768 && testType == serverTest {
+					testCases = append(testCases, testCase{
+						testType: testType,
+						name:     "CurveTest-Invalid-MLKEMEncapKeyNotReduced-" + suffix,
+						config: Config{
+							MaxVersion:       ver.version,
+							CipherSuites:     ecdheCiphers,
+							CurvePreferences: []CurveID{curve.id},
+							Bugs: ProtocolBugs{
+								MLKEMEncapKeyNotReduced: true,
+							},
+						},
+						flags:              flagInts("-curves", shimConfig.AllCurves),
+						shouldFail:         true,
+						expectedError:      ":BAD_ECPOINT:",
+						expectedLocalError: badKeyShareLocalError,
+					})
+				}
 			}
 		}
 	}
@@ -11741,60 +12127,6 @@ func addCurveTests() {
 		flags:         []string{"-curves", strconv.Itoa(int(CurveP384))},
 		shouldFail:    true,
 		expectedError: ":WRONG_CURVE:",
-	})
-
-	// Test invalid curve points.
-	testCases = append(testCases, testCase{
-		name: "InvalidECDHPoint-Client",
-		config: Config{
-			MaxVersion:       VersionTLS12,
-			CipherSuites:     []uint16{TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			CurvePreferences: []CurveID{CurveP256},
-			Bugs: ProtocolBugs{
-				InvalidECDHPoint: true,
-			},
-		},
-		shouldFail:    true,
-		expectedError: ":BAD_ECPOINT:",
-	})
-	testCases = append(testCases, testCase{
-		name: "InvalidECDHPoint-Client-TLS13",
-		config: Config{
-			MaxVersion:       VersionTLS13,
-			CurvePreferences: []CurveID{CurveP256},
-			Bugs: ProtocolBugs{
-				InvalidECDHPoint: true,
-			},
-		},
-		shouldFail:    true,
-		expectedError: ":BAD_ECPOINT:",
-	})
-	testCases = append(testCases, testCase{
-		testType: serverTest,
-		name:     "InvalidECDHPoint-Server",
-		config: Config{
-			MaxVersion:       VersionTLS12,
-			CipherSuites:     []uint16{TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
-			CurvePreferences: []CurveID{CurveP256},
-			Bugs: ProtocolBugs{
-				InvalidECDHPoint: true,
-			},
-		},
-		shouldFail:    true,
-		expectedError: ":BAD_ECPOINT:",
-	})
-	testCases = append(testCases, testCase{
-		testType: serverTest,
-		name:     "InvalidECDHPoint-Server-TLS13",
-		config: Config{
-			MaxVersion:       VersionTLS13,
-			CurvePreferences: []CurveID{CurveP256},
-			Bugs: ProtocolBugs{
-				InvalidECDHPoint: true,
-			},
-		},
-		shouldFail:    true,
-		expectedError: ":BAD_ECPOINT:",
 	})
 
 	// The previous curve ID should be reported on TLS 1.2 resumption.
@@ -11974,95 +12306,100 @@ func addCurveTests() {
 		expectedError: ":ERROR_PARSING_EXTENSION:",
 	})
 
-	// Implementations should mask off the high order bit in X25519.
-	testCases = append(testCases, testCase{
-		name: "SetX25519HighBit",
-		config: Config{
-			CipherSuites: []uint16{
-				TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-				TLS_AES_128_GCM_SHA256,
-			},
-			CurvePreferences: []CurveID{CurveX25519},
-			Bugs: ProtocolBugs{
-				SetX25519HighBit: true,
-			},
-		},
-	})
+	// Post-quantum groups require TLS 1.3.
+	for _, curve := range testCurves {
+		if !isPqGroup(curve.id) {
+			continue
+		}
 
-	// Kyber should not be offered by a TLS < 1.3 client.
-	testCases = append(testCases, testCase{
-		name: "KyberNotInTLS12",
-		config: Config{
-			Bugs: ProtocolBugs{
-				FailIfKyberOffered: true,
+		// Post-quantum groups should not be offered by a TLS 1.2 client.
+		testCases = append(testCases, testCase{
+			name: "TLS12ClientShouldNotOffer-" + curve.name,
+			config: Config{
+				Bugs: ProtocolBugs{
+					FailIfPostQuantumOffered: true,
+				},
 			},
-		},
-		flags: []string{
-			"-max-version", strconv.Itoa(VersionTLS12),
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
-			"-curves", strconv.Itoa(int(CurveX25519)),
-		},
-	})
-
-	// Kyber should not crash a TLS < 1.3 client if the server mistakenly
-	// selects it.
-	testCases = append(testCases, testCase{
-		name: "KyberNotAcceptedByTLS12Client",
-		config: Config{
-			Bugs: ProtocolBugs{
-				SendCurve: CurveX25519Kyber768,
+			flags: []string{
+				"-max-version", strconv.Itoa(VersionTLS12),
+				"-curves", strconv.Itoa(int(curve.id)),
+				"-curves", strconv.Itoa(int(CurveX25519)),
 			},
-		},
-		flags: []string{
-			"-max-version", strconv.Itoa(VersionTLS12),
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
-			"-curves", strconv.Itoa(int(CurveX25519)),
-		},
-		shouldFail:    true,
-		expectedError: ":WRONG_CURVE:",
-	})
+		})
 
-	// Kyber should not be offered by default as a client.
+		// Post-quantum groups should not be selected by a TLS 1.2 server.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			name:     "TLS12ServerShouldNotSelect-" + curve.name,
+			flags: []string{
+				"-max-version", strconv.Itoa(VersionTLS12),
+				"-curves", strconv.Itoa(int(curve.id)),
+				"-curves", strconv.Itoa(int(CurveX25519)),
+			},
+			expectations: connectionExpectations{
+				curveID: CurveX25519,
+			},
+		})
+
+		// If a TLS 1.2 server selects a post-quantum group anyway, the client
+		// should not accept it.
+		testCases = append(testCases, testCase{
+			name: "ClientShouldNotAllowInTLS12-" + curve.name,
+			config: Config{
+				MaxVersion: VersionTLS12,
+				Bugs: ProtocolBugs{
+					SendCurve: curve.id,
+				},
+			},
+			flags: []string{
+				"-curves", strconv.Itoa(int(curve.id)),
+				"-curves", strconv.Itoa(int(CurveX25519)),
+			},
+			shouldFail:         true,
+			expectedError:      ":WRONG_CURVE:",
+			expectedLocalError: "remote error: illegal parameter",
+		})
+	}
+
+	// ML-KEM and Kyber should not be offered by default as a client.
 	testCases = append(testCases, testCase{
-		name: "KyberNotEnabledByDefaultInClients",
+		name: "PostQuantumNotEnabledByDefaultInClients",
 		config: Config{
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
-				FailIfKyberOffered: true,
+				FailIfPostQuantumOffered: true,
 			},
 		},
 	})
 
-	// If Kyber is offered, both X25519 and Kyber should have a key-share.
+	// If ML-KEM is offered, both X25519 and ML-KEM should have a key-share.
 	testCases = append(testCases, testCase{
-		name: "NotJustKyberKeyShare",
+		name: "NotJustMLKEMKeyShare",
 		config: Config{
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
-				ExpectedKeyShares: []CurveID{CurveX25519Kyber768, CurveX25519},
+				ExpectedKeyShares: []CurveID{CurveX25519MLKEM768, CurveX25519},
 			},
 		},
 		flags: []string{
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-curves", strconv.Itoa(int(CurveX25519MLKEM768)),
 			"-curves", strconv.Itoa(int(CurveX25519)),
-			// Cannot expect Kyber until we have a Go implementation of it.
-			// "-expect-curve-id", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-expect-curve-id", strconv.Itoa(int(CurveX25519MLKEM768)),
 		},
 	})
 
 	// ... and the other way around
 	testCases = append(testCases, testCase{
-		name: "KyberKeyShareIncludedSecond",
+		name: "MLKEMKeyShareIncludedSecond",
 		config: Config{
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
-				ExpectedKeyShares: []CurveID{CurveX25519, CurveX25519Kyber768},
+				ExpectedKeyShares: []CurveID{CurveX25519, CurveX25519MLKEM768},
 			},
 		},
 		flags: []string{
 			"-curves", strconv.Itoa(int(CurveX25519)),
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-curves", strconv.Itoa(int(CurveX25519MLKEM768)),
 			"-expect-curve-id", strconv.Itoa(int(CurveX25519)),
 		},
 	})
@@ -12071,44 +12408,61 @@ func addCurveTests() {
 	// first classical and first post-quantum "curves" that get key shares
 	// included.
 	testCases = append(testCases, testCase{
-		name: "KyberKeyShareIncludedThird",
+		name: "MLKEMKeyShareIncludedThird",
 		config: Config{
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
-				ExpectedKeyShares: []CurveID{CurveX25519, CurveX25519Kyber768},
+				ExpectedKeyShares: []CurveID{CurveX25519, CurveX25519MLKEM768},
 			},
 		},
 		flags: []string{
 			"-curves", strconv.Itoa(int(CurveX25519)),
 			"-curves", strconv.Itoa(int(CurveP256)),
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-curves", strconv.Itoa(int(CurveX25519MLKEM768)),
 			"-expect-curve-id", strconv.Itoa(int(CurveX25519)),
 		},
 	})
 
-	// If Kyber is the only configured curve, the key share is sent.
+	// If ML-KEM is the only configured curve, the key share is sent.
 	testCases = append(testCases, testCase{
-		name: "JustConfiguringKyberWorks",
+		name: "JustConfiguringMLKEMWorks",
 		config: Config{
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
-				ExpectedKeyShares: []CurveID{CurveX25519Kyber768},
+				ExpectedKeyShares: []CurveID{CurveX25519MLKEM768},
 			},
 		},
 		flags: []string{
-			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
-			"-expect-curve-id", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-curves", strconv.Itoa(int(CurveX25519MLKEM768)),
+			"-expect-curve-id", strconv.Itoa(int(CurveX25519MLKEM768)),
 		},
 	})
 
-	// As a server, Kyber is not yet supported by default.
+	// If both ML-KEM and Kyber are configured, only the preferred one's
+	// key share should be sent.
+	testCases = append(testCases, testCase{
+		name: "BothMLKEMAndKyber",
+		config: Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				ExpectedKeyShares: []CurveID{CurveX25519MLKEM768},
+			},
+		},
+		flags: []string{
+			"-curves", strconv.Itoa(int(CurveX25519MLKEM768)),
+			"-curves", strconv.Itoa(int(CurveX25519Kyber768)),
+			"-expect-curve-id", strconv.Itoa(int(CurveX25519MLKEM768)),
+		},
+	})
+
+	// As a server, ML-KEM is not yet supported by default.
 	testCases = append(testCases, testCase{
 		testType: serverTest,
-		name:     "KyberNotEnabledByDefaultForAServer",
+		name:     "PostQuantumNotEnabledByDefaultForAServer",
 		config: Config{
 			MinVersion:       VersionTLS13,
-			CurvePreferences: []CurveID{CurveX25519Kyber768, CurveX25519},
-			DefaultCurves:    []CurveID{CurveX25519Kyber768},
+			CurvePreferences: []CurveID{CurveX25519MLKEM768, CurveX25519Kyber768, CurveX25519},
+			DefaultCurves:    []CurveID{CurveX25519MLKEM768, CurveX25519Kyber768},
 		},
 		flags: []string{
 			"-server-preference",
@@ -15013,7 +15367,7 @@ func addTLS13HandshakeTests() {
 		},
 	})
 
-	// Test that the server errors on 0-RTT streams without end_of_early_data.
+	// Test that the server errors on 0-RTT streams without EndOfEarlyData.
 	// The subsequent records should fail to decrypt.
 	testCases = append(testCases, testCase{
 		testType: serverTest,
@@ -15029,6 +15383,28 @@ func addTLS13HandshakeTests() {
 		shouldFail:         true,
 		expectedLocalError: "remote error: bad record MAC",
 		expectedError:      ":BAD_DECRYPT:",
+	})
+
+	// Test that EndOfEarlyData is rejected in QUIC. Since we leave application
+	// data to the QUIC implementation, we never accept any data at all in
+	// the 0-RTT epoch, so the error is that the encryption level is rejected
+	// outright.
+	//
+	// TODO(crbug.com/42290594): Test this for DTLS 1.3 as well.
+	testCases = append(testCases, testCase{
+		protocol: quic,
+		testType: serverTest,
+		name:     "EarlyData-UnexpectedEndOfEarlyData-QUIC",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				SendEndOfEarlyDataInQUICAndDTLS: true,
+			},
+		},
+		resumeSession: true,
+		earlyData:     true,
+		shouldFail:    true,
+		expectedError: ":WRONG_ENCRYPTION_LEVEL_RECEIVED:",
 	})
 
 	// Test that the server errors on 0-RTT streams with a stray handshake
@@ -16756,6 +17132,40 @@ func addEncryptedClientHelloTests() {
 	echConfig3 := generateServerECHConfig(&ECHConfig{ConfigID: 45})
 	echConfigRepeatID := generateServerECHConfig(&ECHConfig{ConfigID: 42})
 
+	echSecretCertificate := generateSingleCertChain(&x509.Certificate{
+		SerialNumber: big.NewInt(57005),
+		Subject: pkix.Name{
+			CommonName: "test cert",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		DNSNames:              []string{"secret.example"},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}, &rsa2048Key)
+	echPublicCertificate := generateSingleCertChain(&x509.Certificate{
+		SerialNumber: big.NewInt(57005),
+		Subject: pkix.Name{
+			CommonName: "test cert",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		DNSNames:              []string{"public.example"},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}, &rsa2048Key)
+	echLongNameCertificate := generateSingleCertChain(&x509.Certificate{
+		SerialNumber: big.NewInt(57005),
+		Subject: pkix.Name{
+			CommonName: "test cert",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		DNSNames:              []string{"test0123456789.example"},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}, &ecdsaP256Key)
+
 	for _, protocol := range []protocol{tls, quic} {
 		prefix := protocol.String() + "-"
 
@@ -17167,6 +17577,56 @@ write hs 4
 			},
 		})
 
+		// Test that we successfully rewind the TLS state machine and disable ECH in the
+		// case that the select_cert_cb signals that ECH is not possible for the SNI in
+		// ClientHelloInner.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + "ECH-Server-FailCallbackNeedRewind",
+			config: Config{
+				ServerName:      "secret.example",
+				ClientECHConfig: echConfig.ECHConfig,
+			},
+			flags: []string{
+				"-async",
+				"-fail-early-callback-ech-rewind",
+				"-ech-server-config", base64FlagValue(echConfig.ECHConfig.Raw),
+				"-ech-server-key", base64FlagValue(echConfig.Key),
+				"-ech-is-retry-config", "1",
+				"-expect-server-name", "public.example",
+			},
+			expectations: connectionExpectations{
+				echAccepted: false,
+			},
+		})
+
+		// Test that we correctly handle falling back to a ClientHelloOuter with
+		// no SNI (public name).
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + "ECH-Server-RewindWithNoPublicName",
+			config: Config{
+				ServerName:      "secret.example",
+				ClientECHConfig: echConfig.ECHConfig,
+				Bugs: ProtocolBugs{
+					OmitPublicName: true,
+				},
+			},
+			flags: []string{
+				"-async",
+				"-fail-early-callback-ech-rewind",
+				"-ech-server-config", base64FlagValue(echConfig.ECHConfig.Raw),
+				"-ech-server-key", base64FlagValue(echConfig.Key),
+				"-ech-is-retry-config", "1",
+				"-expect-no-server-name",
+			},
+			expectations: connectionExpectations{
+				echAccepted: false,
+			},
+		})
+
 		// Test ECH-enabled server with two ECHConfigs can decrypt client's ECH when
 		// it uses the second ECHConfig.
 		testCases = append(testCases, testCase{
@@ -17260,6 +17720,7 @@ write hs 4
 				name:     prefix + "ECH-Client-Cipher-" + cipher.name,
 				config: Config{
 					ServerECHConfigs: []ServerECHConfig{cipherConfig},
+					Credential:       &echSecretCertificate,
 				},
 				flags: []string{
 					"-ech-config-list", base64FlagValue(CreateECHConfigList(cipherConfig.ECHConfig.Raw)),
@@ -17737,6 +18198,7 @@ write hs 4
 					AlwaysSendECHHelloRetryRequest: true,
 					ExpectMissingKeyShare:          true, // Check we triggered HRR.
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -17853,6 +18315,7 @@ write hs 4
 					ExpectServerName:      "secret.example",
 					ExpectOuterServerName: "public.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -17876,6 +18339,7 @@ write hs 4
 					ExpectOuterServerName: "public.example",
 					ExpectMissingKeyShare: true, // Check we triggered HRR.
 				},
+				Credential: &echSecretCertificate,
 			},
 			resumeSession: true,
 			flags: []string{
@@ -17899,6 +18363,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "secret.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -17921,6 +18386,7 @@ write hs 4
 					ExpectServerName:      "secret.example",
 					AlwaysRejectEarlyData: true,
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18002,10 +18468,9 @@ write hs 4
 
 		// Test that the client iterates over configurations in the
 		// ECHConfigList and selects the first with supported parameters.
-		p256Key := ecdsaP256Certificate.PrivateKey.(*ecdsa.PrivateKey)
 		unsupportedKEM := generateServerECHConfig(&ECHConfig{
-			KEM:       hpke.P256WithHKDFSHA256,
-			PublicKey: elliptic.Marshal(elliptic.P256(), p256Key.X, p256Key.Y),
+			KEM:       0x6666,
+			PublicKey: []byte{1, 2, 3, 4},
 		}).ECHConfig
 		unsupportedCipherSuites := generateServerECHConfig(&ECHConfig{
 			CipherSuites: []HPKECipherSuite{{0x1111, 0x2222}},
@@ -18195,6 +18660,7 @@ write hs 4
 						extensionSupportedCurves,
 					},
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18224,6 +18690,7 @@ write hs 4
 					ExpectServerName:                "public.example",
 					ExpectOuterServerName:           "public.example",
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18246,6 +18713,7 @@ write hs 4
 						extensionSupportedVersions,
 					},
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18268,6 +18736,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "test0123456789.example",
 				},
+				Credential: &echLongNameCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(maxNameLen10.ECHConfig.Raw)),
@@ -18287,6 +18756,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "public.example",
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18307,6 +18777,7 @@ write hs 4
 					ExpectServerName:      "public.example",
 					ExpectMissingKeyShare: true, // Check we triggered HRR.
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18325,6 +18796,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "public.example",
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18344,6 +18816,7 @@ write hs 4
 					Bugs: ProtocolBugs{
 						ExpectServerName: "public.example",
 					},
+					Credential: &echPublicCertificate,
 				},
 				flags: []string{
 					"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18369,6 +18842,7 @@ write hs 4
 						ExpectFalseStart:          true,
 						AlertBeforeFalseStartTest: alertAccessDenied,
 					},
+					Credential: &echPublicCertificate,
 				},
 				flags: []string{
 					"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18405,6 +18879,7 @@ write hs 4
 					SendECHRetryConfigs: retryConfigs,
 					ExpectServerName:    "public.example",
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18426,6 +18901,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "secret.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			resumeConfig: &Config{
 				MaxVersion:       VersionTLS13,
@@ -18434,6 +18910,7 @@ write hs 4
 					ExpectServerName:                    "public.example",
 					UseInnerSessionWithClientHelloOuter: true,
 				},
+				Credential: &echPublicCertificate,
 			},
 			resumeSession: true,
 			flags: []string{
@@ -18456,6 +18933,7 @@ write hs 4
 					Bugs: ProtocolBugs{
 						ExpectServerName: "secret.example",
 					},
+					Credential: &echSecretCertificate,
 				},
 				resumeConfig: &Config{
 					MinVersion:       VersionTLS12,
@@ -18469,6 +18947,7 @@ write hs 4
 						// resumed at TLS 1.2.
 						AcceptAnySession: true,
 					},
+					Credential: &echPublicCertificate,
 				},
 				resumeSession: true,
 				flags: []string{
@@ -18497,12 +18976,14 @@ write hs 4
 				Bugs: ProtocolBugs{
 					ExpectServerName: "secret.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			resumeConfig: &Config{
 				ServerECHConfigs: []ServerECHConfig{echConfig2},
 				Bugs: ProtocolBugs{
 					ExpectServerName: "public.example",
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18535,12 +19016,14 @@ write hs 4
 					Bugs: ProtocolBugs{
 						ExpectServerName: "secret.example",
 					},
+					Credential: &echSecretCertificate,
 				},
 				resumeConfig: &Config{
 					MaxVersion: VersionTLS12,
 					Bugs: ProtocolBugs{
 						ExpectServerName: "public.example",
 					},
+					Credential: &echPublicCertificate,
 				},
 				flags: []string{
 					"-ech-config-list", base64FlagValue(CreateECHConfigList(echConfig.ECHConfig.Raw)),
@@ -18580,6 +19063,7 @@ write hs 4
 					ExpectNoClientECH: true,
 					ExpectServerName:  "secret.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(invalidPublicName.ECHConfig.Raw)),
@@ -18597,6 +19081,7 @@ write hs 4
 					ExpectOuterServerName: "public.example",
 					ExpectServerName:      "secret.example",
 				},
+				Credential: &echSecretCertificate,
 			},
 			flags: []string{
 				"-ech-config-list", base64FlagValue(CreateECHConfigList(invalidPublicName.ECHConfig.Raw, echConfig.ECHConfig.Raw)),
@@ -18643,6 +19128,7 @@ write hs 4
 					MinVersion: VersionTLS13,
 					MaxVersion: VersionTLS13,
 					ClientAuth: RequireAnyClientCert,
+					Credential: &echPublicCertificate,
 				},
 				shimCertificate: &rsaCertificate,
 				flags: append([]string{
@@ -18660,6 +19146,7 @@ write hs 4
 						MinVersion: VersionTLS12,
 						MaxVersion: VersionTLS12,
 						ClientAuth: RequireAnyClientCert,
+						Credential: &echPublicCertificate,
 					},
 					shimCertificate: &rsaCertificate,
 					flags: append([]string{
@@ -18703,6 +19190,7 @@ write hs 4
 				Bugs: ProtocolBugs{
 					AlwaysNegotiateChannelID: true,
 				},
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-send-channel-id", channelIDKeyPath,
@@ -18723,6 +19211,7 @@ write hs 4
 					Bugs: ProtocolBugs{
 						AlwaysNegotiateChannelID: true,
 					},
+					Credential: &echPublicCertificate,
 				},
 				flags: []string{
 					"-send-channel-id", channelIDKeyPath,
@@ -18794,6 +19283,7 @@ write hs 4
 			config: Config{
 				MinVersion: VersionTLS13,
 				MaxVersion: VersionTLS13,
+				Credential: &echPublicCertificate,
 			},
 			flags: []string{
 				"-verify-peer",
@@ -18833,8 +19323,11 @@ write hs 4
 			name:     prefix + "ECH-Client-Reject-EarlyDataRejected-OverrideNameOnRetry",
 			config: Config{
 				ServerECHConfigs: []ServerECHConfig{echConfig},
+				Credential:       &echPublicCertificate,
 			},
-			resumeConfig: &Config{},
+			resumeConfig: &Config{
+				Credential: &echPublicCertificate,
+			},
 			flags: []string{
 				"-verify-peer",
 				"-use-custom-verify-callback",
@@ -19658,6 +20151,38 @@ func addCompliancePolicyTests() {
 				})
 			}
 		}
+
+		// AES-256-GCM is the most preferred.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     "Compliance-cnsa202407-" + protocol.String() + "-AES-256-preferred",
+			config: Config{
+				MinVersion:   VersionTLS13,
+				MaxVersion:   VersionTLS13,
+				CipherSuites: []uint16{TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384},
+			},
+			flags: []string{
+				"-cnsa-202407",
+			},
+			expectations: connectionExpectations{cipher: TLS_AES_256_GCM_SHA384},
+		})
+
+		// AES-128-GCM is preferred over ChaCha20-Poly1305.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     "Compliance-cnsa202407-" + protocol.String() + "-AES-128-preferred",
+			config: Config{
+				MinVersion:   VersionTLS13,
+				MaxVersion:   VersionTLS13,
+				CipherSuites: []uint16{TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256},
+			},
+			flags: []string{
+				"-cnsa-202407",
+			},
+			expectations: connectionExpectations{cipher: TLS_AES_128_GCM_SHA256},
+		})
 	}
 }
 
@@ -20299,19 +20824,19 @@ func statusPrinter(doneChan chan *testresult.Results, statusChan chan statusMsg,
 					if *allowUnimplemented {
 						testOutput.AddSkip(msg.test.name)
 					} else {
-						testOutput.AddResult(msg.test.name, "SKIP")
+						testOutput.AddResult(msg.test.name, "SKIP", nil)
 					}
 				} else {
 					fmt.Printf("FAILED (%s)\n%s\n", msg.test.name, msg.err)
 					failed++
-					testOutput.AddResult(msg.test.name, "FAIL")
+					testOutput.AddResult(msg.test.name, "FAIL", msg.err)
 				}
 			} else {
 				if *pipe {
 					// Print each test instead of a status line.
 					fmt.Printf("PASSED (%s)\n", msg.test.name)
 				}
-				testOutput.AddResult(msg.test.name, "PASS")
+				testOutput.AddResult(msg.test.name, "PASS", nil)
 			}
 		}
 
@@ -20400,6 +20925,27 @@ func checkTests() {
 	}
 }
 
+// TODO(crbug.com/boringssl/715): Once our DTLS 1.3 implementation supports
+// resumption, remove this filter.
+func filterTests() {
+	tests := make([]testCase, 0, len(testCases))
+	isDTLS13ResumptionTest := func(test testCase) bool {
+		if !test.resumeSession {
+			return false
+		}
+		if test.protocol != dtls {
+			return false
+		}
+		return test.config.MaxVersion == VersionTLS13 || test.config.MinVersion == VersionTLS13 || test.expectations.version == VersionTLS13
+	}
+	for _, test := range testCases {
+		if !isDTLS13ResumptionTest(test) {
+			tests = append(tests, test)
+		}
+	}
+	testCases = tests
+}
+
 func main() {
 	flag.Parse()
 	var err error
@@ -20485,6 +21031,7 @@ func main() {
 	testCases = append(testCases, toAppend...)
 
 	checkTests()
+	filterTests()
 
 	dispatcher, err := newShimDispatcher()
 	if err != nil {

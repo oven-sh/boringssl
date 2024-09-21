@@ -5,7 +5,6 @@
 
 #if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__APPLE__)
 .text	
-
 .globl	_aes_hw_encrypt
 .private_extern _aes_hw_encrypt
 
@@ -1905,76 +1904,63 @@ L$cbc_ret:
 	ret
 
 
-.globl	_aes_hw_set_decrypt_key
-.private_extern _aes_hw_set_decrypt_key
+.globl	_aes_hw_encrypt_key_to_decrypt_key
+.private_extern _aes_hw_encrypt_key_to_decrypt_key
 
 .p2align	4
-_aes_hw_set_decrypt_key:
+_aes_hw_encrypt_key_to_decrypt_key:
 
 _CET_ENDBR
-.byte	0x48,0x83,0xEC,0x08
 
-	call	__aesni_set_encrypt_key
+	movl	240(%rdi),%esi
 	shll	$4,%esi
-	testl	%eax,%eax
-	jnz	L$dec_key_ret
-	leaq	16(%rdx,%rsi,1),%rdi
 
-	movups	(%rdx),%xmm0
-	movups	(%rdi),%xmm1
-	movups	%xmm0,(%rdi)
-	movups	%xmm1,(%rdx)
-	leaq	16(%rdx),%rdx
-	leaq	-16(%rdi),%rdi
+	leaq	16(%rdi,%rsi,1),%rdx
+
+	movups	(%rdi),%xmm0
+	movups	(%rdx),%xmm1
+	movups	%xmm0,(%rdx)
+	movups	%xmm1,(%rdi)
+	leaq	16(%rdi),%rdi
+	leaq	-16(%rdx),%rdx
 
 L$dec_key_inverse:
-	movups	(%rdx),%xmm0
-	movups	(%rdi),%xmm1
+	movups	(%rdi),%xmm0
+	movups	(%rdx),%xmm1
 .byte	102,15,56,219,192
 .byte	102,15,56,219,201
-	leaq	16(%rdx),%rdx
-	leaq	-16(%rdi),%rdi
-	movups	%xmm0,16(%rdi)
-	movups	%xmm1,-16(%rdx)
-	cmpq	%rdx,%rdi
+	leaq	16(%rdi),%rdi
+	leaq	-16(%rdx),%rdx
+	movups	%xmm0,16(%rdx)
+	movups	%xmm1,-16(%rdi)
+	cmpq	%rdi,%rdx
 	ja	L$dec_key_inverse
 
-	movups	(%rdx),%xmm0
+	movups	(%rdi),%xmm0
 .byte	102,15,56,219,192
 	pxor	%xmm1,%xmm1
-	movups	%xmm0,(%rdi)
+	movups	%xmm0,(%rdx)
 	pxor	%xmm0,%xmm0
-L$dec_key_ret:
-	addq	$8,%rsp
-
 	ret
 
-L$SEH_end_set_decrypt_key:
 
-.globl	_aes_hw_set_encrypt_key
-.private_extern _aes_hw_set_encrypt_key
+.globl	_aes_hw_set_encrypt_key_base
+.private_extern _aes_hw_set_encrypt_key_base
 
 .p2align	4
-_aes_hw_set_encrypt_key:
-__aesni_set_encrypt_key:
+_aes_hw_set_encrypt_key_base:
+
 
 _CET_ENDBR
 #ifdef BORINGSSL_DISPATCH_TEST
 	movb	$1,_BORINGSSL_function_hit+3(%rip)
 #endif
-.byte	0x48,0x83,0xEC,0x08
+	subq	$8,%rsp
 
-	movq	$-1,%rax
-	testq	%rdi,%rdi
-	jz	L$enc_key_ret
-	testq	%rdx,%rdx
-	jz	L$enc_key_ret
+
 
 	movups	(%rdi),%xmm0
 	xorps	%xmm4,%xmm4
-	leaq	_OPENSSL_ia32cap_P(%rip),%r10
-	movl	4(%r10),%r10d
-	andl	$268437504,%r10d
 	leaq	16(%rdx),%rax
 	cmpl	$256,%esi
 	je	L$14rounds
@@ -1985,8 +1971,6 @@ _CET_ENDBR
 
 L$10rounds:
 	movl	$9,%esi
-	cmpl	$268435456,%r10d
-	je	L$10rounds_alt
 
 	movups	%xmm0,(%rdx)
 .byte	102,15,58,223,200,1
@@ -2015,7 +1999,193 @@ L$10rounds:
 	jmp	L$enc_key_ret
 
 .p2align	4
-L$10rounds_alt:
+L$12rounds:
+	movq	16(%rdi),%xmm2
+	movl	$11,%esi
+
+	movups	%xmm0,(%rdx)
+.byte	102,15,58,223,202,1
+	call	L$key_expansion_192a_cold
+.byte	102,15,58,223,202,2
+	call	L$key_expansion_192b
+.byte	102,15,58,223,202,4
+	call	L$key_expansion_192a
+.byte	102,15,58,223,202,8
+	call	L$key_expansion_192b
+.byte	102,15,58,223,202,16
+	call	L$key_expansion_192a
+.byte	102,15,58,223,202,32
+	call	L$key_expansion_192b
+.byte	102,15,58,223,202,64
+	call	L$key_expansion_192a
+.byte	102,15,58,223,202,128
+	call	L$key_expansion_192b
+	movups	%xmm0,(%rax)
+	movl	%esi,48(%rax)
+	xorq	%rax,%rax
+	jmp	L$enc_key_ret
+
+.p2align	4
+L$14rounds:
+	movups	16(%rdi),%xmm2
+	movl	$13,%esi
+	leaq	16(%rax),%rax
+
+	movups	%xmm0,(%rdx)
+	movups	%xmm2,16(%rdx)
+.byte	102,15,58,223,202,1
+	call	L$key_expansion_256a_cold
+.byte	102,15,58,223,200,1
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,2
+	call	L$key_expansion_256a
+.byte	102,15,58,223,200,2
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,4
+	call	L$key_expansion_256a
+.byte	102,15,58,223,200,4
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,8
+	call	L$key_expansion_256a
+.byte	102,15,58,223,200,8
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,16
+	call	L$key_expansion_256a
+.byte	102,15,58,223,200,16
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,32
+	call	L$key_expansion_256a
+.byte	102,15,58,223,200,32
+	call	L$key_expansion_256b
+.byte	102,15,58,223,202,64
+	call	L$key_expansion_256a
+	movups	%xmm0,(%rax)
+	movl	%esi,16(%rax)
+	xorq	%rax,%rax
+	jmp	L$enc_key_ret
+
+.p2align	4
+L$bad_keybits:
+	movq	$-2,%rax
+L$enc_key_ret:
+	pxor	%xmm0,%xmm0
+	pxor	%xmm1,%xmm1
+	pxor	%xmm2,%xmm2
+	pxor	%xmm3,%xmm3
+	pxor	%xmm4,%xmm4
+	pxor	%xmm5,%xmm5
+	addq	$8,%rsp
+
+	ret
+
+
+
+.p2align	4
+L$key_expansion_128:
+
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+L$key_expansion_128_cold:
+	shufps	$16,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$255,%xmm1,%xmm1
+	xorps	%xmm1,%xmm0
+	ret
+
+
+.p2align	4
+L$key_expansion_192a:
+
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+L$key_expansion_192a_cold:
+	movaps	%xmm2,%xmm5
+L$key_expansion_192b_warm:
+	shufps	$16,%xmm0,%xmm4
+	movdqa	%xmm2,%xmm3
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	pslldq	$4,%xmm3
+	xorps	%xmm4,%xmm0
+	pshufd	$85,%xmm1,%xmm1
+	pxor	%xmm3,%xmm2
+	pxor	%xmm1,%xmm0
+	pshufd	$255,%xmm0,%xmm3
+	pxor	%xmm3,%xmm2
+	ret
+
+
+.p2align	4
+L$key_expansion_192b:
+
+	movaps	%xmm0,%xmm3
+	shufps	$68,%xmm0,%xmm5
+	movups	%xmm5,(%rax)
+	shufps	$78,%xmm2,%xmm3
+	movups	%xmm3,16(%rax)
+	leaq	32(%rax),%rax
+	jmp	L$key_expansion_192b_warm
+
+
+.p2align	4
+L$key_expansion_256a:
+
+	movups	%xmm2,(%rax)
+	leaq	16(%rax),%rax
+L$key_expansion_256a_cold:
+	shufps	$16,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$255,%xmm1,%xmm1
+	xorps	%xmm1,%xmm0
+	ret
+
+
+.p2align	4
+L$key_expansion_256b:
+
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+
+	shufps	$16,%xmm2,%xmm4
+	xorps	%xmm4,%xmm2
+	shufps	$140,%xmm2,%xmm4
+	xorps	%xmm4,%xmm2
+	shufps	$170,%xmm1,%xmm1
+	xorps	%xmm1,%xmm2
+	ret
+
+
+
+.globl	_aes_hw_set_encrypt_key_alt
+.private_extern _aes_hw_set_encrypt_key_alt
+
+.p2align	4
+_aes_hw_set_encrypt_key_alt:
+
+
+_CET_ENDBR
+#ifdef BORINGSSL_DISPATCH_TEST
+	movb	$1,_BORINGSSL_function_hit+3(%rip)
+#endif
+	subq	$8,%rsp
+
+
+
+	movups	(%rdi),%xmm0
+	xorps	%xmm4,%xmm4
+	leaq	16(%rdx),%rax
+	cmpl	$256,%esi
+	je	L$14rounds_alt
+	cmpl	$192,%esi
+	je	L$12rounds_alt
+	cmpl	$128,%esi
+	jne	L$bad_keybits_alt
+
+	movl	$9,%esi
 	movdqa	L$key_rotate(%rip),%xmm5
 	movl	$8,%r10d
 	movdqa	L$key_rcon1(%rip),%xmm4
@@ -2079,39 +2249,12 @@ L$oop_key128:
 
 	movl	%esi,96(%rax)
 	xorl	%eax,%eax
-	jmp	L$enc_key_ret
-
-.p2align	4
-L$12rounds:
-	movq	16(%rdi),%xmm2
-	movl	$11,%esi
-	cmpl	$268435456,%r10d
-	je	L$12rounds_alt
-
-	movups	%xmm0,(%rdx)
-.byte	102,15,58,223,202,1
-	call	L$key_expansion_192a_cold
-.byte	102,15,58,223,202,2
-	call	L$key_expansion_192b
-.byte	102,15,58,223,202,4
-	call	L$key_expansion_192a
-.byte	102,15,58,223,202,8
-	call	L$key_expansion_192b
-.byte	102,15,58,223,202,16
-	call	L$key_expansion_192a
-.byte	102,15,58,223,202,32
-	call	L$key_expansion_192b
-.byte	102,15,58,223,202,64
-	call	L$key_expansion_192a
-.byte	102,15,58,223,202,128
-	call	L$key_expansion_192b
-	movups	%xmm0,(%rax)
-	movl	%esi,48(%rax)
-	xorq	%rax,%rax
-	jmp	L$enc_key_ret
+	jmp	L$enc_key_ret_alt
 
 .p2align	4
 L$12rounds_alt:
+	movq	16(%rdi),%xmm2
+	movl	$11,%esi
 	movdqa	L$key_rotate192(%rip),%xmm5
 	movdqa	L$key_rcon1(%rip),%xmm4
 	movl	$8,%r10d
@@ -2149,51 +2292,13 @@ L$oop_key192:
 
 	movl	%esi,32(%rax)
 	xorl	%eax,%eax
-	jmp	L$enc_key_ret
-
-.p2align	4
-L$14rounds:
-	movups	16(%rdi),%xmm2
-	movl	$13,%esi
-	leaq	16(%rax),%rax
-	cmpl	$268435456,%r10d
-	je	L$14rounds_alt
-
-	movups	%xmm0,(%rdx)
-	movups	%xmm2,16(%rdx)
-.byte	102,15,58,223,202,1
-	call	L$key_expansion_256a_cold
-.byte	102,15,58,223,200,1
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,2
-	call	L$key_expansion_256a
-.byte	102,15,58,223,200,2
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,4
-	call	L$key_expansion_256a
-.byte	102,15,58,223,200,4
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,8
-	call	L$key_expansion_256a
-.byte	102,15,58,223,200,8
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,16
-	call	L$key_expansion_256a
-.byte	102,15,58,223,200,16
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,32
-	call	L$key_expansion_256a
-.byte	102,15,58,223,200,32
-	call	L$key_expansion_256b
-.byte	102,15,58,223,202,64
-	call	L$key_expansion_256a
-	movups	%xmm0,(%rax)
-	movl	%esi,16(%rax)
-	xorq	%rax,%rax
-	jmp	L$enc_key_ret
+	jmp	L$enc_key_ret_alt
 
 .p2align	4
 L$14rounds_alt:
+	movups	16(%rdi),%xmm2
+	movl	$13,%esi
+	leaq	16(%rax),%rax
 	movdqa	L$key_rotate(%rip),%xmm5
 	movdqa	L$key_rcon1(%rip),%xmm4
 	movl	$7,%r10d
@@ -2244,12 +2349,12 @@ L$oop_key256:
 L$done_key256:
 	movl	%esi,16(%rax)
 	xorl	%eax,%eax
-	jmp	L$enc_key_ret
+	jmp	L$enc_key_ret_alt
 
 .p2align	4
-L$bad_keybits:
+L$bad_keybits_alt:
 	movq	$-2,%rax
-L$enc_key_ret:
+L$enc_key_ret_alt:
 	pxor	%xmm0,%xmm0
 	pxor	%xmm1,%xmm1
 	pxor	%xmm2,%xmm2
@@ -2260,76 +2365,6 @@ L$enc_key_ret:
 
 	ret
 
-L$SEH_end_set_encrypt_key:
-
-.p2align	4
-L$key_expansion_128:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-L$key_expansion_128_cold:
-	shufps	$16,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$255,%xmm1,%xmm1
-	xorps	%xmm1,%xmm0
-	ret
-
-.p2align	4
-L$key_expansion_192a:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-L$key_expansion_192a_cold:
-	movaps	%xmm2,%xmm5
-L$key_expansion_192b_warm:
-	shufps	$16,%xmm0,%xmm4
-	movdqa	%xmm2,%xmm3
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	pslldq	$4,%xmm3
-	xorps	%xmm4,%xmm0
-	pshufd	$85,%xmm1,%xmm1
-	pxor	%xmm3,%xmm2
-	pxor	%xmm1,%xmm0
-	pshufd	$255,%xmm0,%xmm3
-	pxor	%xmm3,%xmm2
-	ret
-
-.p2align	4
-L$key_expansion_192b:
-	movaps	%xmm0,%xmm3
-	shufps	$68,%xmm0,%xmm5
-	movups	%xmm5,(%rax)
-	shufps	$78,%xmm2,%xmm3
-	movups	%xmm3,16(%rax)
-	leaq	32(%rax),%rax
-	jmp	L$key_expansion_192b_warm
-
-.p2align	4
-L$key_expansion_256a:
-	movups	%xmm2,(%rax)
-	leaq	16(%rax),%rax
-L$key_expansion_256a_cold:
-	shufps	$16,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$255,%xmm1,%xmm1
-	xorps	%xmm1,%xmm0
-	ret
-
-.p2align	4
-L$key_expansion_256b:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-
-	shufps	$16,%xmm2,%xmm4
-	xorps	%xmm4,%xmm2
-	shufps	$140,%xmm2,%xmm4
-	xorps	%xmm4,%xmm2
-	shufps	$170,%xmm1,%xmm1
-	xorps	%xmm1,%xmm2
-	ret
 
 
 .section	__DATA,__const

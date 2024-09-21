@@ -11,7 +11,7 @@
 #include "input.h"
 #include "string_util.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace {
 
@@ -43,11 +43,8 @@ class CertErrorParams2Der : public CertErrorParams {
   static void AppendDer(const char *name, const std::string &der,
                         std::string *out) {
     *out += name;
-    // TODO(crbug.com/boringssl/661): Introduce a convenience function to go
-    // from a Span<const char> to a Span<const uint8_t>.
-    *out +=
-        ": " + bssl::string_util::HexEncode(MakeConstSpan(
-                   reinterpret_cast<const uint8_t *>(der.data()), der.size()));
+    *out += ": ";
+    *out += bssl::string_util::HexEncode(StringAsBytes(der));
   }
 
   const char *name1_;
@@ -135,4 +132,4 @@ OPENSSL_EXPORT std::unique_ptr<CertErrorParams> CreateCertErrorParams2SizeT(
   return std::make_unique<CertErrorParams2SizeT>(name1, value1, name2, value2);
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

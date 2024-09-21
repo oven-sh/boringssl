@@ -5,8 +5,6 @@
 
 #if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__ELF__)
 .text	
-.extern	OPENSSL_ia32cap_P
-.hidden OPENSSL_ia32cap_P
 .globl	aes_hw_encrypt
 .hidden aes_hw_encrypt
 .type	aes_hw_encrypt,@function
@@ -1907,76 +1905,63 @@ _CET_ENDBR
 	ret
 .cfi_endproc	
 .size	aes_hw_cbc_encrypt,.-aes_hw_cbc_encrypt
-.globl	aes_hw_set_decrypt_key
-.hidden aes_hw_set_decrypt_key
-.type	aes_hw_set_decrypt_key,@function
+.globl	aes_hw_encrypt_key_to_decrypt_key
+.hidden aes_hw_encrypt_key_to_decrypt_key
+.type	aes_hw_encrypt_key_to_decrypt_key,@function
 .align	16
-aes_hw_set_decrypt_key:
+aes_hw_encrypt_key_to_decrypt_key:
 .cfi_startproc	
 _CET_ENDBR
-.byte	0x48,0x83,0xEC,0x08
-.cfi_adjust_cfa_offset	8
-	call	__aesni_set_encrypt_key
-	shll	$4,%esi
-	testl	%eax,%eax
-	jnz	.Ldec_key_ret
-	leaq	16(%rdx,%rsi,1),%rdi
 
-	movups	(%rdx),%xmm0
-	movups	(%rdi),%xmm1
-	movups	%xmm0,(%rdi)
-	movups	%xmm1,(%rdx)
-	leaq	16(%rdx),%rdx
-	leaq	-16(%rdi),%rdi
+	movl	240(%rdi),%esi
+	shll	$4,%esi
+
+	leaq	16(%rdi,%rsi,1),%rdx
+
+	movups	(%rdi),%xmm0
+	movups	(%rdx),%xmm1
+	movups	%xmm0,(%rdx)
+	movups	%xmm1,(%rdi)
+	leaq	16(%rdi),%rdi
+	leaq	-16(%rdx),%rdx
 
 .Ldec_key_inverse:
-	movups	(%rdx),%xmm0
-	movups	(%rdi),%xmm1
+	movups	(%rdi),%xmm0
+	movups	(%rdx),%xmm1
 .byte	102,15,56,219,192
 .byte	102,15,56,219,201
-	leaq	16(%rdx),%rdx
-	leaq	-16(%rdi),%rdi
-	movups	%xmm0,16(%rdi)
-	movups	%xmm1,-16(%rdx)
-	cmpq	%rdx,%rdi
+	leaq	16(%rdi),%rdi
+	leaq	-16(%rdx),%rdx
+	movups	%xmm0,16(%rdx)
+	movups	%xmm1,-16(%rdi)
+	cmpq	%rdi,%rdx
 	ja	.Ldec_key_inverse
 
-	movups	(%rdx),%xmm0
+	movups	(%rdi),%xmm0
 .byte	102,15,56,219,192
 	pxor	%xmm1,%xmm1
-	movups	%xmm0,(%rdi)
+	movups	%xmm0,(%rdx)
 	pxor	%xmm0,%xmm0
-.Ldec_key_ret:
-	addq	$8,%rsp
-.cfi_adjust_cfa_offset	-8
 	ret
 .cfi_endproc	
-.LSEH_end_set_decrypt_key:
-.size	aes_hw_set_decrypt_key,.-aes_hw_set_decrypt_key
-.globl	aes_hw_set_encrypt_key
-.hidden aes_hw_set_encrypt_key
-.type	aes_hw_set_encrypt_key,@function
+.size	aes_hw_encrypt_key_to_decrypt_key,.-aes_hw_encrypt_key_to_decrypt_key
+.globl	aes_hw_set_encrypt_key_base
+.hidden aes_hw_set_encrypt_key_base
+.type	aes_hw_set_encrypt_key_base,@function
 .align	16
-aes_hw_set_encrypt_key:
-__aesni_set_encrypt_key:
+aes_hw_set_encrypt_key_base:
 .cfi_startproc	
+
 _CET_ENDBR
 #ifdef BORINGSSL_DISPATCH_TEST
 	movb	$1,BORINGSSL_function_hit+3(%rip)
 #endif
-.byte	0x48,0x83,0xEC,0x08
+	subq	$8,%rsp
 .cfi_adjust_cfa_offset	8
-	movq	$-1,%rax
-	testq	%rdi,%rdi
-	jz	.Lenc_key_ret
-	testq	%rdx,%rdx
-	jz	.Lenc_key_ret
+
 
 	movups	(%rdi),%xmm0
 	xorps	%xmm4,%xmm4
-	leaq	OPENSSL_ia32cap_P(%rip),%r10
-	movl	4(%r10),%r10d
-	andl	$268437504,%r10d
 	leaq	16(%rdx),%rax
 	cmpl	$256,%esi
 	je	.L14rounds
@@ -1987,8 +1972,6 @@ _CET_ENDBR
 
 .L10rounds:
 	movl	$9,%esi
-	cmpl	$268435456,%r10d
-	je	.L10rounds_alt
 
 	movups	%xmm0,(%rdx)
 .byte	102,15,58,223,200,1
@@ -2017,7 +2000,193 @@ _CET_ENDBR
 	jmp	.Lenc_key_ret
 
 .align	16
-.L10rounds_alt:
+.L12rounds:
+	movq	16(%rdi),%xmm2
+	movl	$11,%esi
+
+	movups	%xmm0,(%rdx)
+.byte	102,15,58,223,202,1
+	call	.Lkey_expansion_192a_cold
+.byte	102,15,58,223,202,2
+	call	.Lkey_expansion_192b
+.byte	102,15,58,223,202,4
+	call	.Lkey_expansion_192a
+.byte	102,15,58,223,202,8
+	call	.Lkey_expansion_192b
+.byte	102,15,58,223,202,16
+	call	.Lkey_expansion_192a
+.byte	102,15,58,223,202,32
+	call	.Lkey_expansion_192b
+.byte	102,15,58,223,202,64
+	call	.Lkey_expansion_192a
+.byte	102,15,58,223,202,128
+	call	.Lkey_expansion_192b
+	movups	%xmm0,(%rax)
+	movl	%esi,48(%rax)
+	xorq	%rax,%rax
+	jmp	.Lenc_key_ret
+
+.align	16
+.L14rounds:
+	movups	16(%rdi),%xmm2
+	movl	$13,%esi
+	leaq	16(%rax),%rax
+
+	movups	%xmm0,(%rdx)
+	movups	%xmm2,16(%rdx)
+.byte	102,15,58,223,202,1
+	call	.Lkey_expansion_256a_cold
+.byte	102,15,58,223,200,1
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,2
+	call	.Lkey_expansion_256a
+.byte	102,15,58,223,200,2
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,4
+	call	.Lkey_expansion_256a
+.byte	102,15,58,223,200,4
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,8
+	call	.Lkey_expansion_256a
+.byte	102,15,58,223,200,8
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,16
+	call	.Lkey_expansion_256a
+.byte	102,15,58,223,200,16
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,32
+	call	.Lkey_expansion_256a
+.byte	102,15,58,223,200,32
+	call	.Lkey_expansion_256b
+.byte	102,15,58,223,202,64
+	call	.Lkey_expansion_256a
+	movups	%xmm0,(%rax)
+	movl	%esi,16(%rax)
+	xorq	%rax,%rax
+	jmp	.Lenc_key_ret
+
+.align	16
+.Lbad_keybits:
+	movq	$-2,%rax
+.Lenc_key_ret:
+	pxor	%xmm0,%xmm0
+	pxor	%xmm1,%xmm1
+	pxor	%xmm2,%xmm2
+	pxor	%xmm3,%xmm3
+	pxor	%xmm4,%xmm4
+	pxor	%xmm5,%xmm5
+	addq	$8,%rsp
+.cfi_adjust_cfa_offset	-8
+	ret
+.cfi_endproc	
+
+
+.align	16
+.Lkey_expansion_128:
+.cfi_startproc	
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+.Lkey_expansion_128_cold:
+	shufps	$16,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$255,%xmm1,%xmm1
+	xorps	%xmm1,%xmm0
+	ret
+.cfi_endproc	
+
+.align	16
+.Lkey_expansion_192a:
+.cfi_startproc	
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+.Lkey_expansion_192a_cold:
+	movaps	%xmm2,%xmm5
+.Lkey_expansion_192b_warm:
+	shufps	$16,%xmm0,%xmm4
+	movdqa	%xmm2,%xmm3
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	pslldq	$4,%xmm3
+	xorps	%xmm4,%xmm0
+	pshufd	$85,%xmm1,%xmm1
+	pxor	%xmm3,%xmm2
+	pxor	%xmm1,%xmm0
+	pshufd	$255,%xmm0,%xmm3
+	pxor	%xmm3,%xmm2
+	ret
+.cfi_endproc	
+
+.align	16
+.Lkey_expansion_192b:
+.cfi_startproc	
+	movaps	%xmm0,%xmm3
+	shufps	$68,%xmm0,%xmm5
+	movups	%xmm5,(%rax)
+	shufps	$78,%xmm2,%xmm3
+	movups	%xmm3,16(%rax)
+	leaq	32(%rax),%rax
+	jmp	.Lkey_expansion_192b_warm
+.cfi_endproc	
+
+.align	16
+.Lkey_expansion_256a:
+.cfi_startproc	
+	movups	%xmm2,(%rax)
+	leaq	16(%rax),%rax
+.Lkey_expansion_256a_cold:
+	shufps	$16,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$140,%xmm0,%xmm4
+	xorps	%xmm4,%xmm0
+	shufps	$255,%xmm1,%xmm1
+	xorps	%xmm1,%xmm0
+	ret
+.cfi_endproc	
+
+.align	16
+.Lkey_expansion_256b:
+.cfi_startproc	
+	movups	%xmm0,(%rax)
+	leaq	16(%rax),%rax
+
+	shufps	$16,%xmm2,%xmm4
+	xorps	%xmm4,%xmm2
+	shufps	$140,%xmm2,%xmm4
+	xorps	%xmm4,%xmm2
+	shufps	$170,%xmm1,%xmm1
+	xorps	%xmm1,%xmm2
+	ret
+.cfi_endproc	
+.size	aes_hw_set_encrypt_key_base,.-aes_hw_set_encrypt_key_base
+
+.globl	aes_hw_set_encrypt_key_alt
+.hidden aes_hw_set_encrypt_key_alt
+.type	aes_hw_set_encrypt_key_alt,@function
+.align	16
+aes_hw_set_encrypt_key_alt:
+.cfi_startproc	
+
+_CET_ENDBR
+#ifdef BORINGSSL_DISPATCH_TEST
+	movb	$1,BORINGSSL_function_hit+3(%rip)
+#endif
+	subq	$8,%rsp
+.cfi_adjust_cfa_offset	8
+
+
+	movups	(%rdi),%xmm0
+	xorps	%xmm4,%xmm4
+	leaq	16(%rdx),%rax
+	cmpl	$256,%esi
+	je	.L14rounds_alt
+	cmpl	$192,%esi
+	je	.L12rounds_alt
+	cmpl	$128,%esi
+	jne	.Lbad_keybits_alt
+
+	movl	$9,%esi
 	movdqa	.Lkey_rotate(%rip),%xmm5
 	movl	$8,%r10d
 	movdqa	.Lkey_rcon1(%rip),%xmm4
@@ -2081,39 +2250,12 @@ _CET_ENDBR
 
 	movl	%esi,96(%rax)
 	xorl	%eax,%eax
-	jmp	.Lenc_key_ret
-
-.align	16
-.L12rounds:
-	movq	16(%rdi),%xmm2
-	movl	$11,%esi
-	cmpl	$268435456,%r10d
-	je	.L12rounds_alt
-
-	movups	%xmm0,(%rdx)
-.byte	102,15,58,223,202,1
-	call	.Lkey_expansion_192a_cold
-.byte	102,15,58,223,202,2
-	call	.Lkey_expansion_192b
-.byte	102,15,58,223,202,4
-	call	.Lkey_expansion_192a
-.byte	102,15,58,223,202,8
-	call	.Lkey_expansion_192b
-.byte	102,15,58,223,202,16
-	call	.Lkey_expansion_192a
-.byte	102,15,58,223,202,32
-	call	.Lkey_expansion_192b
-.byte	102,15,58,223,202,64
-	call	.Lkey_expansion_192a
-.byte	102,15,58,223,202,128
-	call	.Lkey_expansion_192b
-	movups	%xmm0,(%rax)
-	movl	%esi,48(%rax)
-	xorq	%rax,%rax
-	jmp	.Lenc_key_ret
+	jmp	.Lenc_key_ret_alt
 
 .align	16
 .L12rounds_alt:
+	movq	16(%rdi),%xmm2
+	movl	$11,%esi
 	movdqa	.Lkey_rotate192(%rip),%xmm5
 	movdqa	.Lkey_rcon1(%rip),%xmm4
 	movl	$8,%r10d
@@ -2151,51 +2293,13 @@ _CET_ENDBR
 
 	movl	%esi,32(%rax)
 	xorl	%eax,%eax
-	jmp	.Lenc_key_ret
-
-.align	16
-.L14rounds:
-	movups	16(%rdi),%xmm2
-	movl	$13,%esi
-	leaq	16(%rax),%rax
-	cmpl	$268435456,%r10d
-	je	.L14rounds_alt
-
-	movups	%xmm0,(%rdx)
-	movups	%xmm2,16(%rdx)
-.byte	102,15,58,223,202,1
-	call	.Lkey_expansion_256a_cold
-.byte	102,15,58,223,200,1
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,2
-	call	.Lkey_expansion_256a
-.byte	102,15,58,223,200,2
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,4
-	call	.Lkey_expansion_256a
-.byte	102,15,58,223,200,4
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,8
-	call	.Lkey_expansion_256a
-.byte	102,15,58,223,200,8
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,16
-	call	.Lkey_expansion_256a
-.byte	102,15,58,223,200,16
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,32
-	call	.Lkey_expansion_256a
-.byte	102,15,58,223,200,32
-	call	.Lkey_expansion_256b
-.byte	102,15,58,223,202,64
-	call	.Lkey_expansion_256a
-	movups	%xmm0,(%rax)
-	movl	%esi,16(%rax)
-	xorq	%rax,%rax
-	jmp	.Lenc_key_ret
+	jmp	.Lenc_key_ret_alt
 
 .align	16
 .L14rounds_alt:
+	movups	16(%rdi),%xmm2
+	movl	$13,%esi
+	leaq	16(%rax),%rax
 	movdqa	.Lkey_rotate(%rip),%xmm5
 	movdqa	.Lkey_rcon1(%rip),%xmm4
 	movl	$7,%r10d
@@ -2246,12 +2350,12 @@ _CET_ENDBR
 .Ldone_key256:
 	movl	%esi,16(%rax)
 	xorl	%eax,%eax
-	jmp	.Lenc_key_ret
+	jmp	.Lenc_key_ret_alt
 
 .align	16
-.Lbad_keybits:
+.Lbad_keybits_alt:
 	movq	$-2,%rax
-.Lenc_key_ret:
+.Lenc_key_ret_alt:
 	pxor	%xmm0,%xmm0
 	pxor	%xmm1,%xmm1
 	pxor	%xmm2,%xmm2
@@ -2262,78 +2366,8 @@ _CET_ENDBR
 .cfi_adjust_cfa_offset	-8
 	ret
 .cfi_endproc	
-.LSEH_end_set_encrypt_key:
 
-.align	16
-.Lkey_expansion_128:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-.Lkey_expansion_128_cold:
-	shufps	$16,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$255,%xmm1,%xmm1
-	xorps	%xmm1,%xmm0
-	ret
-
-.align	16
-.Lkey_expansion_192a:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-.Lkey_expansion_192a_cold:
-	movaps	%xmm2,%xmm5
-.Lkey_expansion_192b_warm:
-	shufps	$16,%xmm0,%xmm4
-	movdqa	%xmm2,%xmm3
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	pslldq	$4,%xmm3
-	xorps	%xmm4,%xmm0
-	pshufd	$85,%xmm1,%xmm1
-	pxor	%xmm3,%xmm2
-	pxor	%xmm1,%xmm0
-	pshufd	$255,%xmm0,%xmm3
-	pxor	%xmm3,%xmm2
-	ret
-
-.align	16
-.Lkey_expansion_192b:
-	movaps	%xmm0,%xmm3
-	shufps	$68,%xmm0,%xmm5
-	movups	%xmm5,(%rax)
-	shufps	$78,%xmm2,%xmm3
-	movups	%xmm3,16(%rax)
-	leaq	32(%rax),%rax
-	jmp	.Lkey_expansion_192b_warm
-
-.align	16
-.Lkey_expansion_256a:
-	movups	%xmm2,(%rax)
-	leaq	16(%rax),%rax
-.Lkey_expansion_256a_cold:
-	shufps	$16,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$140,%xmm0,%xmm4
-	xorps	%xmm4,%xmm0
-	shufps	$255,%xmm1,%xmm1
-	xorps	%xmm1,%xmm0
-	ret
-
-.align	16
-.Lkey_expansion_256b:
-	movups	%xmm0,(%rax)
-	leaq	16(%rax),%rax
-
-	shufps	$16,%xmm2,%xmm4
-	xorps	%xmm4,%xmm2
-	shufps	$140,%xmm2,%xmm4
-	xorps	%xmm4,%xmm2
-	shufps	$170,%xmm1,%xmm1
-	xorps	%xmm1,%xmm2
-	ret
-.size	aes_hw_set_encrypt_key,.-aes_hw_set_encrypt_key
-.size	__aesni_set_encrypt_key,.-__aesni_set_encrypt_key
+.size	aes_hw_set_encrypt_key_alt,.-aes_hw_set_encrypt_key_alt
 .section	.rodata
 .align	64
 .Lbswap_mask:

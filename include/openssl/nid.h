@@ -4259,6 +4259,8 @@ extern "C" {
 #define LN_sha512_224 "sha512-224"
 #define NID_sha512_224 1094
 #define OBJ_sha512_224 2L, 16L, 840L, 1L, 101L, 3L, 4L, 2L, 5L
+#define SN_X25519MLKEM768 "X25519MLKEM768"
+#define NID_X25519MLKEM768 965
 
 
 #if defined(__cplusplus)

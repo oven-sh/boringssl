@@ -4,15 +4,12 @@
 
 #include "input.h"
 
-#include <openssl/base.h>
-
-namespace bssl::der {
+BSSL_NAMESPACE_BEGIN
+namespace der {
 
 std::string Input::AsString() const { return std::string(AsStringView()); }
 
-bool operator==(Input lhs, Input rhs) {
-  return MakeConstSpan(lhs) == MakeConstSpan(rhs);
-}
+bool operator==(Input lhs, Input rhs) { return Span(lhs) == Span(rhs); }
 
 bool operator!=(Input lhs, Input rhs) { return !(lhs == rhs); }
 
@@ -44,4 +41,5 @@ void ByteReader::Advance(size_t len) {
   data_ = data_.subspan(len);
 }
 
-}  // namespace bssl::der
+}  // namespace der
+BSSL_NAMESPACE_END

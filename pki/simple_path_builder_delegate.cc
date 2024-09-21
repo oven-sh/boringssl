@@ -19,7 +19,7 @@
 #include "signature_algorithm.h"
 #include "verify_signed_data.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 DEFINE_CERT_ERROR_ID(SimplePathBuilderDelegate::kRsaModulusTooSmall,
                      "RSA modulus too small");
@@ -97,7 +97,7 @@ bool SimplePathBuilderDelegate::IsPublicKeyAcceptable(EVP_PKEY *public_key,
     unsigned int modulus_length_bits = RSA_bits(rsa);
 
     if (modulus_length_bits < min_rsa_modulus_length_bits_) {
-      errors->AddError(
+      errors->AddWarning(
           kRsaModulusTooSmall,
           CreateCertErrorParams2SizeT("actual", modulus_length_bits, "minimum",
                                       min_rsa_modulus_length_bits_));
@@ -116,7 +116,7 @@ bool SimplePathBuilderDelegate::IsPublicKeyAcceptable(EVP_PKEY *public_key,
     int curve_nid = EC_GROUP_get_curve_name(EC_KEY_get0_group(ec));
 
     if (!IsAcceptableCurveForEcdsa(curve_nid)) {
-      errors->AddError(kUnacceptableCurveForEcdsa);
+      errors->AddWarning(kUnacceptableCurveForEcdsa);
       return false;
     }
 
@@ -127,4 +127,4 @@ bool SimplePathBuilderDelegate::IsPublicKeyAcceptable(EVP_PKEY *public_key,
   return false;
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

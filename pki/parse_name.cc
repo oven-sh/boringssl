@@ -12,7 +12,7 @@
 #include "parse_values.h"
 #include "string_util.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace {
 
@@ -129,8 +129,7 @@ bool X509NameAttribute::AsRFC2253String(std::string *out) const {
         value_string += c;
       } else if (c < 32 || c > 126) {
         nonprintable = true;
-        value_string +=
-            "\\" + bssl::string_util::HexEncode(MakeConstSpan(&c, 1));
+        value_string += "\\" + bssl::string_util::HexEncode(Span(&c, 1));
       } else {
         value_string += c;
       }
@@ -232,4 +231,4 @@ bool ConvertToRFC2253(const RDNSequence &rdn_sequence, std::string *out) {
   return true;
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

@@ -26,7 +26,7 @@
 #include "string_util.h"
 #include "trust_store.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace {
 
@@ -305,6 +305,10 @@ bool ReadVerifyCertChainTestFromFile(const std::string &file_path_ascii,
         test->key_purpose = KeyPurpose::SERVER_AUTH_STRICT;
       } else if (value == "CLIENT_AUTH_STRICT") {
         test->key_purpose = KeyPurpose::CLIENT_AUTH_STRICT;
+      } else if (value == "SERVER_AUTH_STRICT_LEAF") {
+        test->key_purpose = KeyPurpose::SERVER_AUTH_STRICT_LEAF;
+      } else if (value == "CLIENT_AUTH_STRICT_LEAF") {
+        test->key_purpose = KeyPurpose::CLIENT_AUTH_STRICT_LEAF;
       } else {
         ADD_FAILURE() << "Unrecognized key_purpose: " << value;
         return false;
@@ -479,4 +483,4 @@ void VerifyUserConstrainedPolicySet(
   }
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

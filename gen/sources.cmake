@@ -23,82 +23,78 @@ set(
 set(
   BCM_INTERNAL_HEADERS
 
-  crypto/fipsmodule/aes/aes.c
-  crypto/fipsmodule/aes/aes_nohw.c
-  crypto/fipsmodule/aes/key_wrap.c
-  crypto/fipsmodule/aes/mode_wrappers.c
-  crypto/fipsmodule/bn/add.c
-  crypto/fipsmodule/bn/asm/x86_64-gcc.c
-  crypto/fipsmodule/bn/bn.c
-  crypto/fipsmodule/bn/bytes.c
-  crypto/fipsmodule/bn/cmp.c
-  crypto/fipsmodule/bn/ctx.c
-  crypto/fipsmodule/bn/div.c
-  crypto/fipsmodule/bn/div_extra.c
-  crypto/fipsmodule/bn/exponentiation.c
-  crypto/fipsmodule/bn/gcd.c
-  crypto/fipsmodule/bn/gcd_extra.c
-  crypto/fipsmodule/bn/generic.c
-  crypto/fipsmodule/bn/jacobi.c
-  crypto/fipsmodule/bn/montgomery.c
-  crypto/fipsmodule/bn/montgomery_inv.c
-  crypto/fipsmodule/bn/mul.c
-  crypto/fipsmodule/bn/prime.c
-  crypto/fipsmodule/bn/random.c
-  crypto/fipsmodule/bn/rsaz_exp.c
-  crypto/fipsmodule/bn/shift.c
-  crypto/fipsmodule/bn/sqrt.c
-  crypto/fipsmodule/cipher/aead.c
-  crypto/fipsmodule/cipher/cipher.c
-  crypto/fipsmodule/cipher/e_aes.c
-  crypto/fipsmodule/cipher/e_aesccm.c
-  crypto/fipsmodule/cmac/cmac.c
-  crypto/fipsmodule/dh/check.c
-  crypto/fipsmodule/dh/dh.c
-  crypto/fipsmodule/digest/digest.c
-  crypto/fipsmodule/digest/digests.c
-  crypto/fipsmodule/digestsign/digestsign.c
-  crypto/fipsmodule/ec/ec.c
-  crypto/fipsmodule/ec/ec_key.c
-  crypto/fipsmodule/ec/ec_montgomery.c
-  crypto/fipsmodule/ec/felem.c
-  crypto/fipsmodule/ec/oct.c
-  crypto/fipsmodule/ec/p224-64.c
-  crypto/fipsmodule/ec/p256-nistz.c
-  crypto/fipsmodule/ec/p256.c
-  crypto/fipsmodule/ec/scalar.c
-  crypto/fipsmodule/ec/simple.c
-  crypto/fipsmodule/ec/simple_mul.c
-  crypto/fipsmodule/ec/util.c
-  crypto/fipsmodule/ec/wnaf.c
-  crypto/fipsmodule/ecdh/ecdh.c
-  crypto/fipsmodule/ecdsa/ecdsa.c
-  crypto/fipsmodule/hkdf/hkdf.c
-  crypto/fipsmodule/hmac/hmac.c
-  crypto/fipsmodule/md4/md4.c
-  crypto/fipsmodule/md5/md5.c
-  crypto/fipsmodule/modes/cbc.c
-  crypto/fipsmodule/modes/cfb.c
-  crypto/fipsmodule/modes/ctr.c
-  crypto/fipsmodule/modes/gcm.c
-  crypto/fipsmodule/modes/gcm_nohw.c
-  crypto/fipsmodule/modes/ofb.c
-  crypto/fipsmodule/modes/polyval.c
-  crypto/fipsmodule/rand/ctrdrbg.c
-  crypto/fipsmodule/rand/fork_detect.c
-  crypto/fipsmodule/rand/rand.c
-  crypto/fipsmodule/rand/urandom.c
-  crypto/fipsmodule/rsa/blinding.c
-  crypto/fipsmodule/rsa/padding.c
-  crypto/fipsmodule/rsa/rsa.c
-  crypto/fipsmodule/rsa/rsa_impl.c
-  crypto/fipsmodule/self_check/fips.c
-  crypto/fipsmodule/self_check/self_check.c
-  crypto/fipsmodule/service_indicator/service_indicator.c
-  crypto/fipsmodule/sha/sha1.c
-  crypto/fipsmodule/sha/sha256.c
-  crypto/fipsmodule/sha/sha512.c
-  crypto/fipsmodule/tls/kdf.c
+  crypto/fipsmodule/aes/aes.c.inc
+  crypto/fipsmodule/aes/aes_nohw.c.inc
+  crypto/fipsmodule/aes/key_wrap.c.inc
+  crypto/fipsmodule/aes/mode_wrappers.c.inc
+  crypto/fipsmodule/bn/add.c.inc
+  crypto/fipsmodule/bn/asm/x86_64-gcc.c.inc
+  crypto/fipsmodule/bn/bn.c.inc
+  crypto/fipsmodule/bn/bytes.c.inc
+  crypto/fipsmodule/bn/cmp.c.inc
+  crypto/fipsmodule/bn/ctx.c.inc
+  crypto/fipsmodule/bn/div.c.inc
+  crypto/fipsmodule/bn/div_extra.c.inc
+  crypto/fipsmodule/bn/exponentiation.c.inc
+  crypto/fipsmodule/bn/gcd.c.inc
+  crypto/fipsmodule/bn/gcd_extra.c.inc
+  crypto/fipsmodule/bn/generic.c.inc
+  crypto/fipsmodule/bn/jacobi.c.inc
+  crypto/fipsmodule/bn/montgomery.c.inc
+  crypto/fipsmodule/bn/montgomery_inv.c.inc
+  crypto/fipsmodule/bn/mul.c.inc
+  crypto/fipsmodule/bn/prime.c.inc
+  crypto/fipsmodule/bn/random.c.inc
+  crypto/fipsmodule/bn/rsaz_exp.c.inc
+  crypto/fipsmodule/bn/shift.c.inc
+  crypto/fipsmodule/bn/sqrt.c.inc
+  crypto/fipsmodule/cipher/aead.c.inc
+  crypto/fipsmodule/cipher/cipher.c.inc
+  crypto/fipsmodule/cipher/e_aes.c.inc
+  crypto/fipsmodule/cipher/e_aesccm.c.inc
+  crypto/fipsmodule/cmac/cmac.c.inc
+  crypto/fipsmodule/dh/check.c.inc
+  crypto/fipsmodule/dh/dh.c.inc
+  crypto/fipsmodule/digest/digest.c.inc
+  crypto/fipsmodule/digest/digests.c.inc
+  crypto/fipsmodule/digestsign/digestsign.c.inc
+  crypto/fipsmodule/ec/ec.c.inc
+  crypto/fipsmodule/ec/ec_key.c.inc
+  crypto/fipsmodule/ec/ec_montgomery.c.inc
+  crypto/fipsmodule/ec/felem.c.inc
+  crypto/fipsmodule/ec/oct.c.inc
+  crypto/fipsmodule/ec/p224-64.c.inc
+  crypto/fipsmodule/ec/p256-nistz.c.inc
+  crypto/fipsmodule/ec/p256.c.inc
+  crypto/fipsmodule/ec/scalar.c.inc
+  crypto/fipsmodule/ec/simple.c.inc
+  crypto/fipsmodule/ec/simple_mul.c.inc
+  crypto/fipsmodule/ec/util.c.inc
+  crypto/fipsmodule/ec/wnaf.c.inc
+  crypto/fipsmodule/ecdh/ecdh.c.inc
+  crypto/fipsmodule/ecdsa/ecdsa.c.inc
+  crypto/fipsmodule/hkdf/hkdf.c.inc
+  crypto/fipsmodule/hmac/hmac.c.inc
+  crypto/fipsmodule/modes/cbc.c.inc
+  crypto/fipsmodule/modes/cfb.c.inc
+  crypto/fipsmodule/modes/ctr.c.inc
+  crypto/fipsmodule/modes/gcm.c.inc
+  crypto/fipsmodule/modes/gcm_nohw.c.inc
+  crypto/fipsmodule/modes/ofb.c.inc
+  crypto/fipsmodule/modes/polyval.c.inc
+  crypto/fipsmodule/rand/ctrdrbg.c.inc
+  crypto/fipsmodule/rand/rand.c.inc
+  crypto/fipsmodule/rsa/blinding.c.inc
+  crypto/fipsmodule/rsa/padding.c.inc
+  crypto/fipsmodule/rsa/rsa.c.inc
+  crypto/fipsmodule/rsa/rsa_impl.c.inc
+  crypto/fipsmodule/self_check/fips.c.inc
+  crypto/fipsmodule/self_check/self_check.c.inc
+  crypto/fipsmodule/service_indicator/service_indicator.c.inc
+  crypto/fipsmodule/sha/sha1.c.inc
+  crypto/fipsmodule/sha/sha256.c.inc
+  crypto/fipsmodule/sha/sha512.c.inc
+  crypto/fipsmodule/tls/kdf.c.inc
 )
 
 set(
@@ -145,10 +141,6 @@ set(
   gen/bcm/ghashv8-armv8-apple.S
   gen/bcm/ghashv8-armv8-linux.S
   gen/bcm/ghashv8-armv8-win.S
-  gen/bcm/md5-586-apple.S
-  gen/bcm/md5-586-linux.S
-  gen/bcm/md5-x86_64-apple.S
-  gen/bcm/md5-x86_64-linux.S
   gen/bcm/p256-armv8-asm-apple.S
   gen/bcm/p256-armv8-asm-linux.S
   gen/bcm/p256-armv8-asm-win.S
@@ -201,6 +193,8 @@ set(
   gen/bcm/x86_64-mont-linux.S
   gen/bcm/x86_64-mont5-apple.S
   gen/bcm/x86_64-mont5-linux.S
+  third_party/fiat/asm/fiat_p256_adx_mul.S
+  third_party/fiat/asm/fiat_p256_adx_sqr.S
 )
 
 set(
@@ -215,8 +209,6 @@ set(
   gen/bcm/ghash-ssse3-x86_64-win.asm
   gen/bcm/ghash-x86-win.asm
   gen/bcm/ghash-x86_64-win.asm
-  gen/bcm/md5-586-win.asm
-  gen/bcm/md5-x86_64-win.asm
   gen/bcm/p256-x86_64-asm-win.asm
   gen/bcm/p256_beeu-x86_64-asm-win.asm
   gen/bcm/rdrand-x86_64-win.asm
@@ -344,6 +336,7 @@ set(
   crypto/dh_extra/dh_asn1.c
   crypto/dh_extra/params.c
   crypto/digest_extra/digest_extra.c
+  crypto/dilithium/dilithium.c
   crypto/dsa/dsa.c
   crypto/dsa/dsa_asn1.c
   crypto/ec_extra/ec_asn1.c
@@ -379,7 +372,11 @@ set(
   crypto/keccak/keccak.c
   crypto/kyber/kyber.c
   crypto/lhash/lhash.c
+  crypto/md4/md4.c
+  crypto/md5/md5.c
   crypto/mem.c
+  crypto/mldsa/mldsa.c
+  crypto/mlkem/mlkem.cc
   crypto/obj/obj.c
   crypto/obj/obj_xref.c
   crypto/pem/pem_all.c
@@ -400,26 +397,36 @@ set(
   crypto/poly1305/poly1305_vec.c
   crypto/pool/pool.c
   crypto/rand_extra/deterministic.c
+  crypto/rand_extra/fork_detect.c
   crypto/rand_extra/forkunsafe.c
   crypto/rand_extra/getentropy.c
   crypto/rand_extra/ios.c
   crypto/rand_extra/passive.c
   crypto/rand_extra/rand_extra.c
   crypto/rand_extra/trusty.c
+  crypto/rand_extra/urandom.c
   crypto/rand_extra/windows.c
   crypto/rc4/rc4.c
   crypto/refcount.c
   crypto/rsa_extra/rsa_asn1.c
   crypto/rsa_extra/rsa_crypt.c
+  crypto/rsa_extra/rsa_extra.c
   crypto/rsa_extra/rsa_print.c
+  crypto/sha/sha1.c
+  crypto/sha/sha256.c
   crypto/siphash/siphash.c
-  crypto/spx/address.c
-  crypto/spx/fors.c
-  crypto/spx/merkle.c
+  crypto/slhdsa/fors.c
+  crypto/slhdsa/merkle.c
+  crypto/slhdsa/slhdsa.c
+  crypto/slhdsa/thash.c
+  crypto/slhdsa/wots.c
   crypto/spx/spx.c
+  crypto/spx/spx_address.c
+  crypto/spx/spx_fors.c
+  crypto/spx/spx_merkle.c
+  crypto/spx/spx_thash.c
   crypto/spx/spx_util.c
-  crypto/spx/thash.c
-  crypto/spx/wots.c
+  crypto/spx/spx_wots.c
   crypto/stack/stack.c
   crypto/thread.c
   crypto/thread_none.c
@@ -513,6 +520,7 @@ set(
   include/openssl/asn1t.h
   include/openssl/base.h
   include/openssl/base64.h
+  include/openssl/bcm_public.h
   include/openssl/bio.h
   include/openssl/blake2.h
   include/openssl/blowfish.h
@@ -543,6 +551,7 @@ set(
   include/openssl/evp.h
   include/openssl/evp_errors.h
   include/openssl/ex_data.h
+  include/openssl/experimental/dilithium.h
   include/openssl/experimental/kyber.h
   include/openssl/experimental/spx.h
   include/openssl/hkdf.h
@@ -555,6 +564,8 @@ set(
   include/openssl/md4.h
   include/openssl/md5.h
   include/openssl/mem.h
+  include/openssl/mldsa.h
+  include/openssl/mlkem.h
   include/openssl/nid.h
   include/openssl/obj.h
   include/openssl/obj_mac.h
@@ -577,6 +588,7 @@ set(
   include/openssl/service_indicator.h
   include/openssl/sha.h
   include/openssl/siphash.h
+  include/openssl/slhdsa.h
   include/openssl/span.h
   include/openssl/stack.h
   include/openssl/target.h
@@ -594,21 +606,23 @@ set(
   CRYPTO_INTERNAL_HEADERS
 
   crypto/asn1/internal.h
+  crypto/bcm_support.h
   crypto/bio/internal.h
   crypto/bytestring/internal.h
   crypto/chacha/internal.h
   crypto/cipher_extra/internal.h
-  crypto/conf/conf_def.h
   crypto/conf/internal.h
   crypto/cpu_arm_linux.h
   crypto/curve25519/curve25519_tables.h
   crypto/curve25519/internal.h
   crypto/des/internal.h
+  crypto/dilithium/internal.h
   crypto/dsa/internal.h
   crypto/ec_extra/internal.h
   crypto/err/internal.h
   crypto/evp/internal.h
   crypto/fipsmodule/aes/internal.h
+  crypto/fipsmodule/bcm_interface.h
   crypto/fipsmodule/bn/internal.h
   crypto/fipsmodule/bn/rsaz_exp.h
   crypto/fipsmodule/cipher/internal.h
@@ -622,10 +636,7 @@ set(
   crypto/fipsmodule/ec/p256-nistz.h
   crypto/fipsmodule/ec/p256_table.h
   crypto/fipsmodule/ecdsa/internal.h
-  crypto/fipsmodule/md5/internal.h
   crypto/fipsmodule/modes/internal.h
-  crypto/fipsmodule/rand/fork_detect.h
-  crypto/fipsmodule/rand/getrandom_fillin.h
   crypto/fipsmodule/rand/internal.h
   crypto/fipsmodule/rsa/internal.h
   crypto/fipsmodule/service_indicator/internal.h
@@ -636,19 +647,31 @@ set(
   crypto/keccak/internal.h
   crypto/kyber/internal.h
   crypto/lhash/internal.h
+  crypto/md5/internal.h
+  crypto/mldsa/internal.h
+  crypto/mlkem/internal.h
   crypto/obj/obj_dat.h
   crypto/pkcs7/internal.h
   crypto/pkcs8/internal.h
   crypto/poly1305/internal.h
   crypto/pool/internal.h
+  crypto/rand_extra/getrandom_fillin.h
+  crypto/rand_extra/sysrand_internal.h
   crypto/rsa_extra/internal.h
-  crypto/spx/address.h
-  crypto/spx/fors.h
-  crypto/spx/merkle.h
-  crypto/spx/params.h
+  crypto/slhdsa/address.h
+  crypto/slhdsa/fors.h
+  crypto/slhdsa/internal.h
+  crypto/slhdsa/merkle.h
+  crypto/slhdsa/params.h
+  crypto/slhdsa/thash.h
+  crypto/slhdsa/wots.h
+  crypto/spx/spx_address.h
+  crypto/spx/spx_fors.h
+  crypto/spx/spx_merkle.h
+  crypto/spx/spx_params.h
+  crypto/spx/spx_thash.h
   crypto/spx/spx_util.h
-  crypto/spx/thash.h
-  crypto/spx/wots.h
+  crypto/spx/spx_wots.h
   crypto/trust_token/internal.h
   crypto/x509/ext_dat.h
   crypto/x509/internal.h
@@ -682,10 +705,12 @@ set(
   gen/crypto/chacha20_poly1305_armv8-win.S
   gen/crypto/chacha20_poly1305_x86_64-apple.S
   gen/crypto/chacha20_poly1305_x86_64-linux.S
+  gen/crypto/md5-586-apple.S
+  gen/crypto/md5-586-linux.S
+  gen/crypto/md5-x86_64-apple.S
+  gen/crypto/md5-x86_64-linux.S
   third_party/fiat/asm/fiat_curve25519_adx_mul.S
   third_party/fiat/asm/fiat_curve25519_adx_square.S
-  third_party/fiat/asm/fiat_p256_adx_mul.S
-  third_party/fiat/asm/fiat_p256_adx_sqr.S
 )
 
 set(
@@ -695,6 +720,8 @@ set(
   gen/crypto/chacha-x86-win.asm
   gen/crypto/chacha-x86_64-win.asm
   gen/crypto/chacha20_poly1305_x86_64-win.asm
+  gen/crypto/md5-586-win.asm
+  gen/crypto/md5-x86_64-win.asm
 )
 
 set(
@@ -720,6 +747,7 @@ set(
   crypto/curve25519/x25519_test.cc
   crypto/dh_extra/dh_test.cc
   crypto/digest_extra/digest_test.cc
+  crypto/dilithium/dilithium_test.cc
   crypto/dsa/dsa_test.cc
   crypto/ecdh_extra/ecdh_test.cc
   crypto/err/err_test.cc
@@ -735,10 +763,8 @@ set(
   crypto/fipsmodule/ec/p256_test.cc
   crypto/fipsmodule/ecdsa/ecdsa_test.cc
   crypto/fipsmodule/hkdf/hkdf_test.cc
-  crypto/fipsmodule/md5/md5_test.cc
   crypto/fipsmodule/modes/gcm_test.cc
   crypto/fipsmodule/rand/ctrdrbg_test.cc
-  crypto/fipsmodule/rand/fork_detect_test.cc
   crypto/fipsmodule/service_indicator/service_indicator_test.cc
   crypto/fipsmodule/sha/sha_test.cc
   crypto/hmac_extra/hmac_test.cc
@@ -748,6 +774,9 @@ set(
   crypto/keccak/keccak_test.cc
   crypto/kyber/kyber_test.cc
   crypto/lhash/lhash_test.cc
+  crypto/md5/md5_test.cc
+  crypto/mldsa/mldsa_test.cc
+  crypto/mlkem/mlkem_test.cc
   crypto/obj/obj_test.cc
   crypto/pem/pem_test.cc
   crypto/pkcs7/pkcs7_test.cc
@@ -755,12 +784,14 @@ set(
   crypto/pkcs8/pkcs8_test.cc
   crypto/poly1305/poly1305_test.cc
   crypto/pool/pool_test.cc
+  crypto/rand_extra/fork_detect_test.cc
   crypto/rand_extra/getentropy_test.cc
   crypto/rand_extra/rand_test.cc
   crypto/refcount_test.cc
   crypto/rsa_extra/rsa_test.cc
   crypto/self_test.cc
   crypto/siphash/siphash_test.cc
+  crypto/slhdsa/slhdsa_test.cc
   crypto/spx/spx_test.cc
   crypto/stack/stack_test.cc
   crypto/test/gtest_main.cc
@@ -807,6 +838,9 @@ set(
   crypto/cipher_extra/test/nist_cavp/tdes_ecb.txt
   crypto/cipher_extra/test/xchacha20_poly1305_tests.txt
   crypto/curve25519/ed25519_tests.txt
+  crypto/dilithium/dilithium_tests.txt
+  crypto/dilithium/edge_cases_draft_dilithium3_sign.txt
+  crypto/dilithium/edge_cases_draft_dilithium3_verify.txt
   crypto/ecdh_extra/ecdh_tests.txt
   crypto/evp/evp_tests.txt
   crypto/evp/scrypt_tests.txt
@@ -836,6 +870,18 @@ set(
   crypto/hpke/hpke_test_vectors.txt
   crypto/keccak/keccak_tests.txt
   crypto/kyber/kyber_tests.txt
+  crypto/mldsa/mldsa_nist_keygen_tests.txt
+  crypto/mldsa/mldsa_nist_siggen_tests.txt
+  crypto/mlkem/mlkem1024_decap_tests.txt
+  crypto/mlkem/mlkem1024_encap_tests.txt
+  crypto/mlkem/mlkem1024_keygen_tests.txt
+  crypto/mlkem/mlkem1024_nist_decap_tests.txt
+  crypto/mlkem/mlkem1024_nist_keygen_tests.txt
+  crypto/mlkem/mlkem768_decap_tests.txt
+  crypto/mlkem/mlkem768_encap_tests.txt
+  crypto/mlkem/mlkem768_keygen_tests.txt
+  crypto/mlkem/mlkem768_nist_decap_tests.txt
+  crypto/mlkem/mlkem768_nist_keygen_tests.txt
   crypto/pkcs8/test/bad1.p12
   crypto/pkcs8/test/bad2.p12
   crypto/pkcs8/test/bad3.p12
@@ -852,6 +898,9 @@ set(
   crypto/pkcs8/test/windows.p12
   crypto/poly1305/poly1305_tests.txt
   crypto/siphash/siphash_tests.txt
+  crypto/slhdsa/slhdsa_keygen.txt
+  crypto/slhdsa/slhdsa_siggen.txt
+  crypto/slhdsa/slhdsa_sigver.txt
   crypto/spx/spx_tests.txt
   crypto/spx/spx_tests_deterministic.txt
   crypto/x509/test/basic_constraints_ca.pem
@@ -970,6 +1019,8 @@ set(
   third_party/wycheproof_testvectors/hmac_sha512_test.txt
   third_party/wycheproof_testvectors/kw_test.txt
   third_party/wycheproof_testvectors/kwp_test.txt
+  third_party/wycheproof_testvectors/mldsa_65_standard_sign_test.txt
+  third_party/wycheproof_testvectors/mldsa_65_standard_verify_test.txt
   third_party/wycheproof_testvectors/primality_test.txt
   third_party/wycheproof_testvectors/rsa_oaep_2048_sha1_mgf1sha1_test.txt
   third_party/wycheproof_testvectors/rsa_oaep_2048_sha224_mgf1sha1_test.txt
@@ -1037,6 +1088,13 @@ set(
 )
 
 set(
+  DECREPIT_INTERNAL_HEADERS
+
+  decrepit/cast/internal.h
+  decrepit/macros.h
+)
+
+set(
   DECREPIT_TEST_SOURCES
 
   crypto/test/gtest_main.cc
@@ -1047,6 +1105,43 @@ set(
   decrepit/evp/evp_test.cc
   decrepit/ripemd/ripemd_test.cc
   decrepit/xts/xts_test.cc
+)
+
+set(
+  FUZZ_SOURCES
+
+  fuzz/arm_cpuinfo.cc
+  fuzz/bn_div.cc
+  fuzz/bn_mod_exp.cc
+  fuzz/cert.cc
+  fuzz/client.cc
+  fuzz/conf.cc
+  fuzz/crl_getcrlstatusforcert_fuzzer.cc
+  fuzz/crl_parse_crl_certificatelist_fuzzer.cc
+  fuzz/crl_parse_crl_tbscertlist_fuzzer.cc
+  fuzz/crl_parse_issuing_distribution_point_fuzzer.cc
+  fuzz/decode_client_hello_inner.cc
+  fuzz/der_roundtrip.cc
+  fuzz/dtls_client.cc
+  fuzz/dtls_server.cc
+  fuzz/ocsp_parse_ocsp_cert_id_fuzzer.cc
+  fuzz/ocsp_parse_ocsp_response_data_fuzzer.cc
+  fuzz/ocsp_parse_ocsp_response_fuzzer.cc
+  fuzz/ocsp_parse_ocsp_single_response_fuzzer.cc
+  fuzz/parse_authority_key_identifier_fuzzer.cc
+  fuzz/parse_certificate_fuzzer.cc
+  fuzz/parse_crldp_fuzzer.cc
+  fuzz/pkcs12.cc
+  fuzz/pkcs8.cc
+  fuzz/privkey.cc
+  fuzz/read_pem.cc
+  fuzz/server.cc
+  fuzz/session.cc
+  fuzz/spki.cc
+  fuzz/ssl_ctx_api.cc
+  fuzz/verify_name_match_fuzzer.cc
+  fuzz/verify_name_match_normalizename_fuzzer.cc
+  fuzz/verify_name_match_verifynameinsubtree_fuzzer.cc
 )
 
 set(
@@ -1082,6 +1177,7 @@ set(
   pki/trust_store.cc
   pki/trust_store_collection.cc
   pki/trust_store_in_memory.cc
+  pki/verify.cc
   pki/verify_certificate_chain.cc
   pki/verify_error.cc
   pki/verify_name_match.cc
@@ -1093,6 +1189,7 @@ set(
 
   include/openssl/pki/certificate.h
   include/openssl/pki/signature_verify_cache.h
+  include/openssl/pki/verify.h
   include/openssl/pki/verify_error.h
 )
 
@@ -1177,6 +1274,7 @@ set(
   pki/verify_certificate_chain_unittest.cc
   pki/verify_name_match_unittest.cc
   pki/verify_signed_data_unittest.cc
+  pki/verify_unittest.cc
 )
 
 set(
@@ -2150,14 +2248,18 @@ set(
   pki/testdata/verify_certificate_chain_unittest/intermediate-basic-constraints-not-critical/main.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/any.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/clientauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/clientauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/clientauth.test
+  pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/serverauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/serverauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-any-and-clientauth/serverauth.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/any.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/clientauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/clientauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/clientauth.test
+  pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/serverauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/serverauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-clientauth/serverauth.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-server-gated-crypto/sha1-chain.pem
@@ -2172,6 +2274,8 @@ set(
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-server-gated-crypto/sha256-eku-clientAuth.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-server-gated-crypto/sha256-eku-serverAuth-strict.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-eku-server-gated-crypto/sha256-eku-serverAuth.test
+  pki/testdata/verify_certificate_chain_unittest/intermediate-invalid-spki/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/intermediate-invalid-spki/main.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-lacks-basic-constraints/chain.pem
   pki/testdata/verify_certificate_chain_unittest/intermediate-lacks-basic-constraints/main.test
   pki/testdata/verify_certificate_chain_unittest/intermediate-lacks-signing-key-usage/chain.pem
@@ -2371,8 +2475,10 @@ set(
   pki/testdata/verify_certificate_chain_unittest/target-and-intermediate/unspecified-trust-root.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/any.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/target-eku-any/clientauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/clientauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/clientauth.test
+  pki/testdata/verify_certificate_chain_unittest/target-eku-any/serverauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/serverauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-any/serverauth.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-clientauth/any.test
@@ -2383,12 +2489,15 @@ set(
   pki/testdata/verify_certificate_chain_unittest/target-eku-clientauth/serverauth.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/any.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/target-eku-many/clientauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/clientauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/clientauth.test
+  pki/testdata/verify_certificate_chain_unittest/target-eku-many/serverauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/serverauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-many/serverauth.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-none/any.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-none/chain.pem
+  pki/testdata/verify_certificate_chain_unittest/target-eku-none/clientauth-strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-none/clientauth-strict.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-none/clientauth.test
   pki/testdata/verify_certificate_chain_unittest/target-eku-none/serverauth-strict.test
@@ -2411,6 +2520,7 @@ set(
   pki/testdata/verify_certificate_chain_unittest/target-msapplicationpolicies-no-eku/main.test
   pki/testdata/verify_certificate_chain_unittest/target-not-end-entity/chain.pem
   pki/testdata/verify_certificate_chain_unittest/target-not-end-entity/main.test
+  pki/testdata/verify_certificate_chain_unittest/target-not-end-entity/strict-leaf.test
   pki/testdata/verify_certificate_chain_unittest/target-not-end-entity/strict.test
   pki/testdata/verify_certificate_chain_unittest/target-only/chain.pem
   pki/testdata/verify_certificate_chain_unittest/target-only/trusted_anchor.test
@@ -2577,8 +2687,48 @@ set(
   pki/testdata/verify_signed_data_unittest/rsa-pss-sha256.pem
   pki/testdata/verify_signed_data_unittest/rsa-using-ec-key.pem
   pki/testdata/verify_signed_data_unittest/rsa2048-pkcs1-sha512.pem
+  pki/testdata/verify_unittest/google-intermediate1.der
+  pki/testdata/verify_unittest/google-intermediate2.der
   pki/testdata/verify_unittest/google-leaf.der
+  pki/testdata/verify_unittest/lencr-intermediate-r3.der
+  pki/testdata/verify_unittest/lencr-leaf.der
+  pki/testdata/verify_unittest/lencr-root-dst-x3.der
+  pki/testdata/verify_unittest/lencr-root-x1-cross-signed.der
+  pki/testdata/verify_unittest/lencr-root-x1.der
+  pki/testdata/verify_unittest/mozilla_roots.der
   pki/testdata/verify_unittest/self-issued.pem
+)
+
+set(
+  RUST_BSSL_CRYPTO_SOURCES
+
+  rust/bssl-crypto/src/aead.rs
+  rust/bssl-crypto/src/aes.rs
+  rust/bssl-crypto/src/cipher/aes_cbc.rs
+  rust/bssl-crypto/src/cipher/aes_ctr.rs
+  rust/bssl-crypto/src/cipher/mod.rs
+  rust/bssl-crypto/src/digest.rs
+  rust/bssl-crypto/src/ec.rs
+  rust/bssl-crypto/src/ecdh.rs
+  rust/bssl-crypto/src/ecdsa.rs
+  rust/bssl-crypto/src/ed25519.rs
+  rust/bssl-crypto/src/hkdf.rs
+  rust/bssl-crypto/src/hmac.rs
+  rust/bssl-crypto/src/hpke.rs
+  rust/bssl-crypto/src/lib.rs
+  rust/bssl-crypto/src/macros.rs
+  rust/bssl-crypto/src/mem.rs
+  rust/bssl-crypto/src/rand.rs
+  rust/bssl-crypto/src/rsa.rs
+  rust/bssl-crypto/src/scoped.rs
+  rust/bssl-crypto/src/test_helpers.rs
+  rust/bssl-crypto/src/x25519.rs
+)
+
+set(
+  RUST_BSSL_SYS_SOURCES
+
+  rust/bssl-sys/src/lib.rs
 )
 
 set(
@@ -2705,5 +2855,5 @@ set(
 set(
   URANDOM_TEST_SOURCES
 
-  crypto/fipsmodule/rand/urandom_test.cc
+  crypto/rand_extra/urandom_test.cc
 )

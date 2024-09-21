@@ -31,8 +31,9 @@ const (
 )
 
 const (
-	VersionDTLS10 = 0xfeff
-	VersionDTLS12 = 0xfefd
+	VersionDTLS10              = 0xfeff
+	VersionDTLS12              = 0xfefd
+	VersionDTLS125Experimental = 0xfc25
 )
 
 var allTLSWireVersions = []uint16{
@@ -44,16 +45,17 @@ var allTLSWireVersions = []uint16{
 }
 
 var allDTLSWireVersions = []uint16{
+	VersionDTLS125Experimental,
 	VersionDTLS12,
 	VersionDTLS10,
 }
 
 const (
-	maxPlaintext        = 16384        // maximum plaintext payload length
-	maxCiphertext       = 16384 + 2048 // maximum ciphertext payload length
-	tlsRecordHeaderLen  = 5            // record header length
-	dtlsRecordHeaderLen = 13
-	maxHandshake        = 65536 // maximum handshake we support (protocol max is 16 MB)
+	maxPlaintext           = 16384        // maximum plaintext payload length
+	maxCiphertext          = 16384 + 2048 // maximum ciphertext payload length
+	tlsRecordHeaderLen     = 5            // record header length
+	dtlsMaxRecordHeaderLen = 13
+	maxHandshake           = 65536 // maximum handshake we support (protocol max is 16 MB)
 
 	minVersion = VersionSSL30
 	maxVersion = VersionTLS13
@@ -156,6 +158,7 @@ const (
 	CurveP384           CurveID = 24
 	CurveP521           CurveID = 25
 	CurveX25519         CurveID = 29
+	CurveX25519MLKEM768 CurveID = 0x11ec
 	CurveX25519Kyber768 CurveID = 0x6399
 )
 
@@ -214,6 +217,9 @@ const (
 	// EdDSA algorithms
 	signatureEd25519 signatureAlgorithm = 0x0807
 	signatureEd448   signatureAlgorithm = 0x0808
+
+	// draft-ietf-tls-tls13-pkcs1-00
+	signatureRSAPKCS1WithSHA256Legacy signatureAlgorithm = 0x0420
 
 	// signatureRSAPKCS1WithMD5AndSHA1 is the internal value BoringSSL uses to
 	// represent the TLS 1.0/1.1 RSA MD5/SHA1 concatenation. We define the
@@ -455,6 +461,14 @@ type Config struct {
 	// NextProtos is a list of supported, application level protocols.
 	NextProtos []string
 
+	// NoFallbackNextProto, if true, causes the client to decline to pick an NPN
+	// protocol, instead of picking an opportunistic, fallback protocol.
+	NoFallbackNextProto bool
+
+	// NegotiateNPNWithNoProtos, if true, causes the server to negotiate NPN
+	// despite having no protocols configured.
+	NegotiateNPNWithNoProtos bool
+
 	// ApplicationSettings is a set of application settings to use which each
 	// application protocol.
 	ApplicationSettings map[string][]byte
@@ -604,6 +618,16 @@ type Config struct {
 
 	CertCompressionAlgs map[uint16]CertCompressionAlg
 
+	// DTLSUseShortSeqNums specifies whether the DTLS 1.3 record header
+	// should use short (8-bit) or long (16-bit) sequence numbers. The
+	// default is to use long sequence numbers.
+	DTLSUseShortSeqNums bool
+
+	// DTLSRecordHeaderOmitLength specified whether the DTLS 1.3 record
+	// header includes a length field. The default is to include the length
+	// field.
+	DTLSRecordHeaderOmitLength bool
+
 	// Bugs specifies optional misbehaviour to be used for testing other
 	// implementations.
 	Bugs ProtocolBugs
@@ -647,9 +671,15 @@ type ProtocolBugs struct {
 	// than the negotiated one.
 	SendCurve CurveID
 
-	// InvalidECDHPoint, if true, causes the ECC points in
-	// ServerKeyExchange or ClientKeyExchange messages to be invalid.
-	InvalidECDHPoint bool
+	// ECDHPointNotOnCurve, if true, causes the ECDH points to not be on the
+	// curve.
+	ECDHPointNotOnCurve bool
+
+	// TruncateKeyShare, if true, causes key shares to be truncated by one byte.
+	TruncateKeyShare bool
+
+	// PadKeyShare, if true, causes key shares to be truncated to one byte.
+	PadKeyShare bool
 
 	// BadECDSAR controls ways in which the 'r' value of an ECDSA signature
 	// can be invalid.
@@ -682,6 +712,11 @@ type ProtocolBugs struct {
 	// SkipHelloVerifyRequest causes a DTLS server to skip the
 	// HelloVerifyRequest message.
 	SkipHelloVerifyRequest bool
+
+	// ForceHelloVerifyRequest causes a DTLS server to send a
+	// HelloVerifyRequest message in DTLS 1.3 or other cases where it
+	// otherwise wouldn't.
+	ForceHelloVerifyRequest bool
 
 	// HelloVerifyRequestCookieLength, if non-zero, is the length of the cookie
 	// to request in HelloVerifyRequest.
@@ -728,6 +763,10 @@ type ProtocolBugs struct {
 	// NonEmptyEndOfEarlyData causes the implementation to end an extra byte in the
 	// EndOfEarlyData.
 	NonEmptyEndOfEarlyData bool
+
+	// SendEndOfEarlyDataInQUICAndDTLS causes the implementation to send
+	// EndOfEarlyData even in QUIC and DTLS, which do not use the message.
+	SendEndOfEarlyDataInQUICAndDTLS bool
 
 	// SkipCertificateVerify, if true causes peer to skip sending a
 	// CertificateVerify message after the Certificate message.
@@ -1896,6 +1935,14 @@ type ProtocolBugs struct {
 	// high-order bit.
 	SetX25519HighBit bool
 
+	// LowOrderX25519Point, if true, causes X25519 key shares to be a low
+	// order point.
+	LowOrderX25519Point bool
+
+	// MLKEMEncapKeyNotReduced, if true, causes the ML-KEM encapsulation key
+	// to not be fully reduced.
+	MLKEMEncapKeyNotReduced bool
+
 	// DuplicateCompressedCertAlgs, if true, causes two, equal, certificate
 	// compression algorithm IDs to be sent.
 	DuplicateCompressedCertAlgs bool
@@ -1939,9 +1986,9 @@ type ProtocolBugs struct {
 	// hello retry.
 	FailIfHelloRetryRequested bool
 
-	// FailedIfKyberOffered will cause a server to reject a ClientHello if Kyber
-	// is supported.
-	FailIfKyberOffered bool
+	// FailIfPostQuantumOffered will cause a server to reject a ClientHello if
+	// post-quantum curves are supported.
+	FailIfPostQuantumOffered bool
 
 	// ExpectKeyShares, if not nil, lists (in order) the curves that a ClientHello
 	// should have key shares for.
@@ -1951,9 +1998,25 @@ type ProtocolBugs struct {
 	// when running over QUIC.
 	CompatModeWithQUIC bool
 
+	// DTLS13EchoSessionID, if true, has DTLS 1.3 servers echo the client's
+	// session ID in the ServerHello.
+	DTLS13EchoSessionID bool
+
+	// DTLSUsePlaintextRecord header, if true, has DTLS 1.3 connections to use
+	// the DTLS 1.2 record header once the handshake completes. The bug is not
+	// activated during the handshake so that the handshake can complete first.
+	DTLSUsePlaintextRecordHeader bool
+
+	// DTLS13RecordHeaderSetCIDBit, if true, sets the Connection ID bit in
+	// the DTLS 1.3 record header.
+	DTLS13RecordHeaderSetCIDBit bool
+
 	// EncryptSessionTicketKey, if non-nil, is the ticket key to use when
 	// encrypting tickets.
 	EncryptSessionTicketKey *[32]byte
+
+	// OmitPublicName omits the server name extension from ClientHelloOuter.
+	OmitPublicName bool
 }
 
 func (c *Config) serverInit() {
@@ -2021,10 +2084,6 @@ func (c *Config) maxVersion(isDTLS bool) uint16 {
 		ret = c.MaxVersion
 	}
 	if isDTLS {
-		// We only implement up to DTLS 1.2.
-		if ret > VersionTLS12 {
-			return VersionTLS12
-		}
 		// There is no such thing as DTLS 1.1.
 		if ret == VersionTLS11 {
 			return VersionTLS10
@@ -2033,7 +2092,7 @@ func (c *Config) maxVersion(isDTLS bool) uint16 {
 	return ret
 }
 
-var defaultCurvePreferences = []CurveID{CurveX25519Kyber768, CurveX25519, CurveP256, CurveP384, CurveP521}
+var defaultCurvePreferences = []CurveID{CurveX25519MLKEM768, CurveX25519Kyber768, CurveX25519, CurveP256, CurveP384, CurveP521}
 
 func (c *Config) curvePreferences() []CurveID {
 	if c == nil || len(c.CurvePreferences) == 0 {
@@ -2070,6 +2129,8 @@ func (c *Config) echCipherSuitePreferences() []HPKECipherSuite {
 func wireToVersion(vers uint16, isDTLS bool) (uint16, bool) {
 	if isDTLS {
 		switch vers {
+		case VersionDTLS125Experimental:
+			return VersionTLS13, true
 		case VersionDTLS12:
 			return VersionTLS12, true
 		case VersionDTLS10:
@@ -2191,13 +2252,6 @@ func (c *Credential) signatureAlgorithms() []signatureAlgorithm {
 		return c.SignatureAlgorithms
 	}
 	return supportedSignatureAlgorithms
-}
-
-// A TLS record.
-type record struct {
-	contentType  recordType
-	major, minor uint8
-	payload      []byte
 }
 
 type handshakeMessage interface {

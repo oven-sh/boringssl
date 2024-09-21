@@ -107,11 +107,24 @@ static bool parse_server_hello_tls13(const SSL_HANDSHAKE *hs,
   if (!ssl_parse_server_hello(out, out_alert, msg)) {
     return false;
   }
+  uint16_t server_hello_version = TLS1_2_VERSION;
+  if (SSL_is_dtls(hs->ssl)) {
+    server_hello_version = DTLS1_2_VERSION;
+  }
+  // DTLS 1.3 disables "compatibility mode" (RFC 8446, appendix D.4). When
+  // disabled, servers MUST NOT echo the legacy_session_id (RFC 9147, section
+  // 5). The client could have sent a session ID indicating its willingness to
+  // resume a DTLS 1.2 session, so just checking that the session IDs match is
+  // incorrect.
+  bool session_id_match =
+      (SSL_is_dtls(hs->ssl) && CBS_len(&out->session_id) == 0) ||
+      (!SSL_is_dtls(hs->ssl) &&
+       CBS_mem_equal(&out->session_id, hs->session_id, hs->session_id_len));
+
   // The RFC8446 version of the structure fixes some legacy values.
   // Additionally, the session ID must echo the original one.
-  if (out->legacy_version != TLS1_2_VERSION ||
-      out->compression_method != 0 ||
-      !CBS_mem_equal(&out->session_id, hs->session_id, hs->session_id_len) ||
+  if (out->legacy_version != server_hello_version ||
+      out->compression_method != 0 || !session_id_match ||
       CBS_len(&out->extensions) == 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     *out_alert = SSL_AD_DECODE_ERROR;
@@ -782,8 +795,9 @@ static enum ssl_hs_wait_t do_send_end_of_early_data(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
 
   if (ssl->s3->early_data_accepted) {
-    // QUIC omits the EndOfEarlyData message. See RFC 9001, section 8.3.
-    if (ssl->quic_method == nullptr) {
+    // DTLS and QUIC omit the EndOfEarlyData message. See RFC 9001, section 8.3,
+    // and RFC 9147, section 5.6.
+    if (ssl->quic_method == nullptr && !SSL_is_dtls(ssl)) {
       ScopedCBB cbb;
       CBB body;
       if (!ssl->method->init_message(ssl, cbb.get(), &body,
@@ -1117,7 +1131,8 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
     session->timeout = server_timeout;
   }
 
-  if (!tls13_derive_session_psk(session.get(), ticket_nonce)) {
+  if (!tls13_derive_session_psk(session.get(), ticket_nonce,
+                                SSL_is_dtls(ssl))) {
     return nullptr;
   }
 

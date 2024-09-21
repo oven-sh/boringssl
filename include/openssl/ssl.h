@@ -478,7 +478,7 @@ OPENSSL_EXPORT int SSL_get_error(const SSL *ssl, int ret_code);
 #define SSL_ERROR_NONE 0
 
 // SSL_ERROR_SSL indicates the operation failed within the library. The caller
-// may inspect the error queue for more information.
+// may inspect the error queue (see |ERR_get_error|) for more information.
 #define SSL_ERROR_SSL 1
 
 // SSL_ERROR_WANT_READ indicates the operation failed attempting to read from
@@ -651,6 +651,17 @@ OPENSSL_EXPORT int DTLSv1_handle_timeout(SSL *ssl);
 
 #define DTLS1_VERSION 0xfeff
 #define DTLS1_2_VERSION 0xfefd
+// DTLS1_3_EXPERIMENTAL_VERSION gates experimental, in-progress code for DTLS
+// 1.3.
+//
+// WARNING: Do not use this value. BoringSSL's DTLS 1.3 implementation is still
+// under development. The code enabled by this value is neither stable nor
+// secure. It does not correspond to any real protocol. It is also incompatible
+// with other DTLS implementations, and it is not compatible with future or past
+// versions of BoringSSL.
+//
+// When the DTLS 1.3 implementation is complete, this symbol will be replaced.
+#define DTLS1_3_EXPERIMENTAL_VERSION 0xfc25
 
 // SSL_CTX_set_min_proto_version sets the minimum protocol version for |ctx| to
 // |version|. If |version| is zero, the default minimum version is used. It
@@ -1204,6 +1215,11 @@ OPENSSL_EXPORT int SSL_set_ocsp_response(SSL *ssl,
 #define SSL_SIGN_RSA_PSS_RSAE_SHA384 0x0805
 #define SSL_SIGN_RSA_PSS_RSAE_SHA512 0x0806
 #define SSL_SIGN_ED25519 0x0807
+
+// SSL_SIGN_RSA_PKCS1_SHA256_LEGACY is a backport of RSASSA-PKCS1-v1_5 with
+// SHA-256 to TLS 1.3. It is disabled by default and only defined for client
+// certificates.
+#define SSL_SIGN_RSA_PKCS1_SHA256_LEGACY 0x0420
 
 // SSL_SIGN_RSA_PKCS1_MD5_SHA1 is an internal signature algorithm used to
 // specify raw RSASSA-PKCS1-v1_5 with an MD5/SHA-1 concatenation, as used in TLS
@@ -2532,6 +2548,7 @@ OPENSSL_EXPORT size_t SSL_CTX_get_num_tickets(const SSL_CTX *ctx);
 #define SSL_GROUP_SECP384R1 24
 #define SSL_GROUP_SECP521R1 25
 #define SSL_GROUP_X25519 29
+#define SSL_GROUP_X25519_MLKEM768 0x11ec
 #define SSL_GROUP_X25519_KYBER768_DRAFT00 0x6399
 
 // SSL_CTX_set1_group_ids sets the preferred groups for |ctx| to |group_ids|.
@@ -3115,7 +3132,8 @@ OPENSSL_EXPORT int SSL_set_alpn_protos(SSL *ssl, const uint8_t *protos,
 
 // SSL_CTX_set_alpn_select_cb sets a callback function on |ctx| that is called
 // during ClientHello processing in order to select an ALPN protocol from the
-// client's list of offered protocols.
+// client's list of offered protocols. |SSL_select_next_proto| is an optional
+// utility function which may be useful in implementing this callback.
 //
 // The callback is passed a wire-format (i.e. a series of non-empty, 8-bit
 // length-prefixed strings) ALPN protocol list in |in|. To select a protocol,
@@ -3265,30 +3283,50 @@ OPENSSL_EXPORT int SSL_CTX_add_cert_compression_alg(
 // and deprecated in favor of it.
 
 // SSL_CTX_set_next_protos_advertised_cb sets a callback that is called when a
-// TLS server needs a list of supported protocols for Next Protocol
-// Negotiation. The returned list must be in wire format. The list is returned
-// by setting |*out| to point to it and |*out_len| to its length. This memory
-// will not be modified, but one should assume that |ssl| keeps a reference to
-// it.
+// TLS server needs a list of supported protocols for Next Protocol Negotiation.
 //
-// The callback should return |SSL_TLSEXT_ERR_OK| if it wishes to advertise.
-// Otherwise, no such extension will be included in the ServerHello.
+// If the callback wishes to advertise NPN to the client, it should return
+// |SSL_TLSEXT_ERR_OK| and then set |*out| and |*out_len| to describe to a
+// buffer containing a (possibly empty) list of supported protocols in wire
+// format. That is, each protocol is prefixed with a 1-byte length, then
+// concatenated. From there, the client will select a protocol, possibly one not
+// on the server's list. The caller can use |SSL_get0_next_proto_negotiated|
+// after the handshake completes to query the final protocol.
+//
+// The returned buffer must remain valid and unmodified for at least the
+// duration of the |SSL| operation (e.g. |SSL_do_handshake|) that triggered the
+// callback.
+//
+// If the caller wishes not to advertise NPN, it should return
+// |SSL_TLSEXT_ERR_NOACK|. No NPN extension will be included in the ServerHello,
+// and the TLS server will behave as if it does not implement NPN.
 OPENSSL_EXPORT void SSL_CTX_set_next_protos_advertised_cb(
     SSL_CTX *ctx,
     int (*cb)(SSL *ssl, const uint8_t **out, unsigned *out_len, void *arg),
     void *arg);
 
 // SSL_CTX_set_next_proto_select_cb sets a callback that is called when a client
-// needs to select a protocol from the server's provided list. |*out| must be
-// set to point to the selected protocol (which may be within |in|). The length
-// of the protocol name must be written into |*out_len|. The server's advertised
-// protocols are provided in |in| and |in_len|. The callback can assume that
-// |in| is syntactically valid.
+// needs to select a protocol from the server's provided list, passed in wire
+// format in |in_len| bytes from |in|. The callback can assume that |in| is
+// syntactically valid. |SSL_select_next_proto| is an optional utility function
+// which may be useful in implementing this callback.
 //
-// The client must select a protocol. It is fatal to the connection if this
-// callback returns a value other than |SSL_TLSEXT_ERR_OK|.
+// On success, the callback should return |SSL_TLSEXT_ERR_OK| and set |*out| and
+// |*out_len| to describe a buffer containing the selected protocol, or an
+// empty buffer to select no protocol. The returned buffer may point within
+// |in|, or it may point to some other buffer that remains valid and unmodified
+// for at least the duration of the |SSL| operation (e.g. |SSL_do_handshake|)
+// that triggered the callback.
 //
-// Configuring this callback enables NPN on a client.
+// Returning any other value indicates a fatal error and will terminate the TLS
+// connection. To proceed without selecting a protocol, the callback must return
+// |SSL_TLSEXT_ERR_OK| and set |*out| and |*out_len| to an empty buffer. (E.g.
+// NULL and zero, respectively.)
+//
+// Configuring this callback enables NPN on a client. Although the callback can
+// then decline to negotiate a protocol, merely configuring the callback causes
+// the client to offer NPN in the ClientHello. Callers thus should not configure
+// this callback in TLS client contexts that are not intended to use NPN.
 OPENSSL_EXPORT void SSL_CTX_set_next_proto_select_cb(
     SSL_CTX *ctx, int (*cb)(SSL *ssl, uint8_t **out, uint8_t *out_len,
                             const uint8_t *in, unsigned in_len, void *arg),
@@ -3296,7 +3334,7 @@ OPENSSL_EXPORT void SSL_CTX_set_next_proto_select_cb(
 
 // SSL_get0_next_proto_negotiated sets |*out_data| and |*out_len| to point to
 // the client's requested protocol for this connection. If the client didn't
-// request any protocol, then |*out_data| is set to NULL.
+// request any protocol, then |*out_len| is set to zero.
 //
 // Note that the client can request any protocol it chooses. The value returned
 // from this function need not be a member of the list of supported protocols
@@ -3305,21 +3343,45 @@ OPENSSL_EXPORT void SSL_get0_next_proto_negotiated(const SSL *ssl,
                                                    const uint8_t **out_data,
                                                    unsigned *out_len);
 
-// SSL_select_next_proto implements the standard protocol selection. It is
-// expected that this function is called from the callback set by
+// SSL_select_next_proto implements the standard protocol selection for either
+// ALPN servers or NPN clients. It is expected that this function is called from
+// the callback set by |SSL_CTX_set_alpn_select_cb| or
 // |SSL_CTX_set_next_proto_select_cb|.
 //
-// |peer| and |supported| must be vectors of 8-bit, length-prefixed byte strings
-// containing the peer and locally-configured protocols, respectively. The
-// length byte itself is not included in the length. A byte string of length 0
-// is invalid. No byte string may be truncated. |supported| is assumed to be
-// non-empty.
-//
-// This function finds the first protocol in |peer| which is also in
-// |supported|. If one was found, it sets |*out| and |*out_len| to point to it
-// and returns |OPENSSL_NPN_NEGOTIATED|. Otherwise, it returns
+// |peer| and |supported| contain the peer and locally-configured protocols,
+// respectively. This function finds the first protocol in |peer| which is also
+// in |supported|. If one was found, it sets |*out| and |*out_len| to point to
+// it and returns |OPENSSL_NPN_NEGOTIATED|. Otherwise, it returns
 // |OPENSSL_NPN_NO_OVERLAP| and sets |*out| and |*out_len| to the first
 // supported protocol.
+//
+// In ALPN, the server should only select protocols among those that the client
+// offered. Thus, if this function returns |OPENSSL_NPN_NO_OVERLAP|, the caller
+// should ignore |*out| and return |SSL_TLSEXT_ERR_ALERT_FATAL| from
+// |SSL_CTX_set_alpn_select_cb|'s callback to indicate there was no match.
+//
+// In NPN, the client may either select one of the server's protocols, or an
+// "opportunistic" protocol as described in Section 6 of
+// draft-agl-tls-nextprotoneg-03. When this function returns
+// |OPENSSL_NPN_NO_OVERLAP|, |*out| implicitly selects the first supported
+// protocol for use as the opportunistic protocol. The caller may use it,
+// ignore it and select a different opportunistic protocol, or ignore it and
+// select no protocol (empty string).
+//
+// |peer| and |supported| must be vectors of 8-bit, length-prefixed byte
+// strings. The length byte itself is not included in the length. A byte string
+// of length 0 is invalid. No byte string may be truncated. |supported| must be
+// non-empty; a caller that supports no ALPN/NPN protocols should skip
+// negotiating the extension, rather than calling this function. If any of these
+// preconditions do not hold, this function will return |OPENSSL_NPN_NO_OVERLAP|
+// and set |*out| and |*out_len| to an empty buffer for robustness, but callers
+// are not recommended to rely on this. An empty buffer is not a valid output
+// for |SSL_CTX_set_alpn_select_cb|'s callback.
+//
+// WARNING: |*out| and |*out_len| may alias either |peer| or |supported| and may
+// not be used after one of those buffers is modified or released. Additionally,
+// this function is not const-correct for compatibility reasons. Although |*out|
+// is a non-const pointer, callers may not modify the buffer though |*out|.
 OPENSSL_EXPORT int SSL_select_next_proto(uint8_t **out, uint8_t *out_len,
                                          const uint8_t *peer, unsigned peer_len,
                                          const uint8_t *supported,
@@ -3585,13 +3647,13 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_delegated_credential(
 // holds for any application protocol state remembered for 0-RTT, e.g. HTTP/3
 // SETTINGS.
 
-// ssl_encryption_level_t represents a specific QUIC encryption level used to
-// transmit handshake messages.
+// ssl_encryption_level_t represents an encryption level in TLS 1.3. Values in
+// this enum match the first 4 epochs used in DTLS 1.3 (section 6.1).
 enum ssl_encryption_level_t BORINGSSL_ENUM_INT {
   ssl_encryption_initial = 0,
-  ssl_encryption_early_data,
-  ssl_encryption_handshake,
-  ssl_encryption_application,
+  ssl_encryption_early_data = 1,
+  ssl_encryption_handshake = 2,
+  ssl_encryption_application = 3,
 };
 
 // ssl_quic_method_st (aka |SSL_QUIC_METHOD|) describes custom QUIC hooks.
@@ -4376,8 +4438,17 @@ OPENSSL_EXPORT void SSL_set_msg_callback_arg(SSL *ssl, void *arg);
 //
 // The format is described in
 // https://www.ietf.org/archive/id/draft-ietf-tls-keylogfile-01.html
-OPENSSL_EXPORT void SSL_CTX_set_keylog_callback(
-    SSL_CTX *ctx, void (*cb)(const SSL *ssl, const char *line));
+//
+// WARNING: The data in |line| allows an attacker to break security properties
+// of the TLS protocol, including confidentiality, integrity, and forward
+// secrecy. This impacts both the current connection, and, in TLS 1.2, future
+// connections that resume a session from it. Both direct access to the data and
+// side channel leaks from application code are possible attack vectors. This
+// callback is intended for debugging and should not be used in production
+// connections.
+OPENSSL_EXPORT void SSL_CTX_set_keylog_callback(SSL_CTX *ctx,
+                                                void (*cb)(const SSL *ssl,
+                                                           const char *line));
 
 // SSL_CTX_get_keylog_callback returns the callback configured by
 // |SSL_CTX_set_keylog_callback|.
@@ -4558,6 +4629,16 @@ enum ssl_select_cert_result_t BORINGSSL_ENUM_INT {
   // ssl_select_cert_error indicates that a fatal error occured and the
   // handshake should be terminated.
   ssl_select_cert_error = -1,
+  // ssl_select_cert_disable_ech indicates that, although an encrypted
+  // ClientHelloInner was decrypted, it should be discarded. The certificate
+  // selection callback will then be called again, passing in the
+  // ClientHelloOuter instead. From there, the handshake will proceed
+  // without retry_configs, to signal to the client to disable ECH.
+  //
+  // This value may only be returned when |SSL_ech_accepted| returnes one. It
+  // may be useful if the ClientHelloInner indicated a service which does not
+  // support ECH, e.g. if it is a TLS-1.2 only service.
+  ssl_select_cert_disable_ech = -2,
 };
 
 // SSL_early_callback_ctx_extension_get searches the extensions in
@@ -4805,7 +4886,7 @@ OPENSSL_EXPORT void SSL_set_check_ecdsa_curve(SSL *ssl, int enable);
 
 // Deprecated functions.
 
-// SSL_library_init calls |CRYPTO_library_init| and returns one.
+// SSL_library_init returns one.
 OPENSSL_EXPORT int SSL_library_init(void);
 
 // SSL_CIPHER_description writes a description of |cipher| into |buf| and
@@ -5368,7 +5449,7 @@ OPENSSL_EXPORT SSL_SESSION *SSL_get1_session(SSL *ssl);
 #define OPENSSL_INIT_LOAD_SSL_STRINGS 0
 #define OPENSSL_INIT_SSL_DEFAULT 0
 
-// OPENSSL_init_ssl calls |CRYPTO_library_init| and returns one.
+// OPENSSL_init_ssl returns one.
 OPENSSL_EXPORT int OPENSSL_init_ssl(uint64_t opts,
                                     const OPENSSL_INIT_SETTINGS *settings);
 
@@ -5557,6 +5638,14 @@ enum ssl_compliance_policy_t BORINGSSL_ENUM_INT {
   // implementation risks of using a more obscure primitive like P-384
   // dominate other considerations.
   ssl_compliance_policy_wpa3_192_202304,
+
+  // ssl_compliance_policy_cnsa_202407 confingures a TLS connection to use:
+  //   * For TLS 1.3, AES-256-GCM over AES-128-GCM over ChaCha20-Poly1305.
+  //
+  // I.e. it ensures that AES-GCM will be used whenever the client supports it.
+  // The cipher suite configuration mini-language can be used to similarly
+  // configure prior TLS versions if they are enabled.
+  ssl_compliance_policy_cnsa_202407,
 };
 
 // SSL_CTX_set_compliance_policy configures various aspects of |ctx| based on
