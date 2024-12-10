@@ -55,6 +55,7 @@
  * [including the GNU Public Licence.] */
 
 #include <openssl/digest.h>
+#include <openssl/ripemd.h>
 
 #include <assert.h>
 #include <string.h>
@@ -239,6 +240,30 @@ DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512_256) {
   out->final = sha512_256_final;
   out->block_size = 128;
   out->ctx_size = sizeof(SHA512_CTX);
+}
+
+
+static void ripemd160_init(EVP_MD_CTX *ctx) {
+  CHECK(RIPEMD160_Init(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
+}
+
+static void ripemd160_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
+  CHECK(RIPEMD160_Update(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data), data, count));
+}
+
+static void ripemd160_final(EVP_MD_CTX *ctx, uint8_t *md) {
+  CHECK(RIPEMD160_Final(md, reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
+}
+
+DEFINE_DATA(EVP_MD, EVP_ripemd160, const) {
+  out->type = NID_ripemd160;
+  out->md_size = RIPEMD160_DIGEST_LENGTH;
+  out->flags = 0;
+  out->init = ripemd160_init;
+  out->update = ripemd160_update;
+  out->final = ripemd160_final;
+  out->block_size = 64;
+  out->ctx_size = sizeof(RIPEMD160_CTX);
 }
 
 #undef CHECK
