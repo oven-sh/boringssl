@@ -142,6 +142,37 @@ static void scryptROMix(block_t *B, uint64_t r, uint64_t N, block_t *T,
 // |EVP_PBE_scrypt|.
 #define SCRYPT_MAX_MEM (1024 * 1024 * 65)
 
+int EVP_PBE_validate_scrypt_params(const char *password, size_t password_len,
+                                   const uint8_t *salt, size_t salt_len, uint64_t N, uint64_t r,
+                                   uint64_t p, size_t max_mem, uint8_t *out_key,
+                                   size_t key_len) {
+
+  if (r == 0 || p == 0 || p > SCRYPT_PR_MAX / r ||
+      // |N| must be a power of two.
+      N < 2 || (N & (N - 1)) ||
+      // We only support |N| <= 2^32 in |scryptROMix|.
+      N > UINT64_C(1) << 32 ||
+      // Check that |N| < 2^(128×r / 8).
+      (16 * r <= 63 && N >= UINT64_C(1) << (16 * r))) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_PARAMETERS);
+    return 0;
+  }
+
+  // Determine the amount of memory needed. B, T, and V are |p|, 1, and |N|
+  // scrypt blocks, respectively. Each scrypt block is 2*|r| |block_t|s.
+  if (max_mem == 0) {
+    max_mem = SCRYPT_MAX_MEM;
+  }
+
+  size_t max_scrypt_blocks = max_mem / (2 * r * sizeof(block_t));
+  if (max_scrypt_blocks < p + 1 || max_scrypt_blocks - p - 1 < N) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_MEMORY_LIMIT_EXCEEDED);
+    return 0;
+  }
+
+  return 1;
+}
+
 int EVP_PBE_scrypt(const char *password, size_t password_len,
                    const uint8_t *salt, size_t salt_len, uint64_t N, uint64_t r,
                    uint64_t p, size_t max_mem, uint8_t *out_key,
