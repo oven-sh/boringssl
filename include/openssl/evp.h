@@ -488,8 +488,8 @@ OPENSSL_EXPORT int PKCS5_PBKDF2_HMAC_SHA1(const char *password,
                                           uint32_t iterations, size_t key_len,
                                           uint8_t *out_key);
 
-// Can be used to validate |N|, |r|, |p|, and max_mem parameters before calling EVP_PBE_scrypt.
-OPENSSL_EXPORT int EVP_PBE_scrypt_validate_params(const char *password, size_t password_len,
+// Can be used to validate |N|, |r|, |p|, and |max_mem| parameters before calling EVP_PBE_scrypt.
+OPENSSL_EXPORT int EVP_PBE_validate_scrypt_params(const char *password, size_t password_len,
                                   const uint8_t *salt, size_t salt_len,
                                   uint64_t N, uint64_t r, uint64_t p,
                                   size_t max_mem, uint8_t *out_key,

@@ -142,7 +142,7 @@ static void scryptROMix(block_t *B, uint64_t r, uint64_t N, block_t *T,
 // |EVP_PBE_scrypt|.
 #define SCRYPT_MAX_MEM (1024 * 1024 * 65)
 
-int EVP_PBE_scrypt_validate_params(const char *password, size_t password_len,
+int EVP_PBE_validate_scrypt_params(const char *password, size_t password_len,
                                    const uint8_t *salt, size_t salt_len, uint64_t N, uint64_t r,
                                    uint64_t p, size_t max_mem, uint8_t *out_key,
                                    size_t key_len) {
