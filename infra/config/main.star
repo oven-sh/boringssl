@@ -517,11 +517,6 @@ both_builders(
             "ANDROID_PLATFORM": "android-35",
             "CMAKE_BUILD_TYPE": "Release",
         },
-        # The default Android NDK cannot be updated until https://crbug.com/boringssl/454 is fixed.
-        # Meanwhile, RISC-V support requires a newer NDK, thus we override for this builder.
-        "gclient_vars": {
-            "android_ndk_revision": "wC8sJjVPRDPTbaZFlki_qXTC1lWJNbJi8glUO0woJ1MC",
-        },
         "run_unit_tests": False,
         "run_ssl_tests": False,
     },
