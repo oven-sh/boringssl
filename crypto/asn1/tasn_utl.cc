@@ -131,19 +131,13 @@ void bssl::asn1_encoding_clear(ASN1_ENCODING *enc) {
   enc->len = 0;
 }
 
-int bssl::asn1_enc_restore(int *len, unsigned char **out, ASN1_VALUE **pval,
+int bssl::asn1_enc_restore(Span<const uint8_t> *out, ASN1_VALUE **pval,
                            const ASN1_ITEM *it) {
   ASN1_ENCODING *enc = asn1_get_enc_ptr(pval, it);
   if (!enc || enc->len == 0) {
     return 0;
   }
-  if (out) {
-    OPENSSL_memcpy(*out, enc->enc, enc->len);
-    *out += enc->len;
-  }
-  if (len) {
-    *len = enc->len;
-  }
+  *out = Span(enc->enc, enc->len);
   return 1;
 }
 
@@ -215,4 +209,17 @@ err:
     OPENSSL_PUT_ERROR(ASN1, ASN1_R_UNSUPPORTED_ANY_DEFINED_BY_TYPE);
   }
   return nullptr;
+}
+
+CBS_ASN1_TAG bssl::asn1_tag_to_cbs(int aclass, int tag) {
+  if ((aclass & ASN1_TFLG_TAG_CLASS) != aclass ||  //
+      tag < 0 || static_cast<CBS_ASN1_TAG>(tag) > CBS_ASN1_TAG_NUMBER_MASK ||
+      // Universal tag zero is reserved and should never appear in a template.
+      // This file treats the zero tag as a sentinel value.
+      (aclass == 0 && tag == 0)) {
+    OPENSSL_PUT_ERROR(ASN1, ASN1_R_BAD_TEMPLATE);
+    return 0;
+  }
+  return ((static_cast<CBS_ASN1_TAG>(aclass)) << CBS_ASN1_TAG_SHIFT) |
+         static_cast<CBS_ASN1_TAG>(tag);
 }

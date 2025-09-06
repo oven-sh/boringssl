@@ -305,7 +305,7 @@ int i2d_X509(const X509 *x509, uint8_t **outp) {
 }
 
 IMPLEMENT_EXTERN_ASN1_PARSE_NEW(X509, X509_new, X509_free, CBS_ASN1_SEQUENCE,
-                                x509_parse, i2d_X509)
+                                x509_parse, x509_marshal)
 
 X509 *X509_dup(const X509 *x509) {
   uint8_t *der = nullptr;
