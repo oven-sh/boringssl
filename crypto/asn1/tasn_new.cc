@@ -236,12 +236,10 @@ static int ASN1_primitive_new(ASN1_VALUE **pval, const ASN1_ITEM *it) {
       return 1;
 
     case V_ASN1_ANY: {
-      ASN1_TYPE *typ = New<ASN1_TYPE>();
+      ASN1_TYPE *typ = ASN1_TYPE_new();
       if (!typ) {
         return 0;
       }
-      typ->value.ptr = nullptr;
-      typ->type = -1;
       asn1_store_ptr(pval, typ);
       break;
     }

@@ -177,10 +177,6 @@ const void *asn1_type_value_as_pointer(const ASN1_TYPE *a);
 // takes ownership of `str`.
 void asn1_type_set0_string(ASN1_TYPE *a, ASN1_STRING *str);
 
-// asn1_type_cleanup releases memory associated with `a`'s value, without
-// freeing `a` itself.
-void asn1_type_cleanup(ASN1_TYPE *a);
-
 // asn1_parse_any parses a DER-encoded ASN.1 value of any type from `cbs` and
 // writes the result to `*out`. On success, it advances `cbs` past the parsed
 // element and returns one. On entry, `*out` must contain an `ASN1_TYPE` in some

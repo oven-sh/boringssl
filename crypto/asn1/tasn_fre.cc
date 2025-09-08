@@ -153,10 +153,7 @@ void bssl::ASN1_primitive_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
       break;
 
     case V_ASN1_ANY:
-      if (asn1_load_ptr(pval) != nullptr) {
-        asn1_type_cleanup(asn1_load_ptr_as<ASN1_TYPE>(pval));
-        OPENSSL_free(asn1_load_ptr(pval));
-      }
+      ASN1_TYPE_free(asn1_load_ptr_as<ASN1_TYPE>(pval));
       break;
 
     default:

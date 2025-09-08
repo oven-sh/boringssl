@@ -21,10 +21,48 @@
 #include <openssl/mem.h>
 #include <openssl/obj.h>
 
+#include "../bytestring/internal.h"
+#include "../internal.h"
 #include "internal.h"
 
 
 using namespace bssl;
+
+ASN1_TYPE *ASN1_TYPE_new() {
+  ASN1_TYPE *ret = New<ASN1_TYPE>();
+  if (ret == nullptr) {
+    return nullptr;
+  }
+  OPENSSL_memset(ret, 0, sizeof(ASN1_TYPE));
+  ret->type = -1;
+  return ret;
+}
+
+static void asn1_type_cleanup(ASN1_TYPE *a) {
+  switch (a->type) {
+    case V_ASN1_NULL:
+      a->value.ptr = nullptr;
+      break;
+    case V_ASN1_BOOLEAN:
+      a->value.boolean = ASN1_BOOLEAN_NONE;
+      break;
+    case V_ASN1_OBJECT:
+      ASN1_OBJECT_free(a->value.object);
+      a->value.object = nullptr;
+      break;
+    default:
+      ASN1_STRING_free(a->value.asn1_string);
+      a->value.asn1_string = nullptr;
+      break;
+  }
+}
+
+void ASN1_TYPE_free(ASN1_TYPE *a) {
+  if (a != nullptr) {
+    asn1_type_cleanup(a);
+    Delete(a);
+  }
+}
 
 int ASN1_TYPE_get(const ASN1_TYPE *a) {
   switch (a->type) {
@@ -66,25 +104,6 @@ void bssl::asn1_type_set0_string(ASN1_TYPE *a, ASN1_STRING *str) {
   assert(type != V_ASN1_NULL && type != V_ASN1_OBJECT &&
          type != V_ASN1_BOOLEAN);
   ASN1_TYPE_set(a, type, str);
-}
-
-void bssl::asn1_type_cleanup(ASN1_TYPE *a) {
-  switch (a->type) {
-    case V_ASN1_NULL:
-      a->value.ptr = nullptr;
-      break;
-    case V_ASN1_BOOLEAN:
-      a->value.boolean = ASN1_BOOLEAN_NONE;
-      break;
-    case V_ASN1_OBJECT:
-      ASN1_OBJECT_free(a->value.object);
-      a->value.object = nullptr;
-      break;
-    default:
-      ASN1_STRING_free(a->value.asn1_string);
-      a->value.asn1_string = nullptr;
-      break;
-  }
 }
 
 void ASN1_TYPE_set(ASN1_TYPE *a, int type, void *value) {
@@ -429,4 +448,20 @@ static int asn1_marshal_string_with_type(CBB *out, const ASN1_STRING *in,
 
 int bssl::asn1_marshal_any_string(CBB *out, const ASN1_STRING *in) {
   return asn1_marshal_string_with_type(out, in, in->type);
+}
+
+ASN1_TYPE *d2i_ASN1_TYPE(ASN1_TYPE **out, const uint8_t **inp, long len) {
+  return D2IFromCBS(out, inp, len, [](CBS *cbs) -> UniquePtr<ASN1_TYPE> {
+    UniquePtr<ASN1_TYPE> ret(ASN1_TYPE_new());
+    if (ret == nullptr || !asn1_parse_any(cbs, ret.get())) {
+      return nullptr;
+    }
+    return ret;
+  });
+}
+
+int i2d_ASN1_TYPE(const ASN1_TYPE *in, uint8_t **outp) {
+  return I2DFromCBB(/*initial_capacity=*/16, outp, [&](CBB *cbb) -> bool {
+    return asn1_marshal_any(cbb, in);
+  });
 }
