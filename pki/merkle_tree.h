@@ -29,11 +29,19 @@ BSSL_NAMESPACE_BEGIN
 // half-open interval [start, end) of tree indexes. A Subtree with start == end
 // represents a range of zero elements.
 struct Subtree {
-  uint64_t start;
-  uint64_t end;
+  uint64_t start = 0;
+  uint64_t end = 0;
 
   constexpr bool operator==(const Subtree &other) const {
     return start == other.start && end == other.end;
+  }
+
+  constexpr bool operator!=(const Subtree &other) const {
+    return !(*this == other);
+  }
+
+  constexpr bool operator<(const Subtree &other) const {
+    return std::tie(start, end) < std::tie(other.start, other.end);
   }
 
   // Returns the number of elements in the Subtree.
