@@ -1,151 +1,18 @@
-/* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
- * All rights reserved.
- *
- * This package is an SSL implementation written
- * by Eric Young (eay@cryptsoft.com).
- * The implementation was written so as to conform with Netscapes SSL.
- *
- * This library is free for commercial and non-commercial use as long as
- * the following conditions are aheared to.  The following conditions
- * apply to all code found in this distribution, be it the RC4, RSA,
- * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
- * included with this distribution is covered by the same copyright terms
- * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- *
- * Copyright remains Eric Young's, and as such any Copyright notices in
- * the code are not to be removed.
- * If this package is used in a product, Eric Young should be given attribution
- * as the author of the parts of the library used.
- * This can be in the form of a textual message at program startup or
- * in documentation (online or textual) provided with the package.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    "This product includes cryptographic software written by
- *     Eric Young (eay@cryptsoft.com)"
- *    The word 'cryptographic' can be left out if the rouines from the library
- *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from
- *    the apps directory (application code) you must include an acknowledgement:
- *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- *
- * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- * The licence and distribution terms for any publically available version or
- * derivative of this code cannot be changed.  i.e. this code cannot simply be
- * copied and put under another distribution licence
- * [including the GNU Public Licence.]
- */
-/* ====================================================================
- * Copyright (c) 1998-2007 The OpenSSL Project.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *
- * 3. All advertising materials mentioning features or use of this
- *    software must display the following acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
- *
- * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For written permission, please contact
- *    openssl-core@openssl.org.
- *
- * 5. Products derived from this software may not be called "OpenSSL"
- *    nor may "OpenSSL" appear in their names without prior written
- *    permission of the OpenSSL Project.
- *
- * 6. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
- *
- * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
- * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OpenSSL PROJECT OR
- * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
- * ====================================================================
- *
- * This product includes cryptographic software written by Eric Young
- * (eay@cryptsoft.com).  This product includes software written by Tim
- * Hudson (tjh@cryptsoft.com).
- *
- */
-/* ====================================================================
- * Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED.
- *
- * Portions of the attached software ("Contribution") are developed by
- * SUN MICROSYSTEMS, INC., and are contributed to the OpenSSL project.
- *
- * The Contribution is licensed pursuant to the OpenSSL open source
- * license provided above.
- *
- * ECC cipher suite support in OpenSSL originally written by
- * Vipul Gupta and Sumit Gupta of Sun Microsystems Laboratories.
- *
- */
-/* ====================================================================
- * Copyright 2005 Nokia. All rights reserved.
- *
- * The portions of the attached software ("Contribution") is developed by
- * Nokia Corporation and is licensed pursuant to the OpenSSL open source
- * license.
- *
- * The Contribution, originally written by Mika Kousa and Pasi Eronen of
- * Nokia Corporation, consists of the "PSK" (Pre-Shared Key) ciphersuites
- * support (see RFC 4279) to OpenSSL.
- *
- * No patent licenses or other rights except those expressly stated in
- * the OpenSSL open source license shall be deemed granted or received
- * expressly, by implication, estoppel, or otherwise.
- *
- * No assurances are provided by Nokia that the Contribution does not
- * infringe the patent or other intellectual property rights of any third
- * party or that the license provides you with all the necessary rights
- * to make use of the Contribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. IN
- * ADDITION TO THE DISCLAIMERS INCLUDED IN THE LICENSE, NOKIA
- * SPECIFICALLY DISCLAIMS ANY LIABILITY FOR CLAIMS BROUGHT BY YOU OR ANY
- * OTHER ENTITY BASED ON INFRINGEMENT OF INTELLECTUAL PROPERTY RIGHTS OR
- * OTHERWISE.
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -167,7 +34,7 @@
 #include <openssl/md5.h>
 #include <openssl/mem.h>
 #include <openssl/rand.h>
-#include <openssl/sha.h>
+#include <openssl/sha2.h>
 
 #include "../crypto/internal.h"
 #include "internal.h"
@@ -263,14 +130,14 @@ static bool ssl_write_client_cipher_list(const SSL_HANDSHAKE *hs, CBB *out,
                                 ? ssl->config->aes_hw_override_value
                                 : EVP_has_aes_hardware();
     const bssl::Span<const uint16_t> ciphers =
-        ssl->config->tls13_cipher_policy == ssl_compliance_policy_cnsa_202407
+        ssl->config->compliance_policy == ssl_compliance_policy_cnsa_202407
             ? bssl::Span<const uint16_t>(kCiphersCNSA)
             : (has_aes_hw ? bssl::Span<const uint16_t>(kCiphersAESHardware)
                           : bssl::Span<const uint16_t>(kCiphersNoAESHardware));
 
     for (auto cipher : ciphers) {
       if (!ssl_add_tls13_cipher(&child, cipher,
-                                ssl->config->tls13_cipher_policy)) {
+                                ssl->config->compliance_policy)) {
         return false;
       }
     }
@@ -372,7 +239,7 @@ bool ssl_add_client_hello(SSL_HANDSHAKE *hs) {
     // ClientHelloOuter cannot have a PSK binder. Otherwise the
     // ClientHellOuterAAD computation would break.
     assert(type != ssl_client_hello_outer);
-    if (!tls13_write_psk_binder(hs, hs->transcript, MakeSpan(msg),
+    if (!tls13_write_psk_binder(hs, hs->transcript, Span(msg),
                                 /*out_binder_len=*/0)) {
       return false;
     }
@@ -470,6 +337,7 @@ void ssl_done_writing_client_hello(SSL_HANDSHAKE *hs) {
   hs->ech_client_outer.Reset();
   hs->cookie.Reset();
   hs->key_share_bytes.Reset();
+  hs->pake_share_bytes.Reset();
 }
 
 static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
@@ -501,6 +369,10 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
         hs->max_version >= TLS1_2_VERSION ? TLS1_2_VERSION : hs->max_version;
   }
 
+  if (!ssl_setup_pake_shares(hs)) {
+    return ssl_hs_error;
+  }
+
   // If the configured session has expired or is not usable, drop it. We also do
   // not offer sessions on renegotiation.
   SSLSessionType session_type = SSLSessionType::kNotResumable;
@@ -517,6 +389,10 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
         // Don't offer TLS 1.2 tickets if disabled.
         (session_type == SSLSessionType::kTicket &&
          (SSL_get_options(ssl) & SSL_OP_NO_TICKET)) ||
+        // Don't offer sessions and PAKEs at the same time. We do not currently
+        // support resumption with PAKEs. (Offering both together would need
+        // more logic to conditionally send the key_share extension.)
+        hs->pake_prover != nullptr ||
         !ssl_session_is_time_valid(ssl, ssl->session.get()) ||
         SSL_is_quic(ssl) != int{ssl->session->is_quic} ||
         ssl->s3->initial_handshake_complete) {
@@ -557,7 +433,7 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
 
   if (!ssl_setup_key_shares(hs, /*override_group_id=*/0) ||
       !ssl_setup_extension_permutation(hs) ||
-      !ssl_encrypt_client_hello(hs, MakeConstSpan(ech_enc, ech_enc_len)) ||
+      !ssl_encrypt_client_hello(hs, Span(ech_enc, ech_enc_len)) ||
       !ssl_add_client_hello(hs)) {
     return ssl_hs_error;
   }
@@ -780,9 +656,16 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_ok;
   }
 
+  // If this client is configured to use a PAKE, then the server must support
+  // TLS 1.3.
+  if (hs->pake_prover) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_UNSUPPORTED_PROTOCOL);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_PROTOCOL_VERSION);
+    return ssl_hs_error;
+  }
+
   // Clear some TLS 1.3 state that no longer needs to be retained.
-  hs->key_shares[0].reset();
-  hs->key_shares[1].reset();
+  hs->key_shares.clear();
   ssl_done_writing_client_hello(hs);
 
   // TLS 1.2 handshakes cannot accept ECH.
@@ -804,8 +687,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
         sizeof(kJDK11DowngradeRandom) == sizeof(kTLS13DowngradeRandom),
         "downgrade signals have different size");
     auto suffix =
-        MakeConstSpan(ssl->s3->server_random, sizeof(ssl->s3->server_random))
-            .subspan(SSL3_RANDOM_SIZE - sizeof(kTLS13DowngradeRandom));
+        Span(ssl->s3->server_random).last(sizeof(kTLS13DowngradeRandom));
     if (suffix == kTLS12DowngradeRandom || suffix == kTLS13DowngradeRandom ||
         suffix == kJDK11DowngradeRandom) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_TLS13_DOWNGRADE);
@@ -1363,33 +1245,32 @@ static bool check_credential(SSL_HANDSHAKE *hs, const SSL_CREDENTIAL *cred,
     return false;
   }
 
-  if (hs->config->check_client_certificate_type) {
-    // Check the certificate types advertised by the peer.
-    uint8_t cert_type;
-    switch (EVP_PKEY_id(cred->pubkey.get())) {
-      case EVP_PKEY_RSA:
-        cert_type = SSL3_CT_RSA_SIGN;
-        break;
-      case EVP_PKEY_EC:
-      case EVP_PKEY_ED25519:
-        cert_type = TLS_CT_ECDSA_SIGN;
-        break;
-      default:
-        OPENSSL_PUT_ERROR(SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
-        return false;
-    }
-    if (std::find(hs->certificate_types.begin(), hs->certificate_types.end(),
-                  cert_type) == hs->certificate_types.end()) {
+  // Check the certificate types advertised by the peer.
+  uint8_t cert_type;
+  switch (EVP_PKEY_id(cred->pubkey.get())) {
+    case EVP_PKEY_RSA:
+      cert_type = SSL3_CT_RSA_SIGN;
+      break;
+    case EVP_PKEY_EC:
+    case EVP_PKEY_ED25519:
+      cert_type = TLS_CT_ECDSA_SIGN;
+      break;
+    default:
       OPENSSL_PUT_ERROR(SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
       return false;
-    }
+  }
+  if (std::find(hs->certificate_types.begin(), hs->certificate_types.end(),
+                cert_type) == hs->certificate_types.end()) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
+    return false;
   }
 
   // All currently supported credentials require a signature. Note this does not
   // check the ECDSA curve. Prior to TLS 1.3, there is no way to determine which
   // ECDSA curves are supported by the peer, so we must assume all curves are
   // supported.
-  return tls1_choose_signature_algorithm(hs, cred, out_sigalg);
+  return tls1_choose_signature_algorithm(hs, cred, out_sigalg) &&
+         ssl_credential_matches_requested_issuers(hs, cred);
 }
 
 static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
@@ -1420,7 +1301,7 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
   }
 
   Array<SSL_CREDENTIAL *> creds;
-  if (!ssl_get_credential_list(hs, &creds)) {
+  if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
 
@@ -1441,6 +1322,7 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
     }
     if (hs->credential == nullptr) {
       // The error from the last attempt is in the error queue.
+      assert(ERR_peek_error() != 0);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
       return ssl_hs_error;
     }
@@ -1611,8 +1493,7 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
   }
 
   hs->new_session->secret.ResizeForOverwrite(SSL3_MASTER_SECRET_SIZE);
-  if (!tls1_generate_master_secret(hs, MakeSpan(hs->new_session->secret),
-                                   pms)) {
+  if (!tls1_generate_master_secret(hs, Span(hs->new_session->secret), pms)) {
     return ssl_hs_error;
   }
 

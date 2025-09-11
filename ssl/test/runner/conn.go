@@ -62,7 +62,8 @@ type Conn struct {
 	// opposed to the ones presented by the server.
 	verifiedChains [][]*x509.Certificate
 	// serverName contains the server name indicated by the client, if any.
-	serverName string
+	serverName    string
+	serverNameAck bool
 	// firstFinished contains the first Finished hash sent during the
 	// handshake. This is the "tls-unique" channel binding value.
 	firstFinished [12]byte
@@ -1447,8 +1448,9 @@ func (c *Conn) readHandshake() (any, error) {
 		return nil, err
 	}
 
+	typ := data[0]
 	var m handshakeMessage
-	switch data[0] {
+	switch typ {
 	case typeHelloRequest:
 		m = new(helloRequestMsg)
 	case typeClientHello:
@@ -1517,13 +1519,14 @@ func (c *Conn) readHandshake() (any, error) {
 
 	if data[0] == typeServerHello && len(data) >= 38 {
 		vers := uint16(data[4])<<8 | uint16(data[5])
-		if vers == VersionTLS12 && bytes.Equal(data[6:38], tls13HelloRetryRequest) {
-			m = new(helloRetryRequestMsg)
+		if (vers == VersionDTLS12 || vers == VersionTLS12) && bytes.Equal(data[6:38], tls13HelloRetryRequest) {
+			m = &helloRetryRequestMsg{isDTLS: c.isDTLS}
 		}
 	}
 
 	if !m.unmarshal(data) {
-		return nil, c.in.setErrorLocked(c.sendAlert(alertDecodeError))
+		c.sendAlert(alertDecodeError)
+		return nil, c.in.setErrorLocked(fmt.Errorf("tls: error decoding %s message", messageTypeToString(typ)))
 	}
 	return m, nil
 }
@@ -1613,22 +1616,6 @@ func (c *Conn) Write(b []byte) (int, error) {
 }
 
 func (c *Conn) processTLS13NewSessionTicket(newSessionTicket *newSessionTicketMsg, cipherSuite *cipherSuite) error {
-	if c.config.Bugs.ExpectGREASE && !newSessionTicket.hasGREASEExtension {
-		return errors.New("tls: no GREASE ticket extension found")
-	}
-
-	if c.config.Bugs.ExpectTicketEarlyData && newSessionTicket.maxEarlyDataSize == 0 {
-		return errors.New("tls: no early_data ticket extension found")
-	}
-
-	if c.config.Bugs.ExpectNoNewSessionTicket || c.config.Bugs.ExpectNoNonEmptyNewSessionTicket {
-		return errors.New("tls: received unexpected NewSessionTicket")
-	}
-
-	if c.config.ClientSessionCache == nil || newSessionTicket.ticketLifetime == 0 {
-		return nil
-	}
-
 	session := &ClientSessionState{
 		sessionTicket:               newSessionTicket.ticket,
 		vers:                        c.vers,
@@ -1649,6 +1636,27 @@ func (c *Conn) processTLS13NewSessionTicket(newSessionTicket *newSessionTicketMs
 		hasApplicationSettingsOld:   c.hasApplicationSettingsOld,
 		localApplicationSettingsOld: c.localApplicationSettingsOld,
 		peerApplicationSettingsOld:  c.peerApplicationSettingsOld,
+		resumptionAcrossNames:       newSessionTicket.flags.hasFlag(flagResumptionAcrossNames),
+	}
+
+	if c.config.Bugs.ExpectGREASE && !newSessionTicket.hasGREASEExtension {
+		return errors.New("tls: no GREASE ticket extension found")
+	}
+
+	if c.config.Bugs.ExpectTicketEarlyData && newSessionTicket.maxEarlyDataSize == 0 {
+		return errors.New("tls: no early_data ticket extension found")
+	}
+
+	if c.config.Bugs.ExpectNoNewSessionTicket || c.config.Bugs.ExpectNoNonEmptyNewSessionTicket {
+		return errors.New("tls: received unexpected NewSessionTicket")
+	}
+
+	if expect := c.config.Bugs.ExpectResumptionAcrossNames; expect != nil && session.resumptionAcrossNames != *expect {
+		return errors.New("tls: resumption_across_names status of ticket did not match expectation")
+	}
+
+	if c.config.ClientSessionCache == nil || newSessionTicket.ticketLifetime == 0 {
+		return nil
 	}
 
 	cacheKey := clientSessionCacheKey(c.conn.RemoteAddr(), c.config)
@@ -1901,6 +1909,7 @@ func (c *Conn) ConnectionState() ConnectionState {
 		state.VerifiedChains = c.verifiedChains
 		state.OCSPResponse = c.ocspResponse
 		state.ServerName = c.serverName
+		state.ServerNameAck = c.serverNameAck
 		state.ChannelID = c.channelID
 		state.SRTPProtectionProfile = c.srtpProtectionProfile
 		state.TLSUnique = c.firstFinished[:]
@@ -2028,6 +2037,10 @@ func (c *Conn) SendNewSessionTicket(nonce []byte) error {
 		ticketAgeAdd:                ticketAgeAdd,
 		ticketNonce:                 nonce,
 		maxEarlyDataSize:            c.config.MaxEarlyDataSize,
+		flags: flagSet{
+			mustInclude: c.config.Bugs.AlwaysSendTicketFlags,
+			padding:     c.config.Bugs.TicketFlagPadding,
+		},
 	}
 	if c.config.Bugs.MockQUICTransport != nil && m.maxEarlyDataSize > 0 {
 		m.maxEarlyDataSize = 0xffffffff
@@ -2035,6 +2048,12 @@ func (c *Conn) SendNewSessionTicket(nonce []byte) error {
 
 	if c.config.Bugs.SendTicketLifetime != 0 {
 		m.ticketLifetime = uint32(c.config.Bugs.SendTicketLifetime / time.Second)
+	}
+	if c.config.ResumptionAcrossNames {
+		m.flags.setFlag(flagResumptionAcrossNames)
+	}
+	for _, flag := range c.config.Bugs.SendTicketFlags {
+		m.flags.setFlag(flag)
 	}
 
 	state := sessionState{

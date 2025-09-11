@@ -1,16 +1,16 @@
-/* Copyright (c) 2016, Google Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2016 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -18,13 +18,14 @@
 #include <limits.h>
 #include <string.h>
 
+#include <algorithm>
 #include <utility>
 
 #include <openssl/bytestring.h>
 #include <openssl/digest.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
-#include <openssl/sha.h>
+#include <openssl/sha2.h>
 #include <openssl/stack.h>
 
 #include "../crypto/internal.h"
@@ -117,9 +118,8 @@ static bool parse_server_hello_tls13(const SSL_HANDSHAKE *hs,
   // 5). The client could have sent a session ID indicating its willingness to
   // resume a DTLS 1.2 session, so just checking that the session IDs match is
   // incorrect.
-  Span<const uint8_t> expected_session_id = SSL_is_dtls(hs->ssl)
-                                                ? Span<const uint8_t>()
-                                                : MakeConstSpan(hs->session_id);
+  Span<const uint8_t> expected_session_id =
+      SSL_is_dtls(hs->ssl) ? Span<const uint8_t>() : Span(hs->session_id);
 
   // RFC 8446 fixes some legacy values. Check them.
   if (out->legacy_version != expected_version ||  //
@@ -212,7 +212,7 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
       SSL_CIPHER_get_min_version(cipher) > ssl_protocol_version(ssl) ||
       SSL_CIPHER_get_max_version(cipher) < ssl_protocol_version(ssl) ||
       !ssl_tls13_cipher_meets_policy(SSL_CIPHER_get_protocol_id(cipher),
-                                     ssl->config->tls13_cipher_policy)) {
+                                     ssl->config->compliance_policy)) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_CIPHER_RETURNED);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
     return ssl_hs_error;
@@ -252,7 +252,8 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
 
   // The ECH extension, if present, was already parsed by
   // |check_ech_confirmation|.
-  SSLExtension cookie(TLSEXT_TYPE_cookie), key_share(TLSEXT_TYPE_key_share),
+  SSLExtension cookie(TLSEXT_TYPE_cookie),
+      key_share(TLSEXT_TYPE_key_share, !hs->key_share_bytes.empty()),
       supported_versions(TLSEXT_TYPE_supported_versions),
       ech_unused(TLSEXT_TYPE_encrypted_client_hello,
                  hs->selected_ech_config || hs->config->ech_grease_enabled);
@@ -285,6 +286,10 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
   }
 
   if (key_share.present) {
+    // If offering PAKE, we won't send key_share extensions, in which case we
+    // would have rejected key_share from the peer.
+    assert(!hs->pake_prover);
+
     uint16_t group_id;
     if (!CBS_get_u16(&key_share.data, &group_id) ||
         CBS_len(&key_share.data) != 0) {
@@ -302,8 +307,10 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
 
     // Check that the HelloRetryRequest does not request a key share that was
     // provided in the initial ClientHello.
-    if (hs->key_shares[0]->GroupID() == group_id ||
-        (hs->key_shares[1] && hs->key_shares[1]->GroupID() == group_id)) {
+    if (std::find_if(hs->key_shares.begin(), hs->key_shares.end(),
+                     [group_id](const auto &hs_key_share) {
+                       return hs_key_share->GroupID() == group_id;
+                     }) != hs->key_shares.end()) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_CURVE);
       return ssl_hs_error;
@@ -422,12 +429,14 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
       ssl_session_get_type(ssl->session.get()) ==
           SSLSessionType::kPreSharedKey &&
       ssl->s3->ech_status != ssl_ech_rejected;
-  SSLExtension key_share(TLSEXT_TYPE_key_share),
+  SSLExtension key_share(TLSEXT_TYPE_key_share, !hs->key_shares.empty()),
+      pake_share(TLSEXT_TYPE_pake, hs->pake_prover != nullptr),
       pre_shared_key(TLSEXT_TYPE_pre_shared_key, pre_shared_key_allowed),
       supported_versions(TLSEXT_TYPE_supported_versions);
-  if (!ssl_parse_extensions(&server_hello.extensions, &alert,
-                            {&key_share, &pre_shared_key, &supported_versions},
-                            /*ignore_unknown=*/false)) {
+  if (!ssl_parse_extensions(
+          &server_hello.extensions, &alert,
+          {&key_share, &pre_shared_key, &supported_versions, &pake_share},
+          /*ignore_unknown=*/false)) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
     return ssl_hs_error;
   }
@@ -442,6 +451,39 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
     return ssl_hs_error;
   }
+
+  // The combination of ServerHello extensions determines the kind of handshake
+  // that the server selected. Check for invalid combinations.
+
+  // pake replaces key_share and may not be used with pre_shared_key.
+  if (pake_share.present && (key_share.present || pre_shared_key.present)) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_UNEXPECTED_EXTENSION);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_UNSUPPORTED_EXTENSION);
+    return ssl_hs_error;
+  }
+  // In PAKE mode, we require a PAKE handshake and do not support resumption.
+  if (hs->pake_prover != nullptr && !pake_share.present) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_MISSING_EXTENSION);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_MISSING_EXTENSION);
+    return ssl_hs_error;
+  }
+  // In non-PAKE modes, we require per-connection forward secrecy and do not
+  // support psk_ke.
+  if (hs->pake_prover == nullptr && !key_share.present) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_MISSING_KEY_SHARE);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_MISSING_EXTENSION);
+    return ssl_hs_error;
+  }
+  // The above imples only one of three handshake forms will be allowed. The
+  // checks for unsolicited extensions ensure the server did not select
+  // something we cannot respond to.
+  assert(
+      // Full handshake
+      (key_share.present && !pake_share.present && !pre_shared_key.present) ||
+      // PSK/resumption handshake
+      (key_share.present && !pake_share.present && pre_shared_key.present) ||
+      // PAKE handshake
+      (!key_share.present && pake_share.present && !pre_shared_key.present));
 
   alert = SSL_AD_DECODE_ERROR;
   if (pre_shared_key.present) {
@@ -496,29 +538,34 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
   size_t hash_len = EVP_MD_size(
       ssl_get_handshake_digest(ssl_protocol_version(ssl), hs->new_cipher));
   if (!tls13_init_key_schedule(hs, ssl->s3->session_reused
-                                       ? MakeConstSpan(hs->new_session->secret)
-                                       : MakeConstSpan(kZeroes, hash_len))) {
+                                       ? Span(hs->new_session->secret)
+                                       : Span(kZeroes, hash_len))) {
     return ssl_hs_error;
   }
 
-  if (!key_share.present) {
-    // We do not support psk_ke and thus always require a key share.
-    OPENSSL_PUT_ERROR(SSL, SSL_R_MISSING_KEY_SHARE);
-    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_MISSING_EXTENSION);
-    return ssl_hs_error;
-  }
-
-  // Resolve ECDHE and incorporate it into the secret.
-  Array<uint8_t> dhe_secret;
+  // Resolve ECDHE or PAKE and incorporate it into the secret.
+  Array<uint8_t> shared_secret;
   alert = SSL_AD_DECODE_ERROR;
-  if (!ssl_ext_key_share_parse_serverhello(hs, &dhe_secret, &alert,
-                                           &key_share.data)) {
-    ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
+  if (key_share.present) {
+    if (!ssl_ext_key_share_parse_serverhello(hs, &shared_secret, &alert,
+                                             &key_share.data)) {
+      ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
+      return ssl_hs_error;
+    }
+  } else if (pake_share.present) {
+    if (!ssl_ext_pake_parse_serverhello(hs, &shared_secret, &alert,
+                                        &pake_share.data)) {
+      ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
+      return ssl_hs_error;
+    }
+  } else {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
     return ssl_hs_error;
   }
 
-  if (!tls13_advance_key_schedule(hs, dhe_secret) ||  //
-      !ssl_hash_message(hs, msg) ||                   //
+  if (!tls13_advance_key_schedule(hs, shared_secret) ||  //
+      !ssl_hash_message(hs, msg) ||                      //
       !tls13_derive_handshake_secrets(hs)) {
     return ssl_hs_error;
   }
@@ -582,8 +629,7 @@ static enum ssl_hs_wait_t do_read_encrypted_extensions(SSL_HANDSHAKE *hs) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       return ssl_hs_error;
     }
-    if (MakeConstSpan(hs->early_session->early_alpn) !=
-        ssl->s3->alpn_selected) {
+    if (Span(hs->early_session->early_alpn) != ssl->s3->alpn_selected) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_ALPN_MISMATCH_ON_EARLY_DATA);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       return ssl_hs_error;
@@ -640,6 +686,11 @@ static enum ssl_hs_wait_t do_read_certificate_request(SSL_HANDSHAKE *hs) {
     return ssl_hs_ok;
   }
 
+  if (hs->pake_prover) {
+    hs->tls13_state = state_read_server_finished;
+    return ssl_hs_ok;
+  }
+
   SSLMessage msg;
   if (!ssl->method->get_message(ssl, &msg)) {
     return ssl_hs_read_message;
@@ -650,7 +701,6 @@ static enum ssl_hs_wait_t do_read_certificate_request(SSL_HANDSHAKE *hs) {
     hs->tls13_state = state_read_server_certificate;
     return ssl_hs_ok;
   }
-
 
   SSLExtension sigalgs(TLSEXT_TYPE_signature_algorithms),
       ca(TLSEXT_TYPE_certificate_authorities);
@@ -771,8 +821,8 @@ static enum ssl_hs_wait_t do_read_server_finished(SSL_HANDSHAKE *hs) {
       !tls13_process_finished(hs, msg, false /* don't use saved value */) ||
       !ssl_hash_message(hs, msg) ||
       // Update the secret to the master secret and derive traffic keys.
-      !tls13_advance_key_schedule(
-          hs, MakeConstSpan(kZeroes, hs->transcript.DigestLen())) ||
+      !tls13_advance_key_schedule(hs,
+                                  Span(kZeroes, hs->transcript.DigestLen())) ||
       !tls13_derive_application_secrets(hs)) {
     return ssl_hs_error;
   }
@@ -888,7 +938,7 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
   }
 
   Array<SSL_CREDENTIAL *> creds;
-  if (!ssl_get_credential_list(hs, &creds)) {
+  if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
 
@@ -905,6 +955,7 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
     }
     if (hs->credential == nullptr) {
       // The error from the last attempt is in the error queue.
+      assert(ERR_peek_error() != 0);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
       return ssl_hs_error;
     }
@@ -1141,8 +1192,9 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
   }
 
   SSLExtension early_data(TLSEXT_TYPE_early_data);
+  SSLExtension flags(TLSEXT_TYPE_tls_flags);
   uint8_t alert = SSL_AD_DECODE_ERROR;
-  if (!ssl_parse_extensions(&extensions, &alert, {&early_data},
+  if (!ssl_parse_extensions(&extensions, &alert, {&early_data, &flags},
                             /*ignore_unknown=*/true)) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
     return nullptr;
@@ -1162,6 +1214,17 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
       return nullptr;
+    }
+  }
+
+  if (flags.present) {
+    SSLFlags parsed;
+    if (!ssl_parse_flags_extension_request(&flags.data, &parsed, &alert)) {
+      ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
+      return nullptr;
+    }
+    if (parsed & kSSLFlagResumptionAcrossNames) {
+      session->is_resumable_across_names = true;
     }
   }
 
