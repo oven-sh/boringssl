@@ -1,143 +1,18 @@
-/* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
- * All rights reserved.
- *
- * This package is an SSL implementation written
- * by Eric Young (eay@cryptsoft.com).
- * The implementation was written so as to conform with Netscapes SSL.
- *
- * This library is free for commercial and non-commercial use as long as
- * the following conditions are aheared to.  The following conditions
- * apply to all code found in this distribution, be it the RC4, RSA,
- * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
- * included with this distribution is covered by the same copyright terms
- * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- *
- * Copyright remains Eric Young's, and as such any Copyright notices in
- * the code are not to be removed.
- * If this package is used in a product, Eric Young should be given attribution
- * as the author of the parts of the library used.
- * This can be in the form of a textual message at program startup or
- * in documentation (online or textual) provided with the package.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    "This product includes cryptographic software written by
- *     Eric Young (eay@cryptsoft.com)"
- *    The word 'cryptographic' can be left out if the rouines from the library
- *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from
- *    the apps directory (application code) you must include an acknowledgement:
- *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- *
- * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- * The licence and distribution terms for any publically available version or
- * derivative of this code cannot be changed.  i.e. this code cannot simply be
- * copied and put under another distribution licence
- * [including the GNU Public Licence.]
- */
-/* ====================================================================
- * Copyright (c) 1998-2007 The OpenSSL Project.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *
- * 3. All advertising materials mentioning features or use of this
- *    software must display the following acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
- *
- * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For written permission, please contact
- *    openssl-core@openssl.org.
- *
- * 5. Products derived from this software may not be called "OpenSSL"
- *    nor may "OpenSSL" appear in their names without prior written
- *    permission of the OpenSSL Project.
- *
- * 6. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
- *
- * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
- * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OpenSSL PROJECT OR
- * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
- * ====================================================================
- *
- * This product includes cryptographic software written by Eric Young
- * (eay@cryptsoft.com).  This product includes software written by Tim
- * Hudson (tjh@cryptsoft.com).
- *
- */
-/* ====================================================================
- * Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED.
- * ECC cipher suite support in OpenSSL originally developed by
- * SUN MICROSYSTEMS, INC., and contributed to the OpenSSL project.
- */
-/* ====================================================================
- * Copyright 2005 Nokia. All rights reserved.
- *
- * The portions of the attached software ("Contribution") is developed by
- * Nokia Corporation and is licensed pursuant to the OpenSSL open source
- * license.
- *
- * The Contribution, originally written by Mika Kousa and Pasi Eronen of
- * Nokia Corporation, consists of the "PSK" (Pre-Shared Key) ciphersuites
- * support (see RFC 4279) to OpenSSL.
- *
- * No patent licenses or other rights except those expressly stated in
- * the OpenSSL open source license shall be deemed granted or received
- * expressly, by implication, estoppel, or otherwise.
- *
- * No assurances are provided by Nokia that the Contribution does not
- * infringe the patent or other intellectual property rights of any third
- * party or that the license provides you with all the necessary rights
- * to make use of the Contribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. IN
- * ADDITION TO THE DISCLAIMERS INCLUDED IN THE LICENSE, NOKIA
- * SPECIFICALLY DISCLAIMS ANY LIABILITY FOR CLAIMS BROUGHT BY YOU OR ANY
- * OTHER ENTITY BASED ON INFRINGEMENT OF INTELLECTUAL PROPERTY RIGHTS OR
- * OTHERWISE.
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_SSL_INTERNAL_H
 #define OPENSSL_HEADER_SSL_INTERNAL_H
@@ -147,10 +22,13 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <atomic>
 #include <bitset>
 #include <initializer_list>
 #include <limits>
 #include <new>
+#include <optional>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -158,7 +36,6 @@
 #include <openssl/curve25519.h>
 #include <openssl/err.h>
 #include <openssl/hpke.h>
-#include <openssl/lhash.h>
 #include <openssl/mem.h>
 #include <openssl/span.h>
 #include <openssl/ssl.h>
@@ -167,13 +44,13 @@
 #include "../crypto/err/internal.h"
 #include "../crypto/internal.h"
 #include "../crypto/lhash/internal.h"
+#include "../crypto/mem_internal.h"
+#include "../crypto/spake2plus/internal.h"
 
 
 #if defined(OPENSSL_WINDOWS)
 // Windows defines struct timeval in winsock2.h.
-OPENSSL_MSVC_PRAGMA(warning(push, 3))
 #include <winsock2.h>
-OPENSSL_MSVC_PRAGMA(warning(pop))
 #else
 #include <sys/time.h>
 #endif
@@ -187,492 +64,6 @@ struct SSL_PROTOCOL_METHOD;
 struct SSL_X509_METHOD;
 
 // C++ utilities.
-
-// Fill-ins for various functions in C++17.
-// TODO(crbug.com/42290600): Replace these with the standard ones when we
-// require C++17.
-
-template <typename ForwardIt>
-ForwardIt cxx17_uninitialized_default_construct_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    new (std::addressof(*first)) T;
-    first++;
-    n--;
-  }
-  return first;
-}
-
-template <typename ForwardIt>
-ForwardIt cxx17_uninitialized_value_construct_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    new (std::addressof(*first)) T();
-    first++;
-    n--;
-  }
-  return first;
-}
-
-template <typename InputIt, typename OutputIt>
-InputIt cxx17_uninitialized_move(InputIt first, InputIt last, OutputIt out) {
-  using OutputT = typename std::iterator_traits<OutputIt>::value_type;
-  for (; first != last; ++first) {
-    new (std::addressof(*out)) OutputT(std::move(*first));
-    ++out;
-  }
-  return out;
-}
-
-template <typename ForwardIt>
-ForwardIt cxx17_destroy_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    first->~T();
-    first++;
-    n--;
-  }
-  return first;
-}
-
-// New behaves like |new| but uses |OPENSSL_malloc| for memory allocation. It
-// returns nullptr on allocation error. It only implements single-object
-// allocation and not new T[n].
-//
-// Note: unlike |new|, this does not support non-public constructors.
-template <typename T, typename... Args>
-T *New(Args &&...args) {
-  void *t = OPENSSL_malloc(sizeof(T));
-  if (t == nullptr) {
-    return nullptr;
-  }
-  return new (t) T(std::forward<Args>(args)...);
-}
-
-// Delete behaves like |delete| but uses |OPENSSL_free| to release memory.
-//
-// Note: unlike |delete| this does not support non-public destructors.
-template <typename T>
-void Delete(T *t) {
-  if (t != nullptr) {
-    t->~T();
-    OPENSSL_free(t);
-  }
-}
-
-// All types with kAllowUniquePtr set may be used with UniquePtr. Other types
-// may be C structs which require a |BORINGSSL_MAKE_DELETER| registration.
-namespace internal {
-template <typename T>
-struct DeleterImpl<T, std::enable_if_t<T::kAllowUniquePtr>> {
-  static void Free(T *t) { Delete(t); }
-};
-}  // namespace internal
-
-// MakeUnique behaves like |std::make_unique| but returns nullptr on allocation
-// error.
-template <typename T, typename... Args>
-UniquePtr<T> MakeUnique(Args &&...args) {
-  return UniquePtr<T>(New<T>(std::forward<Args>(args)...));
-}
-
-// Array<T> is an owning array of elements of |T|.
-template <typename T>
-class Array {
- public:
-  // Array's default constructor creates an empty array.
-  Array() {}
-  Array(const Array &) = delete;
-  Array(Array &&other) { *this = std::move(other); }
-
-  ~Array() { Reset(); }
-
-  Array &operator=(const Array &) = delete;
-  Array &operator=(Array &&other) {
-    Reset();
-    other.Release(&data_, &size_);
-    return *this;
-  }
-
-  const T *data() const { return data_; }
-  T *data() { return data_; }
-  size_t size() const { return size_; }
-  bool empty() const { return size_ == 0; }
-
-  const T &operator[](size_t i) const {
-    BSSL_CHECK(i < size_);
-    return data_[i];
-  }
-  T &operator[](size_t i) {
-    BSSL_CHECK(i < size_);
-    return data_[i];
-  }
-
-  T *begin() { return data_; }
-  const T *begin() const { return data_; }
-  T *end() { return data_ + size_; }
-  const T *end() const { return data_ + size_; }
-
-  void Reset() { Reset(nullptr, 0); }
-
-  // Reset releases the current contents of the array and takes ownership of the
-  // raw pointer supplied by the caller.
-  void Reset(T *new_data, size_t new_size) {
-    cxx17_destroy_n(data_, size_);
-    OPENSSL_free(data_);
-    data_ = new_data;
-    size_ = new_size;
-  }
-
-  // Release releases ownership of the array to a raw pointer supplied by the
-  // caller.
-  void Release(T **out, size_t *out_size) {
-    *out = data_;
-    *out_size = size_;
-    data_ = nullptr;
-    size_ = 0;
-  }
-
-  // Init replaces the array with a newly-allocated array of |new_size|
-  // value-constructed copies of |T|. It returns true on success and false on
-  // error. If |T| is a primitive type like |uint8_t|, value-construction means
-  // it will be zero-initialized.
-  bool Init(size_t new_size) {
-    if (!InitUninitialized(new_size)) {
-      return false;
-    }
-    cxx17_uninitialized_value_construct_n(data_, size_);
-    return true;
-  }
-
-  // InitForOverwrite behaves like |Init| but it default-constructs each element
-  // instead. This means that, if |T| is a primitive type, the array will be
-  // uninitialized and thus must be filled in by the caller.
-  bool InitForOverwrite(size_t new_size) {
-    if (!InitUninitialized(new_size)) {
-      return false;
-    }
-    cxx17_uninitialized_default_construct_n(data_, size_);
-    return true;
-  }
-
-  // CopyFrom replaces the array with a newly-allocated copy of |in|. It returns
-  // true on success and false on error.
-  bool CopyFrom(Span<const T> in) {
-    if (!InitUninitialized(in.size())) {
-      return false;
-    }
-    std::uninitialized_copy(in.begin(), in.end(), data_);
-    return true;
-  }
-
-  // Shrink shrinks the stored size of the array to |new_size|. It crashes if
-  // the new size is larger. Note this does not shrink the allocation itself.
-  void Shrink(size_t new_size) {
-    if (new_size > size_) {
-      abort();
-    }
-    cxx17_destroy_n(data_ + new_size, size_ - new_size);
-    size_ = new_size;
-  }
-
- private:
-  // InitUninitialized replaces the array with a newly-allocated array of
-  // |new_size| elements, but whose constructor has not yet run. On success, the
-  // elements must be constructed before returning control to the caller.
-  bool InitUninitialized(size_t new_size) {
-    Reset();
-    if (new_size == 0) {
-      return true;
-    }
-
-    if (new_size > std::numeric_limits<size_t>::max() / sizeof(T)) {
-      OPENSSL_PUT_ERROR(SSL, ERR_R_OVERFLOW);
-      return false;
-    }
-    data_ = reinterpret_cast<T *>(OPENSSL_malloc(new_size * sizeof(T)));
-    if (data_ == nullptr) {
-      return false;
-    }
-    size_ = new_size;
-    return true;
-  }
-
-  T *data_ = nullptr;
-  size_t size_ = 0;
-};
-
-// Vector<T> is a resizable array of elements of |T|.
-template <typename T>
-class Vector {
- public:
-  Vector() = default;
-  Vector(const Vector &) = delete;
-  Vector(Vector &&other) { *this = std::move(other); }
-  ~Vector() { clear(); }
-
-  Vector &operator=(const Vector &) = delete;
-  Vector &operator=(Vector &&other) {
-    clear();
-    std::swap(data_, other.data_);
-    std::swap(size_, other.size_);
-    std::swap(capacity_, other.capacity_);
-    return *this;
-  }
-
-  const T *data() const { return data_; }
-  T *data() { return data_; }
-  size_t size() const { return size_; }
-  bool empty() const { return size_ == 0; }
-
-  const T &operator[](size_t i) const {
-    BSSL_CHECK(i < size_);
-    return data_[i];
-  }
-  T &operator[](size_t i) {
-    BSSL_CHECK(i < size_);
-    return data_[i];
-  }
-
-  T *begin() { return data_; }
-  const T *begin() const { return data_; }
-  T *end() { return data_ + size_; }
-  const T *end() const { return data_ + size_; }
-
-  void clear() {
-    cxx17_destroy_n(data_, size_);
-    OPENSSL_free(data_);
-    data_ = nullptr;
-    size_ = 0;
-    capacity_ = 0;
-  }
-
-  // Push adds |elem| at the end of the internal array, growing if necessary. It
-  // returns false when allocation fails.
-  bool Push(T elem) {
-    if (!MaybeGrow()) {
-      return false;
-    }
-    new (&data_[size_]) T(std::move(elem));
-    size_++;
-    return true;
-  }
-
-  // CopyFrom replaces the contents of the array with a copy of |in|. It returns
-  // true on success and false on allocation error.
-  bool CopyFrom(Span<const T> in) {
-    Array<T> copy;
-    if (!copy.CopyFrom(in)) {
-      return false;
-    }
-
-    clear();
-    copy.Release(&data_, &size_);
-    capacity_ = size_;
-    return true;
-  }
-
- private:
-  // If there is no room for one more element, creates a new backing array with
-  // double the size of the old one and copies elements over.
-  bool MaybeGrow() {
-    // No need to grow if we have room for one more T.
-    if (size_ < capacity_) {
-      return true;
-    }
-    size_t new_capacity = kDefaultSize;
-    if (capacity_ > 0) {
-      // Double the array's size if it's safe to do so.
-      if (capacity_ > std::numeric_limits<size_t>::max() / 2) {
-        OPENSSL_PUT_ERROR(SSL, ERR_R_OVERFLOW);
-        return false;
-      }
-      new_capacity = capacity_ * 2;
-    }
-    if (new_capacity > std::numeric_limits<size_t>::max() / sizeof(T)) {
-      OPENSSL_PUT_ERROR(SSL, ERR_R_OVERFLOW);
-      return false;
-    }
-    T *new_data =
-        reinterpret_cast<T *>(OPENSSL_malloc(new_capacity * sizeof(T)));
-    if (new_data == nullptr) {
-      return false;
-    }
-    size_t new_size = size_;
-    cxx17_uninitialized_move(begin(), end(), new_data);
-    clear();
-    data_ = new_data;
-    size_ = new_size;
-    capacity_ = new_capacity;
-    return true;
-  }
-
-  // data_ is a pointer to |capacity_| objects of size |T|, the first |size_| of
-  // which are constructed.
-  T *data_ = nullptr;
-  // |size_| is the number of elements stored in this Vector.
-  size_t size_ = 0;
-  // |capacity_| is the number of elements allocated in this Vector.
-  size_t capacity_ = 0;
-  // |kDefaultSize| is the default initial size of the backing array.
-  static constexpr size_t kDefaultSize = 16;
-};
-
-// A PackedSize is an integer that can store values from 0 to N, represented as
-// a minimal-width integer.
-template <size_t N>
-using PackedSize = std::conditional_t<
-    N <= 0xff, uint8_t,
-    std::conditional_t<N <= 0xffff, uint16_t,
-                       std::conditional_t<N <= 0xffffffff, uint32_t, size_t>>>;
-
-// An InplaceVector is like a Vector, but stores up to N elements inline in the
-// object. It is inspired by std::inplace_vector in C++26.
-template <typename T, size_t N>
-class InplaceVector {
- public:
-  InplaceVector() = default;
-  InplaceVector(const InplaceVector &other) { *this = other; }
-  InplaceVector(InplaceVector &&other) { *this = std::move(other); }
-  ~InplaceVector() { clear(); }
-  InplaceVector &operator=(const InplaceVector &other) {
-    if (this != &other) {
-      CopyFrom(other);
-    }
-    return *this;
-  }
-  InplaceVector &operator=(InplaceVector &&other) {
-    clear();
-    cxx17_uninitialized_move(other.begin(), other.end(), data());
-    size_ = other.size();
-    return *this;
-  }
-
-  const T *data() const { return reinterpret_cast<const T *>(storage_); }
-  T *data() { return reinterpret_cast<T *>(storage_); }
-  size_t size() const { return size_; }
-  static constexpr size_t capacity() { return N; }
-  bool empty() const { return size_ == 0; }
-
-  const T &operator[](size_t i) const {
-    BSSL_CHECK(i < size_);
-    return data()[i];
-  }
-  T &operator[](size_t i) {
-    BSSL_CHECK(i < size_);
-    return data()[i];
-  }
-
-  T *begin() { return data(); }
-  const T *begin() const { return data(); }
-  T *end() { return data() + size_; }
-  const T *end() const { return data() + size_; }
-
-  void clear() { Shrink(0); }
-
-  // Shrink resizes the vector to |new_size|, which must not be larger than the
-  // current size. Unlike |Resize|, this can be called when |T| is not
-  // default-constructible.
-  void Shrink(size_t new_size) {
-    BSSL_CHECK(new_size <= size_);
-    cxx17_destroy_n(data() + new_size, size_ - new_size);
-    size_ = static_cast<PackedSize<N>>(new_size);
-  }
-
-  // TryResize resizes the vector to |new_size| and returns true, or returns
-  // false if |new_size| is too large. Any newly-added elements are
-  // value-initialized.
-  bool TryResize(size_t new_size) {
-    if (new_size <= size_) {
-      Shrink(new_size);
-      return true;
-    }
-    if (new_size > capacity()) {
-      return false;
-    }
-    cxx17_uninitialized_value_construct_n(data() + size_, new_size - size_);
-    size_ = static_cast<PackedSize<N>>(new_size);
-    return true;
-  }
-
-  // TryResizeForOverwrite behaves like |TryResize|, but newly-added elements
-  // are default-initialized, so POD types may contain uninitialized values that
-  // the caller is responsible for filling in.
-  bool TryResizeForOverwrite(size_t new_size) {
-    if (new_size <= size_) {
-      Shrink(new_size);
-      return true;
-    }
-    if (new_size > capacity()) {
-      return false;
-    }
-    cxx17_uninitialized_default_construct_n(data() + size_, new_size - size_);
-    size_ = static_cast<PackedSize<N>>(new_size);
-    return true;
-  }
-
-  // TryCopyFrom sets the vector to a copy of |in| and returns true, or returns
-  // false if |in| is too large.
-  bool TryCopyFrom(Span<const T> in) {
-    if (in.size() > capacity()) {
-      return false;
-    }
-    clear();
-    std::uninitialized_copy(in.begin(), in.end(), data());
-    size_ = in.size();
-    return true;
-  }
-
-  // TryPushBack appends |val| to the vector and returns a pointer to the
-  // newly-inserted value, or nullptr if the vector is at capacity.
-  T *TryPushBack(T val) {
-    if (size() >= capacity()) {
-      return nullptr;
-    }
-    T *ret = &data()[size_];
-    new (ret) T(std::move(val));
-    size_++;
-    return ret;
-  }
-
-  // The following methods behave like their |Try*| counterparts, but abort the
-  // program on failure.
-  void Resize(size_t size) { BSSL_CHECK(TryResize(size)); }
-  void ResizeForOverwrite(size_t size) {
-    BSSL_CHECK(TryResizeForOverwrite(size));
-  }
-  void CopyFrom(Span<const T> in) { BSSL_CHECK(TryCopyFrom(in)); }
-  T &PushBack(T val) {
-    T *ret = TryPushBack(std::move(val));
-    BSSL_CHECK(ret != nullptr);
-    return *ret;
-  }
-
-  template <typename Pred>
-  void EraseIf(Pred pred) {
-    // See if anything needs to be erased at all. This avoids a self-move.
-    auto iter = std::find_if(begin(), end(), pred);
-    if (iter == end()) {
-      return;
-    }
-
-    // Elements before the first to be erased may be left as-is.
-    size_t new_size = iter - begin();
-    // Swap all subsequent elements in if they are to be kept.
-    for (size_t i = new_size + 1; i < size(); i++) {
-      if (!pred((*this)[i])) {
-        (*this)[new_size] = std::move((*this)[i]);
-        new_size++;
-      }
-    }
-
-    Shrink(new_size);
-  }
-
- private:
-  alignas(T) char storage_[sizeof(T[N])];
-  PackedSize<N> size_ = 0;
-};
 
 // An MRUQueue maintains a queue of up to |N| objects of type |T|. If the queue
 // is at capacity, adding to the queue pops the least recently added element.
@@ -731,7 +122,7 @@ template <typename T, typename Name>
 inline size_t GetAllNames(const char **out, size_t max_out,
                           Span<const char *const> fixed_names, Name(T::*name),
                           Span<const T> objects) {
-  auto span = bssl::MakeSpan(out, max_out);
+  auto span = bssl::Span(out, max_out);
   for (size_t i = 0; !span.empty() && i < fixed_names.size(); i++) {
     span[0] = fixed_names[i];
     span = span.subspan(1);
@@ -1054,8 +445,8 @@ class SSLTranscript {
   bool CopyToHashContext(EVP_MD_CTX *ctx, const EVP_MD *digest) const;
 
   Span<const uint8_t> buffer() const {
-    return MakeConstSpan(reinterpret_cast<const uint8_t *>(buffer_->data),
-                         buffer_->length);
+    return Span(reinterpret_cast<const uint8_t *>(buffer_->data),
+                buffer_->length);
   }
 
   // FreeBuffer releases the handshake buffer. Subsequent calls to
@@ -1109,7 +500,7 @@ class SSLTranscript {
 // as the secret and |label| as the label. |seed1| and |seed2| are concatenated
 // to form the seed parameter. It returns true on success and false on failure.
 bool tls1_prf(const EVP_MD *digest, Span<uint8_t> out,
-              Span<const uint8_t> secret, Span<const char> label,
+              Span<const uint8_t> secret, std::string_view label,
               Span<const uint8_t> seed1, Span<const uint8_t> seed2);
 
 
@@ -1263,7 +654,7 @@ class DTLSReplayBitmap {
   // to |max_seq_num_ - i|.
   std::bitset<256> map_;
   // max_seq_num_ is the largest sequence number seen so far as a 64-bit
-  // integer.
+  // integer, or zero if none have been seen.
   uint64_t max_seq_num_ = 0;
 };
 
@@ -1347,6 +738,7 @@ struct DTLSReadEpoch {
   UniquePtr<SSLAEADContext> aead;
   UniquePtr<RecordNumberEncrypter> rn_encrypter;
   DTLSReplayBitmap bitmap;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> traffic_secret;
 };
 
 struct DTLSWriteEpoch {
@@ -1357,6 +749,7 @@ struct DTLSWriteEpoch {
   DTLSRecordNumber next_record;
   UniquePtr<SSLAEADContext> aead;
   UniquePtr<RecordNumberEncrypter> rn_encrypter;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> traffic_secret;
 };
 
 // ssl_record_prefix_len returns the length of the prefix before the ciphertext
@@ -1445,6 +838,11 @@ size_t dtls_seal_prefix_len(const SSL *ssl, uint16_t epoch);
 // fit in a record of up to |max_out| bytes, or zero if none may fit.
 size_t dtls_seal_max_input_len(const SSL *ssl, uint16_t epoch, size_t max_out);
 
+// dtls_get_read_epoch and dtls_get_write_epoch return the epoch corresponding
+// to |epoch| or nullptr if there is none.
+DTLSReadEpoch *dtls_get_read_epoch(const SSL *ssl, uint16_t epoch);
+DTLSWriteEpoch *dtls_get_write_epoch(const SSL *ssl, uint16_t epoch);
+
 // dtls_seal_record implements |tls_seal_record| for DTLS. |epoch| selects which
 // epoch's cipher state to use. Unlike |tls_seal_record|, |in| and |out| may
 // alias but, if they do, |in| must be exactly |dtls_seal_prefix_len| bytes
@@ -1479,6 +877,12 @@ enum ssl_private_key_result_t ssl_private_key_decrypt(SSL_HANDSHAKE *hs,
                                                       size_t *out_len,
                                                       size_t max_out,
                                                       Span<const uint8_t> in);
+
+// ssl_parse_peer_subject_public_key_info decodes a SubjectPublicKeyInfo
+// representing the peer TLS key. It returns a newly-allocated |EVP_PKEY| or
+// nullptr on error.
+bssl::UniquePtr<EVP_PKEY> ssl_parse_peer_subject_public_key_info(
+    Span<const uint8_t> spki);
 
 // ssl_pkey_supports_algorithm returns whether |pkey| may be used to sign
 // |sigalg|.
@@ -1549,6 +953,13 @@ struct NamedGroup {
 
 // NamedGroups returns all supported groups.
 Span<const NamedGroup> NamedGroups();
+
+// kNumNamedGroups is the number of supported groups.
+constexpr size_t kNumNamedGroups = 7u;
+
+// DefaultSupportedGroupIds returns the list of IDs for the default groups that
+// are supported when the caller hasn't explicitly configured supported groups.
+Span<const uint16_t> DefaultSupportedGroupIds();
 
 // ssl_nid_to_group_id looks up the group corresponding to |nid|. On success, it
 // sets |*out_group_id| to the group ID and returns true. Otherwise, it returns
@@ -1643,11 +1054,9 @@ class SSLBuffer {
   bool empty() const { return size_ == 0; }
   size_t cap() const { return cap_; }
 
-  Span<uint8_t> span() { return MakeSpan(data(), size()); }
+  Span<uint8_t> span() { return Span(data(), size()); }
 
-  Span<uint8_t> remaining() {
-    return MakeSpan(data() + size(), cap() - size());
-  }
+  Span<uint8_t> remaining() { return Span(data() + size(), cap() - size()); }
 
   // Clear releases the buffer.
   void Clear();
@@ -1682,9 +1091,6 @@ class SSLBuffer {
   uint16_t cap_ = 0;
   // inline_buf_ is a static buffer for short reads.
   uint8_t inline_buf_[SSL3_RT_HEADER_LENGTH];
-  // buf_allocated_ is true if |buf_| points to allocated data and must be freed
-  // or false if it points into |inline_buf_|.
-  bool buf_allocated_ = false;
 };
 
 // ssl_read_buffer_extend_to extends the read buffer to the desired length. For
@@ -1833,9 +1239,9 @@ bool tls13_derive_resumption_secret(SSL_HANDSHAKE *hs);
 
 // tls13_export_keying_material provides an exporter interface to use the
 // |exporter_secret|.
-bool tls13_export_keying_material(SSL *ssl, Span<uint8_t> out,
+bool tls13_export_keying_material(const SSL *ssl, Span<uint8_t> out,
                                   Span<const uint8_t> secret,
-                                  Span<const char> label,
+                                  std::string_view label,
                                   Span<const uint8_t> context);
 
 // tls13_finished_mac calculates the MAC of the handshake transcript to verify
@@ -1999,6 +1405,8 @@ bool ssl_encrypt_client_hello(SSL_HANDSHAKE *hs, Span<const uint8_t> enc);
 enum class SSLCredentialType {
   kX509,
   kDelegated,
+  kSPAKE2PlusV1Client,
+  kSPAKE2PlusV1Server,
 };
 
 BSSL_NAMESPACE_END
@@ -2093,11 +1501,38 @@ struct ssl_credential_st : public bssl::RefCounted<ssl_credential_st> {
   // OCSP response to be sent to the client, if requested.
   bssl::UniquePtr<CRYPTO_BUFFER> ocsp_response;
 
+  // SPAKE2+-specific information.
+  bssl::Array<uint8_t> pake_context;
+  bssl::Array<uint8_t> client_identity;
+  bssl::Array<uint8_t> server_identity;
+  bssl::Array<uint8_t> password_verifier_w0;
+  bssl::Array<uint8_t> password_verifier_w1;  // server-only
+  bssl::Array<uint8_t> registration_record;   // client-only
+  mutable std::atomic<uint32_t> pake_limit;
+
+  // Checks whether there are still permitted PAKE attempts remaining, without
+  // changing the counter.
+  bool HasPAKEAttempts() const;
+
+  // Atomically decrement |pake_limit|. Return true if successful and false if
+  // |pake_limit| is already zero.
+  bool ClaimPAKEAttempt() const;
+
+  // Atomically increment |pake_limit|. This must be paired with a
+  // |ClaimPAKEAttempt| call.
+  void RestorePAKEAttempt() const;
+
+  // trust_anchor_id, if non-empty, is the trust anchor ID for the root of the
+  // chain in |chain|.
+  bssl::Array<uint8_t> trust_anchor_id;
+
   CRYPTO_EX_DATA ex_data;
 
   // must_match_issuer is a flag indicating that this credential should be
   // considered only when it matches a peer request for a particular issuer via
   // a negotiation mechanism (such as the certificate_authorities extension).
+  // This also implies that chain is a certificate path ending in a certificate
+  // issued by the certificate with that trust anchor identifier.
   bool must_match_issuer = false;
 
  private:
@@ -2107,18 +1542,35 @@ struct ssl_credential_st : public bssl::RefCounted<ssl_credential_st> {
 
 BSSL_NAMESPACE_BEGIN
 
-// ssl_get_credential_list computes |hs|'s credential list. On success, it
-// writes it to |*out| and returns true. Otherwise, it returns false. The
-// credential list may be empty, in which case this function will successfully
-// return an empty array.
+// ssl_get_full_credential_list computes |hs|'s full credential list, including
+// the legacy credential. On success, it writes it to |*out| and returns true.
+// Otherwise, it returns false. The credential list may be empty, in which case
+// this function will successfully output an empty array.
+//
+// This function should be called at most once during the handshake and is
+// intended to be used for certificate-based credentials. It runs the
+// auto-chaining logic as part of finishing the legacy credential. Other uses of
+// the credential list (e.g. PAKE credentials) should iterate over
+// |hs->config->cert->credentials|.
 //
 // The pointers in the result are only valid until |hs| is next mutated.
-bool ssl_get_credential_list(SSL_HANDSHAKE *hs, Array<SSL_CREDENTIAL *> *out);
+bool ssl_get_full_credential_list(SSL_HANDSHAKE *hs,
+                                  Array<SSL_CREDENTIAL *> *out);
 
 // ssl_credential_matches_requested_issuers returns true if |cred| is a
-// usable match for any requested issuers in |hs|.
+// usable match for any requested issuers in |hs|, and false with an error
+// otherwise.
 bool ssl_credential_matches_requested_issuers(SSL_HANDSHAKE *hs,
                                               const SSL_CREDENTIAL *cred);
+
+// ssl_check_tls13_credential_ignoring_issuer returns true if |cred| is usable
+// as the certificate in a TLS 1.3 handshake, ignoring the issuer check.
+// |out_sigalg| will be set to a matching signature algorithm if true is
+// returned.
+bool ssl_check_tls13_credential_ignoring_issuer(SSL_HANDSHAKE *hs,
+                                                const SSL_CREDENTIAL *cred,
+                                                uint16_t *out_sigalg);
+
 
 // Handshake functions.
 
@@ -2242,6 +1694,14 @@ struct SSL_HANDSHAKE_HINTS {
   bool ignore_ticket = false;
 };
 
+struct SSLPAKEShare {
+  static constexpr bool kAllowUniquePtr = true;
+  uint16_t named_pake;
+  Array<uint8_t> client_identity;
+  Array<uint8_t> server_identity;
+  Array<uint8_t> pake_message;
+};
+
 struct SSL_HANDSHAKE {
   explicit SSL_HANDSHAKE(SSL *ssl);
   ~SSL_HANDSHAKE();
@@ -2309,10 +1769,11 @@ struct SSL_HANDSHAKE {
   // error, if |wait| is |ssl_hs_error|, is the error the handshake failed on.
   UniquePtr<ERR_SAVE_STATE> error;
 
-  // key_shares are the current key exchange instances. The second is only used
-  // as a client if we believe that we should offer two key shares in a
-  // ClientHello.
-  UniquePtr<SSLKeyShare> key_shares[2];
+  // key_shares are the current key exchange instances, in preference order. Any
+  // members of this vector must be non-null. By default, no more than two are
+  // used, and the second is only used as a client if we believe that we should
+  // offer two key shares in a ClientHello.
+  InplaceVector<UniquePtr<SSLKeyShare>, kNumNamedGroups> key_shares;
 
   // transcript is the current handshake transcript.
   SSLTranscript transcript;
@@ -2400,6 +1861,16 @@ struct SSL_HANDSHAKE {
   // ca_names contains the list of CAs received via the Certificate Authorities
   // extension in our peer's CertificateRequest or ClientHello message
   UniquePtr<STACK_OF(CRYPTO_BUFFER)> ca_names;
+
+  // peer_requested_trust_anchors, if not nullopt, contains the trust anchor IDs
+  // (possibly none) the peer requested in ClientHello or CertificateRequest. If
+  // nullopt, the peer did not send the extension.
+  std::optional<Array<uint8_t>> peer_requested_trust_anchors;
+
+  // peer_available_trust_anchors, if not empty, is the list of trust anchor IDs
+  // the peer reported as available in EncryptedExtensions. This is only sent by
+  // servers to clients.
+  Array<uint8_t> peer_available_trust_anchors;
 
   // cached_x509_ca_names contains a cache of parsed versions of the elements of
   // |ca_names|. This pointer is left non-owning so only
@@ -2549,6 +2020,14 @@ struct SSL_HANDSHAKE {
   // message from the server.
   bool received_hello_verify_request : 1;
 
+  // matched_peer_trust_anchor indicates that we have matched a trust anchor
+  // the peer requested in the trust anchors extension.
+  bool matched_peer_trust_anchor : 1;
+
+  // peer_matched_trust_anchor is true if the peer indicated a match with one of
+  // our requested trust anchors.
+  bool peer_matched_trust_anchor : 1;
+
   // client_version is the value sent or received in the ClientHello version.
   uint16_t client_version = 0;
 
@@ -2572,6 +2051,18 @@ struct SSL_HANDSHAKE {
 
   // grease_seed is the entropy for GREASE values.
   uint8_t grease_seed[ssl_grease_last_index + 1] = {0};
+
+  // pake_share is the PAKE message received over the wire, if any.
+  UniquePtr<SSLPAKEShare> pake_share;
+
+  // pake_share_bytes are the bytes of the PAKEShare to send, if any.
+  Array<uint8_t> pake_share_bytes;
+
+  // pake_prover is the PAKE context for a client.
+  UniquePtr<spake2plus::Prover> pake_prover;
+
+  // pake_verifier is the PAKE context for a server.
+  UniquePtr<spake2plus::Verifier> pake_verifier;
 };
 
 // kMaxTickets is the maximum number of tickets to send immediately after the
@@ -2644,6 +2135,10 @@ bool ssl_setup_extension_permutation(SSL_HANDSHAKE *hs);
 // a single key share of the specified group.
 bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id);
 
+// ssl_setup_pake_shares computes the client PAKE shares and saves them in |hs|.
+// It returns true on success and false on failure.
+bool ssl_setup_pake_shares(SSL_HANDSHAKE *hs);
+
 bool ssl_ext_key_share_parse_serverhello(SSL_HANDSHAKE *hs,
                                          Array<uint8_t> *out_secret,
                                          uint8_t *out_alert, CBS *contents);
@@ -2651,7 +2146,12 @@ bool ssl_ext_key_share_parse_clienthello(SSL_HANDSHAKE *hs, bool *out_found,
                                          Span<const uint8_t> *out_peer_key,
                                          uint8_t *out_alert,
                                          const SSL_CLIENT_HELLO *client_hello);
+bool ssl_ext_pake_add_serverhello(SSL_HANDSHAKE *hs, CBB *out);
 bool ssl_ext_key_share_add_serverhello(SSL_HANDSHAKE *hs, CBB *out);
+
+bool ssl_ext_pake_parse_serverhello(SSL_HANDSHAKE *hs,
+                                    Array<uint8_t> *out_secret,
+                                    uint8_t *out_alert, CBS *contents);
 
 bool ssl_ext_pre_shared_key_parse_serverhello(SSL_HANDSHAKE *hs,
                                               uint8_t *out_alert,
@@ -2740,6 +2240,10 @@ bool ssl_get_local_application_settings(const SSL_HANDSHAKE *hs,
 bool ssl_negotiate_alps(SSL_HANDSHAKE *hs, uint8_t *out_alert,
                         const SSL_CLIENT_HELLO *client_hello);
 
+// ssl_is_valid_trust_anchor_list returns whether |in| is a valid trust anchor
+// identifiers list.
+bool ssl_is_valid_trust_anchor_list(Span<const uint8_t> in);
+
 struct SSLExtension {
   SSLExtension(uint16_t type_arg, bool allowed_arg = true)
       : type(type_arg), allowed(allowed_arg), present(false) {
@@ -2787,6 +2291,43 @@ const SSL_SESSION *ssl_handshake_session(const SSL_HANDSHAKE *hs);
 void ssl_done_writing_client_hello(SSL_HANDSHAKE *hs);
 
 
+// Flags.
+
+// SSLFlags is a bitmask of flags that can be encoded with the TLS flags
+// extension, draft-ietf-tls-tlsflags-14. For now, our in-memory representation
+// matches the wire representation, and we only support flags up to 32. If
+// higher values are needed, we can increase the size of the bitmask, or only
+// store the flags we implement in the bitmask.
+using SSLFlags = uint32_t;
+inline constexpr SSLFlags kSSLFlagResumptionAcrossNames = 1 << 8;
+
+// ssl_add_flags_extension encodes a tls_flags extension (including the header)
+// containing the flags in |flags|. It returns true on success and false on
+// error. If |flags| is zero (no flags set), it returns true without adding
+// anything to |cbb|.
+bool ssl_add_flags_extension(CBB *cbb, SSLFlags flags);
+
+// ssl_parse_flags_extension_request parses tls_flags extension value (excluding
+// the header) from |cbs|, for a request message (ClientHello,
+// CertificateRequest, or NewSessionTicket). Unrecognized flags will be ignored.
+//
+// On success, it sets |*out| to the parsed flags and returns true. On error, it
+// sets |*out_alert| to a TLS alert and returns false.
+bool ssl_parse_flags_extension_request(const CBS *cbs, SSLFlags *out,
+                                       uint8_t *out_alert);
+
+// ssl_parse_flags_extension_response parses tls_flags extension value
+// (excluding the header) from |cbs|, for a response message (HelloRetryRequest,
+// ServerHello, EncryptedExtensions, or Certificate). Only the flags in
+// |allowed_flags| may be present.
+//
+// On success, it sets |*out| to the parsed flags and returns true. On error, it
+// sets |*out_alert| to a TLS alert and returns false.
+bool ssl_parse_flags_extension_response(const CBS *cbs, SSLFlags *out,
+                                        uint8_t *out_alert,
+                                        SSLFlags allowed_flags);
+
+
 // SSLKEYLOGFILE functions.
 
 // ssl_log_secret logs |secret| with label |label|, if logging is enabled for
@@ -2796,12 +2337,6 @@ bool ssl_log_secret(const SSL *ssl, const char *label,
 
 
 // ClientHello functions.
-
-// ssl_client_hello_init parses |body| as a ClientHello message, excluding the
-// message header, and writes the result to |*out|. It returns true on success
-// and false on error. This function is exported for testing.
-OPENSSL_EXPORT bool ssl_client_hello_init(const SSL *ssl, SSL_CLIENT_HELLO *out,
-                                          Span<const uint8_t> body);
 
 bool ssl_parse_client_hello_with_trailing_data(const SSL *ssl, CBS *cbs,
                                                SSL_CLIENT_HELLO *out);
@@ -3421,9 +2956,9 @@ struct hm_header_st {
 struct DTLSIncomingMessage {
   static constexpr bool kAllowUniquePtr = true;
 
-  Span<uint8_t> msg() { return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH); }
+  Span<uint8_t> msg() { return Span(data).subspan(DTLS1_HM_HEADER_LENGTH); }
   Span<const uint8_t> msg() const {
-    return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH);
+    return Span(data).subspan(DTLS1_HM_HEADER_LENGTH);
   }
   size_t msg_len() const { return msg().size(); }
 
@@ -3592,6 +3127,8 @@ struct DTLS1_STATE {
   // a handshake flight and ACK, respectively.
   bool sending_flight : 1;
   bool sending_ack : 1;
+  // pending_flush is whether we have a pending flush on the transport.
+  bool pending_flush : 1;
 
   // queued_key_update, if not kNone, indicates we've queued a KeyUpdate message
   // to send after the current flight is ACKed.
@@ -3735,6 +3272,9 @@ struct SSL_CONFIG {
   // moment we are not crossing those streams.
   UniquePtr<STACK_OF(CRYPTO_BUFFER)> CA_names;
 
+  // Trust anchor IDs to be requested in the trust_anchors extension.
+  std::optional<Array<uint8_t>> requested_trust_anchors;
+
   Array<uint16_t> supported_group_list;  // our list
 
   // channel_id_private is the client's Channel ID private key, or null if
@@ -3767,9 +3307,9 @@ struct SSL_CONFIG {
   // structure for the client to use when negotiating ECH.
   Array<uint8_t> client_ech_config_list;
 
-  // tls13_cipher_policy limits the set of ciphers that can be selected when
+  // compliance_policy limits the set of ciphers that can be selected when
   // negotiating a TLS 1.3 connection.
-  enum ssl_compliance_policy_t tls13_cipher_policy = ssl_compliance_policy_none;
+  enum ssl_compliance_policy_t compliance_policy = ssl_compliance_policy_none;
 
   // verify_mode is a bitmask of |SSL_VERIFY_*| values.
   uint8_t verify_mode = SSL_VERIFY_NONE;
@@ -3832,15 +3372,6 @@ struct SSL_CONFIG {
   // alps_use_new_codepoint if set indicates we use new ALPS extension codepoint
   // to negotiate and convey application settings.
   bool alps_use_new_codepoint : 1;
-
-  // check_client_certificate_type indicates whether the client, in TLS 1.2 and
-  // below, will check its certificate against the server's requested
-  // certificate types.
-  bool check_client_certificate_type : 1;
-
-  // check_ecdsa_curve indicates whether the server, in TLS 1.2 and below, will
-  // check its certificate against the client's supported ECDSA curves.
-  bool check_ecdsa_curve : 1;
 };
 
 // From RFC 8446, used in determining PSK modes.
@@ -4066,9 +3597,6 @@ bool tls1_change_cipher_state(SSL_HANDSHAKE *hs,
 bool tls1_generate_master_secret(SSL_HANDSHAKE *hs, Span<uint8_t> out,
                                  Span<const uint8_t> premaster);
 
-// tls1_get_grouplist returns the locally-configured group preference list.
-Span<const uint16_t> tls1_get_grouplist(const SSL_HANDSHAKE *ssl);
-
 // tls1_check_group_id returns whether |group_id| is consistent with locally-
 // configured group preferences.
 bool tls1_check_group_id(const SSL_HANDSHAKE *ssl, uint16_t group_id);
@@ -4277,6 +3805,9 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   // What we put in client hello in the CA extension.
   bssl::UniquePtr<STACK_OF(CRYPTO_BUFFER)> CA_names;
 
+  // What we request in the trust_anchors extension.
+  std::optional<bssl::Array<uint8_t>> requested_trust_anchors;
+
   // Default values to use in SSL structures follow (these are copied by
   // SSL_new)
 
@@ -4421,9 +3952,9 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   int (*legacy_ocsp_callback)(SSL *ssl, void *arg) = nullptr;
   void *legacy_ocsp_callback_arg = nullptr;
 
-  // tls13_cipher_policy limits the set of ciphers that can be selected when
+  // compliance_policy limits the set of ciphers that can be selected when
   // negotiating a TLS 1.3 connection.
-  enum ssl_compliance_policy_t tls13_cipher_policy = ssl_compliance_policy_none;
+  enum ssl_compliance_policy_t compliance_policy = ssl_compliance_policy_none;
 
   // verify_sigalgs, if not empty, is the set of signature algorithms
   // accepted from the peer in decreasing order of preference.
@@ -4480,6 +4011,10 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   // of support for AES hardware. The value is only considered if
   // |aes_hw_override| is true.
   bool aes_hw_override_value : 1;
+
+  // resumption_across_names_enabled indicates whether a TLS 1.3 server should
+  // signal its sessions may be resumed across names in the server certificate.
+  bool resumption_across_names_enabled : 1;
 
  private:
   friend RefCounted;
@@ -4568,6 +4103,10 @@ struct ssl_st {
 
   // If enable_early_data is true, early data can be sent and accepted.
   bool enable_early_data : 1;
+
+  // resumption_across_names_enabled indicates whether a TLS 1.3 server should
+  // signal its sessions may be resumed across names in the server certificate.
+  bool resumption_across_names_enabled : 1;
 };
 
 struct ssl_session_st : public bssl::RefCounted<ssl_session_st> {
@@ -4660,7 +4199,7 @@ struct ssl_session_st : public bssl::RefCounted<ssl_session_st> {
   // original_handshake_hash contains the handshake hash (either SHA-1+MD5 or
   // SHA-2, depending on TLS version) for the original, full handshake that
   // created a session. This is used by Channel IDs during resumption.
-  bssl::InplaceVector<uint8_t, EVP_MAX_MD_SIZE> original_handshake_hash;
+  bssl::InplaceVector<uint8_t, SSL_MAX_MD_SIZE> original_handshake_hash;
 
   uint32_t ticket_lifetime_hint = 0;  // Session lifetime hint in seconds
 
@@ -4707,6 +4246,10 @@ struct ssl_session_st : public bssl::RefCounted<ssl_session_st> {
   // has_application_settings indicates whether ALPS was negotiated in this
   // session.
   bool has_application_settings : 1;
+
+  // is_resumable_across_names indicates whether the session may be resumed for
+  // any of the identities presented in the certificate.
+  bool is_resumable_across_names : 1;
 
   // quic_early_data_context is used to determine whether early data must be
   // rejected when performing a QUIC handshake.

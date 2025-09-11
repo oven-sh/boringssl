@@ -1,16 +1,16 @@
-/* Copyright (c) 2016, Google Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2016 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -197,7 +197,8 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
       return false;
     }
 
-    if (sk_CRYPTO_BUFFER_num(certs.get()) == 0) {
+    const bool is_leaf = sk_CRYPTO_BUFFER_num(certs.get()) == 0;
+    if (is_leaf) {
       pkey = ssl_cert_parse_pubkey(&certificate);
       if (!pkey) {
         ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
@@ -234,8 +235,13 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
     SSLExtension sct(
         TLSEXT_TYPE_certificate_timestamp,
         !ssl->server && hs->config->signed_cert_timestamps_enabled);
+    SSLExtension trust_anchors(
+        TLSEXT_TYPE_trust_anchors,
+        !ssl->server && is_leaf &&
+            hs->config->requested_trust_anchors.has_value());
     uint8_t alert = SSL_AD_DECODE_ERROR;
-    if (!ssl_parse_extensions(&extensions, &alert, {&status_request, &sct},
+    if (!ssl_parse_extensions(&extensions, &alert,
+                              {&status_request, &sct, &trust_anchors},
                               /*ignore_unknown=*/false)) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
       return false;
@@ -279,6 +285,15 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
           return false;
         }
       }
+    }
+
+    if (trust_anchors.present) {
+      if (CBS_len(&trust_anchors.data) != 0) {
+        OPENSSL_PUT_ERROR(SSL, SSL_R_ERROR_PARSING_EXTENSION);
+        ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
+        return false;
+      }
+      hs->peer_matched_trust_anchor = true;
     }
   }
 
@@ -373,14 +388,14 @@ bool tls13_process_finished(SSL_HANDSHAKE *hs, const SSLMessage &msg,
     if (!tls13_finished_mac(hs, verify_data_buf, &len, !ssl->server)) {
       return false;
     }
-    verify_data = MakeConstSpan(verify_data_buf, len);
+    verify_data = Span(verify_data_buf, len);
   }
 
   bool finished_ok =
       CBS_mem_equal(&msg.body, verify_data.data(), verify_data.size());
-#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
-  finished_ok = true;
-#endif
+  if (CRYPTO_fuzzer_mode_enabled()) {
+    finished_ok = true;
+  }
   if (!finished_ok) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECRYPT_ERROR);
     OPENSSL_PUT_ERROR(SSL, SSL_R_DIGEST_CHECK_FAILED);
@@ -472,6 +487,16 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
     }
   }
 
+  if (hs->matched_peer_trust_anchor) {
+    // Let the peer know we matched a requested trust anchor.
+    CBB empty_contents;
+    if (!CBB_add_u16(&extensions, TLSEXT_TYPE_trust_anchors) ||        //
+        !CBB_add_u16_length_prefixed(&extensions, &empty_contents) ||  //
+        !CBB_flush(&extensions)) {
+      return false;
+    }
+  }
+
   for (size_t i = 1; i < sk_CRYPTO_BUFFER_num(cred->chain.get()); i++) {
     CRYPTO_BUFFER *cert_buf = sk_CRYPTO_BUFFER_value(cred->chain.get(), i);
     CBB child;
@@ -522,7 +547,7 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
   SSL_HANDSHAKE_HINTS *const hints = hs->hints.get();
   if (hints && !hs->hints_requested &&
       hints->cert_compression_alg_id == hs->cert_compression_alg_id &&
-      hints->cert_compression_input == MakeConstSpan(msg) &&
+      hints->cert_compression_input == Span(msg) &&
       !hints->cert_compression_output.empty()) {
     if (!CBB_add_bytes(&compressed, hints->cert_compression_output.data(),
                        hints->cert_compression_output.size())) {
@@ -538,7 +563,7 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
       hints->cert_compression_alg_id = hs->cert_compression_alg_id;
       if (!hints->cert_compression_input.CopyFrom(msg) ||
           !hints->cert_compression_output.CopyFrom(
-              MakeConstSpan(CBB_data(&compressed), CBB_len(&compressed)))) {
+              Span(CBB_data(&compressed), CBB_len(&compressed)))) {
         return false;
       }
     }
@@ -642,8 +667,7 @@ bool tls13_add_key_update(SSL *ssl, int request_type) {
   }
 
   // In DTLS, the actual key update is deferred until KeyUpdate is ACKed.
-  if (!SSL_is_dtls(ssl) &&
-      !tls13_rotate_traffic_key(ssl, evp_aead_seal)) {
+  if (!SSL_is_dtls(ssl) && !tls13_rotate_traffic_key(ssl, evp_aead_seal)) {
     return false;
   }
 
