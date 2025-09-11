@@ -75,8 +75,8 @@ bcm_infallible BCM_sha512_224_init(SHA512_CTX *sha) {
   sha->h[6] = UINT64_C(0x3F9D85A86A1D36C8);
   sha->h[7] = UINT64_C(0x1112E6AD91D692A1);
 
-  sha->Nl = 0;
-  sha->Nh = 0;
+  sha->bytes_so_far_low = 0;
+  sha->bytes_so_far_high = 0;
   sha->num = 0;
   sha->md_len = BCM_SHA512_224_DIGEST_LENGTH;
   return bcm_infallible::approved;

@@ -205,6 +205,9 @@ DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512_256) {
 }
 
 
+// RIPEMD160 support disabled - implementation is in decrepit library
+// which is not linked by default. To enable, link against decrepit library.
+#if 0
 static void ripemd160_init(EVP_MD_CTX *ctx) {
   CHECK(RIPEMD160_Init(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
 }
@@ -227,5 +230,18 @@ DEFINE_DATA(EVP_MD, EVP_ripemd160, const) {
   out->block_size = 64;
   out->ctx_size = sizeof(RIPEMD160_CTX);
 }
+#else
+DEFINE_DATA(EVP_MD, EVP_ripemd160, const) {
+  // Return a stub that will fail if used
+  out->type = NID_undef;
+  out->md_size = 0;
+  out->flags = 0;
+  out->init = nullptr;
+  out->update = nullptr;
+  out->final = nullptr;
+  out->block_size = 0;
+  out->ctx_size = 0;
+}
+#endif
 
 #undef CHECK

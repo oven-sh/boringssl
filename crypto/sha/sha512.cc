@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <openssl/sha2.h>
+#include <openssl/sha.h>
 
 #include <openssl/mem.h>
 
