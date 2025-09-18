@@ -569,6 +569,8 @@ const Flag<TestConfig> *FindFlag(const char *name) {
                            &TestConfig::expect_peer_available_trust_anchors),
         OptionalBase64Flag("-requested-trust-anchors",
                            &TestConfig::requested_trust_anchors),
+        Base64Flag("-available-trust-anchors",
+                   &TestConfig::available_trust_anchors),
         OptionalIntFlag("-expect-selected-credential",
                         &TestConfig::expect_selected_credential),
         // Credential flags are stateful. First, use one of the
@@ -2515,6 +2517,12 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
       !SSL_set1_requested_trust_anchors(ssl.get(),
                                         requested_trust_anchors->data(),
                                         requested_trust_anchors->size())) {
+    return nullptr;
+  }
+  if (!available_trust_anchors.empty() &&
+      !SSL_set1_available_trust_anchors(ssl.get(),
+                                        available_trust_anchors.data(),
+                                        available_trust_anchors.size())) {
     return nullptr;
   }
   if (enable_ocsp_stapling) {

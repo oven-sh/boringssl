@@ -2543,6 +2543,10 @@ struct CERT {
   // the list of credentials.
   UniquePtr<SSLCredential> legacy_credential;
 
+  // available_trust_anchors, if not empty, overrides the default list of
+  // available trust anchors to send in EncryptedExtensions.
+  Array<uint8_t> available_trust_anchors;
+
   // x509_method contains pointers to functions that might deal with |X509|
   // compatibility, or might be a no-op, depending on the application.
   const SSL_X509_METHOD *x509_method = nullptr;

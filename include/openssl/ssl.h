@@ -3284,6 +3284,30 @@ OPENSSL_EXPORT void SSL_get0_peer_available_trust_anchors(const SSL *ssl,
                                                           const uint8_t **out,
                                                           size_t *out_len);
 
+// SSL_CTX_set1_available_trust_anchors configures |ctx|, as a server, to send
+// |ids| as the list of available trust anchors alongside the certificate. It
+// returns one on success and zero on error. This list is used to allow the peer
+// to retry the connection and request a different trust anchor, if the
+// presented certificate is unacceptable. |ids| must be a non-empty list of
+// trust anchor IDs in wire-format (a series of non-empty, 8-bit length-prefixed
+// strings), in order of decreasing preference.
+//
+// Most applications will not need to call this. If not configured, BoringSSL
+// derives available trust anchors from the credential list (see
+// |SSL_CTX_add1_credential|). This function may be used if, for example, the
+// caller filters the available credentials by trust anchor in
+// |SSL_CTX_set_select_certificate_cb|, such that the credential list visible to
+// BoringSSL is incomplete.
+OPENSSL_EXPORT int SSL_CTX_set1_available_trust_anchors(SSL_CTX *ctx,
+                                                        const uint8_t *ids,
+                                                        size_t ids_len);
+
+// SSL_set1_available_trust_anchors behaves like
+// |SSL_CTX_set1_available_trust_anchors| but configures the value on |ssl|.
+OPENSSL_EXPORT int SSL_set1_available_trust_anchors(SSL *ssl,
+                                                    const uint8_t *ids,
+                                                    size_t ids_len);
+
 
 // Server name indication.
 //

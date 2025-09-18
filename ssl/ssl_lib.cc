@@ -3643,6 +3643,29 @@ void SSL_get0_peer_available_trust_anchors(const SSL *ssl, const uint8_t **out,
   *out_len = ret.size();
 }
 
+int SSL_CTX_set1_available_trust_anchors(SSL_CTX *ctx, const uint8_t *ids,
+                                         size_t ids_len) {
+  auto span = Span(ids, ids_len);
+  if (span.empty() || !ssl_is_valid_trust_anchor_list(span)) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_INVALID_TRUST_ANCHOR_LIST);
+    return 0;
+  }
+  return ctx->cert->available_trust_anchors.CopyFrom(span);
+}
+
+int SSL_set1_available_trust_anchors(SSL *ssl, const uint8_t *ids,
+                                     size_t ids_len) {
+  if (!ssl->config) {
+    return 0;
+  }
+  auto span = Span(ids, ids_len);
+  if (span.empty() || !ssl_is_valid_trust_anchor_list(span)) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_INVALID_TRUST_ANCHOR_LIST);
+    return 0;
+  }
+  return ssl->config->cert->available_trust_anchors.CopyFrom(span);
+}
+
 int SSL_CTX_set1_requested_trust_anchors(SSL_CTX *ctx, const uint8_t *ids,
                                          size_t ids_len) {
   auto span = Span(ids, ids_len);

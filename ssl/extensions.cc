@@ -2894,6 +2894,15 @@ static bool ext_trust_anchors_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
       !CBB_add_u16_length_prefixed(&contents, &list)) {
     return false;
   }
+
+  // Use the caller-provided list if they overrode it.
+  if (!hs->config->cert->available_trust_anchors.empty()) {
+    return CBB_add_bytes(&list,
+                         hs->config->cert->available_trust_anchors.data(),
+                         hs->config->cert->available_trust_anchors.size()) &&
+           CBB_flush(out);
+  }
+
   for (const auto &cred : hs->config->cert->credentials) {
     if (!cred->trust_anchor_id.empty()) {
       uint16_t unused_sigalg;
