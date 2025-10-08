@@ -61,8 +61,8 @@ static void ec_group_set_a_minus3(EC_GROUP *group) {
 DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p224) {
   out->curve_name = NID_secp224r1;
   out->comment = "NIST P-224";
-  // 1.3.132.0.33
-  static const uint8_t kOIDP224[] = {0x2b, 0x81, 0x04, 0x00, 0x21};
+  static const uint8_t kOIDP224[] = {OBJ_ENC_secp224r1};
+  static_assert(sizeof(kOIDP224) <= sizeof(out->oid));
   OPENSSL_memcpy(out->oid, kOIDP224, sizeof(kOIDP224));
   out->oid_len = sizeof(kOIDP224);
 
@@ -94,9 +94,8 @@ DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p224) {
 DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p256) {
   out->curve_name = NID_X9_62_prime256v1;
   out->comment = "NIST P-256";
-  // 1.2.840.10045.3.1.7
-  static const uint8_t kOIDP256[] = {0x2a, 0x86, 0x48, 0xce,
-                                     0x3d, 0x03, 0x01, 0x07};
+  static const uint8_t kOIDP256[] = {OBJ_ENC_X9_62_prime256v1};
+  static_assert(sizeof(kOIDP256) <= sizeof(out->oid));
   OPENSSL_memcpy(out->oid, kOIDP256, sizeof(kOIDP256));
   out->oid_len = sizeof(kOIDP256);
 
@@ -126,8 +125,8 @@ DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p256) {
 DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p384) {
   out->curve_name = NID_secp384r1;
   out->comment = "NIST P-384";
-  // 1.3.132.0.34
-  static const uint8_t kOIDP384[] = {0x2b, 0x81, 0x04, 0x00, 0x22};
+  static const uint8_t kOIDP384[] = {OBJ_ENC_secp384r1};
+  static_assert(sizeof(kOIDP384) <= sizeof(out->oid));
   OPENSSL_memcpy(out->oid, kOIDP384, sizeof(kOIDP384));
   out->oid_len = sizeof(kOIDP384);
 
@@ -151,8 +150,8 @@ DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p384) {
 DEFINE_METHOD_FUNCTION(EC_GROUP, EC_group_p521) {
   out->curve_name = NID_secp521r1;
   out->comment = "NIST P-521";
-  // 1.3.132.0.35
-  static const uint8_t kOIDP521[] = {0x2b, 0x81, 0x04, 0x00, 0x23};
+  static const uint8_t kOIDP521[] = {OBJ_ENC_secp521r1};
+  static_assert(sizeof(kOIDP521) <= sizeof(out->oid));
   OPENSSL_memcpy(out->oid, kOIDP521, sizeof(kOIDP521));
   out->oid_len = sizeof(kOIDP521);
 
