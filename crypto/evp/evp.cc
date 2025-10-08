@@ -200,9 +200,9 @@ int EVP_PKEY_set_type(EVP_PKEY *pkey, int type) {
   // but forgets to put anything in the |pkey|. The one pattern where it does
   // anything is |EVP_PKEY_X25519|, where it's needed to make
   // |EVP_PKEY_set1_tls_encodedpoint| work, so we support only that.
-  const EVP_PKEY_ASN1_METHOD *ameth;
+  const EVP_PKEY_ALG *alg;
   if (type == EVP_PKEY_X25519) {
-    ameth = &x25519_asn1_meth;
+    alg = EVP_pkey_x25519();
   } else {
     OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
     ERR_add_error_dataf("algorithm %d", type);
@@ -210,7 +210,7 @@ int EVP_PKEY_set_type(EVP_PKEY *pkey, int type) {
   }
 
   if (pkey) {
-    evp_pkey_set0(pkey, ameth, nullptr);
+    evp_pkey_set0(pkey, alg->method, nullptr);
   }
 
   return 1;
