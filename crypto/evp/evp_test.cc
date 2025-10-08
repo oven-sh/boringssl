@@ -104,6 +104,9 @@ const std::map<std::string, AlgorithmInfo> kAllAlgorithms = {
     {"X25519", {EVP_pkey_x25519(), EVP_PKEY_X25519, true}},
     {"Ed25519", {EVP_pkey_ed25519(), EVP_PKEY_ED25519, true}},
     {"DSA", {EVP_pkey_dsa(), EVP_PKEY_DSA, true}},
+    {"ML-DSA-44", {EVP_pkey_ml_dsa_44(), EVP_PKEY_ML_DSA_44, false}},
+    {"ML-DSA-65", {EVP_pkey_ml_dsa_65(), EVP_PKEY_ML_DSA_65, false}},
+    {"ML-DSA-87", {EVP_pkey_ml_dsa_87(), EVP_PKEY_ML_DSA_87, false}},
 };
 
 using KeyMap = std::map<std::string, bssl::UniquePtr<EVP_PKEY>>;
@@ -130,6 +133,39 @@ void CheckRSAParam(FileTest *t, std::string_view attr_name,
   // We have many test RSA keys so, for now, don't require that all RSA keys
   // list out these parameters. That is, the absence of an RSA parameter does
   // not currently assert that we omit them.
+}
+
+bool CheckRawKey(FileTest *t, std::string_view attr_name, const EVP_PKEY *pkey,
+                 int (*getter)(const EVP_PKEY *pkey, uint8_t *out,
+                               size_t *out_len)) {
+  if (!t->HasAttribute(attr_name)) {
+    size_t len;
+    EXPECT_FALSE(getter(pkey, nullptr, &len));
+    return true;
+  }
+
+  std::vector<uint8_t> expected;
+  if (!t->GetBytes(&expected, attr_name)) {
+    return false;
+  }
+
+  std::vector<uint8_t> raw;
+  size_t len;
+  if (!getter(pkey, nullptr, &len)) {
+    return false;
+  }
+  raw.resize(len);
+  if (!getter(pkey, raw.data(), &len)) {
+    return false;
+  }
+  raw.resize(len);
+  EXPECT_EQ(Bytes(raw), Bytes(expected));
+
+  // Short buffers should be rejected.
+  raw.resize(len - 1);
+  len = raw.size();
+  EXPECT_FALSE(getter(pkey, raw.data(), &len));
+  return true;
 }
 
 bool ImportKey(FileTest *t, KeyMap *key_map, KeyRole key_role) {
@@ -253,6 +289,18 @@ bool ImportKey(FileTest *t, KeyMap *key_map, KeyRole key_role) {
     }
     keys.emplace_back("raw private", std::move(new_key));
   }
+  if (key_role == KeyRole::kPrivate && t->HasAttribute("PrivateSeed")) {
+    std::vector<uint8_t> raw;
+    if (!t->GetBytes(&raw, "PrivateSeed")) {
+      return false;
+    }
+    new_key.reset(
+        EVP_PKEY_from_private_seed(alg_info.alg, raw.data(), raw.size()));
+    if (new_key == nullptr) {
+      return false;
+    }
+    keys.emplace_back("private seed", std::move(new_key));
+  }
 
   // Import RSA key from parameters.
   if (alg_info.pkey_id == EVP_PKEY_RSA) {
@@ -351,58 +399,11 @@ bool ImportKey(FileTest *t, KeyMap *key_map, KeyRole key_role) {
     EXPECT_EQ(Bytes(output), Bytes(CBB_data(cbb.get()), CBB_len(cbb.get())))
         << "Re-encoding the key did not match.";
 
-    if (t->HasAttribute("RawPrivate")) {
-      std::vector<uint8_t> expected;
-      if (!t->GetBytes(&expected, "RawPrivate")) {
-        return false;
-      }
-
-      std::vector<uint8_t> raw;
-      size_t len;
-      if (!EVP_PKEY_get_raw_private_key(pkey.get(), nullptr, &len)) {
-        return false;
-      }
-      raw.resize(len);
-      if (!EVP_PKEY_get_raw_private_key(pkey.get(), raw.data(), &len)) {
-        return false;
-      }
-      raw.resize(len);
-      EXPECT_EQ(Bytes(raw), Bytes(expected));
-
-      // Short buffers should be rejected.
-      raw.resize(len - 1);
-      len = raw.size();
-      EXPECT_FALSE(EVP_PKEY_get_raw_private_key(pkey.get(), raw.data(), &len));
-    } else {
-      size_t len;
-      EXPECT_FALSE(EVP_PKEY_get_raw_private_key(pkey.get(), nullptr, &len));
-    }
-
-    if (t->HasAttribute("RawPublic")) {
-      std::vector<uint8_t> expected;
-      if (!t->GetBytes(&expected, "RawPublic")) {
-        return false;
-      }
-
-      std::vector<uint8_t> raw;
-      size_t len;
-      if (!EVP_PKEY_get_raw_public_key(pkey.get(), nullptr, &len)) {
-        return false;
-      }
-      raw.resize(len);
-      if (!EVP_PKEY_get_raw_public_key(pkey.get(), raw.data(), &len)) {
-        return false;
-      }
-      raw.resize(len);
-      EXPECT_EQ(Bytes(raw), Bytes(expected));
-
-      // Short buffers should be rejected.
-      raw.resize(len - 1);
-      len = raw.size();
-      EXPECT_FALSE(EVP_PKEY_get_raw_public_key(pkey.get(), raw.data(), &len));
-    } else {
-      size_t len;
-      EXPECT_FALSE(EVP_PKEY_get_raw_public_key(pkey.get(), nullptr, &len));
+    if (!CheckRawKey(t, "RawPrivate", pkey.get(),
+                     EVP_PKEY_get_raw_private_key) ||
+        !CheckRawKey(t, "RawPublic", pkey.get(), EVP_PKEY_get_raw_public_key) ||
+        !CheckRawKey(t, "PrivateSeed", pkey.get(), EVP_PKEY_get_private_seed)) {
+      return false;
     }
   }
 
@@ -683,11 +684,33 @@ bool TestEVPOperation(FileTest *t, const KeyMap *key_map, bool copy_ctx) {
     }
     actual.resize(len);
     if (!EVP_DigestSign(ctx.get(), actual.data(), &len, input.data(),
-                        input.size()) ||
-        !t->GetBytes(&output, "Output")) {
+                        input.size())) {
       return false;
     }
     actual.resize(len);
+
+    if (t->HasAttribute("CheckVerify")) {
+      // Some signature schemes are non-deterministic, so we check by verifying.
+      bssl::UniquePtr<EVP_MD_CTX> verify_ctx(EVP_MD_CTX_new());
+      EVP_PKEY_CTX *verify_pctx;
+      if (verify_ctx == nullptr ||
+          !EVP_DigestVerifyInit(verify_ctx.get(), &verify_pctx, digest, nullptr,
+                                key) ||
+
+          !MaybeReplaceWithCopy(&verify_ctx, copy_ctx) ||
+          !SetupContext(t, key_map, verify_pctx) ||
+          !MaybeReplaceWithCopy(&verify_ctx, copy_ctx)) {
+        return false;
+      }
+      EXPECT_TRUE(EVP_DigestVerify(verify_ctx.get(), actual.data(),
+                                   actual.size(), input.data(), input.size()))
+          << "Could not verify result.";
+      return true;
+    }
+
+    if (!t->GetBytes(&output, "Output")) {
+      return false;
+    }
     EXPECT_EQ(Bytes(output), Bytes(actual));
     return true;
   }
@@ -814,6 +837,10 @@ TEST(EVPTest, ECTestVectors) { RunEVPTests("crypto/evp/test/ec_tests.txt"); }
 
 TEST(EVPTest, Ed25519TestVectors) {
   RunEVPTests("crypto/evp/test/ed25519_tests.txt");
+}
+
+TEST(EVPTest, MLDSATestVectors) {
+  RunEVPTests("crypto/evp/test/mldsa_tests.txt");
 }
 
 TEST(EVPTest, RSATestVectors) { RunEVPTests("crypto/evp/test/rsa_tests.txt"); }

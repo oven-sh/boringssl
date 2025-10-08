@@ -358,6 +358,7 @@ boringssl_crypto_sources := \
   crypto/evp/p_ec.cc \
   crypto/evp/p_ed25519.cc \
   crypto/evp/p_hkdf.cc \
+  crypto/evp/p_mldsa.cc \
   crypto/evp/p_rsa.cc \
   crypto/evp/p_x25519.cc \
   crypto/evp/pbkdf.cc \
@@ -818,6 +819,7 @@ boringssl_crypto_test_data := \
   crypto/evp/test/ec_tests.txt \
   crypto/evp/test/ed25519_tests.txt \
   crypto/evp/test/evp_tests.txt \
+  crypto/evp/test/mldsa_tests.txt \
   crypto/evp/test/rsa_tests.txt \
   crypto/evp/test/scrypt_tests.txt \
   crypto/evp/test/x25519_tests.txt \

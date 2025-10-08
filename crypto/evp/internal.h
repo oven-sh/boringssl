@@ -89,8 +89,10 @@ struct evp_pkey_asn1_method_st {
   int (*priv_encode)(CBB *out, const EVP_PKEY *key);
 
   int (*set_priv_raw)(EVP_PKEY *pkey, const uint8_t *in, size_t len);
+  int (*set_priv_seed)(EVP_PKEY *pkey, const uint8_t *in, size_t len);
   int (*set_pub_raw)(EVP_PKEY *pkey, const uint8_t *in, size_t len);
   int (*get_priv_raw)(const EVP_PKEY *pkey, uint8_t *out, size_t *out_len);
+  int (*get_priv_seed)(const EVP_PKEY *pkey, uint8_t *out, size_t *out_len);
   int (*get_pub_raw)(const EVP_PKEY *pkey, uint8_t *out, size_t *out_len);
 
   // TODO(davidben): Can these be merged with the functions above? OpenSSL does

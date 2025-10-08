@@ -2346,6 +2346,12 @@ bcm_status BCM_mldsa65_public_from_private(
   return bcm_status::approved;
 }
 
+const MLDSA65_public_key *BCM_mldsa65_public_of_private(
+    const MLDSA65_private_key *private_key){
+  return reinterpret_cast<const MLDSA65_public_key *>(
+      &mldsa::private_key_from_external_65(private_key)->pub);
+}
+
 bcm_status BCM_mldsa65_sign_internal(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -2442,6 +2448,18 @@ bcm_status BCM_mldsa65_marshal_public_key(
     CBB *out, const MLDSA65_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_65(public_key)));
+}
+
+int BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
+                                  const MLDSA65_public_key *b) {
+  auto *a_pub = mldsa::public_key_from_external_65(a);
+  auto *b_pub = mldsa::public_key_from_external_65(b);
+  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // the hash must be computed. When importing a private key in expanded form
+  // (an internal testing-only API), the hash is provided, but we recompute it
+  // and check for correctness.
+  return OPENSSL_memcmp(a_pub->public_key_hash, b_pub->public_key_hash,
+                        sizeof(a_pub->public_key_hash)) == 0;
 }
 
 
@@ -2547,6 +2565,12 @@ bcm_status BCM_mldsa87_public_from_private(
   return bcm_status::approved;
 }
 
+const MLDSA87_public_key *BCM_mldsa87_public_of_private(
+    const MLDSA87_private_key *private_key){
+  return reinterpret_cast<const MLDSA87_public_key *>(
+      &mldsa::private_key_from_external_87(private_key)->pub);
+}
+
 bcm_status BCM_mldsa87_sign_internal(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -2642,6 +2666,18 @@ bcm_status BCM_mldsa87_marshal_public_key(
     CBB *out, const MLDSA87_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_87(public_key)));
+}
+
+int BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
+                                  const MLDSA87_public_key *b) {
+  auto *a_pub = mldsa::public_key_from_external_87(a);
+  auto *b_pub = mldsa::public_key_from_external_87(b);
+  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // the hash must be computed. When importing a private key in expanded form
+  // (an internal testing-only API), the hash is provided, but we recompute it
+  // and check for correctness.
+  return OPENSSL_memcmp(a_pub->public_key_hash, b_pub->public_key_hash,
+                        sizeof(a_pub->public_key_hash)) == 0;
 }
 
 
@@ -2747,6 +2783,12 @@ bcm_status BCM_mldsa44_public_from_private(
   return bcm_status::approved;
 }
 
+const MLDSA44_public_key *BCM_mldsa44_public_of_private(
+    const MLDSA44_private_key *private_key){
+  return reinterpret_cast<const MLDSA44_public_key *>(
+      &mldsa::private_key_from_external_44(private_key)->pub);
+}
+
 bcm_status BCM_mldsa44_sign_internal(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -2842,6 +2884,18 @@ bcm_status BCM_mldsa44_marshal_public_key(
     CBB *out, const MLDSA44_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_44(public_key)));
+}
+
+int BCM_mldsa44_public_keys_equal(const MLDSA44_public_key *a,
+                                  const MLDSA44_public_key *b) {
+  auto *a_pub = mldsa::public_key_from_external_44(a);
+  auto *b_pub = mldsa::public_key_from_external_44(b);
+  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // the hash must be computed. When importing a private key in expanded form
+  // (an internal testing-only API), the hash is provided, but we recompute it
+  // and check for correctness.
+  return OPENSSL_memcmp(a_pub->public_key_hash, b_pub->public_key_hash,
+                        sizeof(a_pub->public_key_hash)) == 0;
 }
 
 int boringssl_self_test_mldsa() {

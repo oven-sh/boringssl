@@ -229,6 +229,19 @@ EVP_PKEY *EVP_PKEY_from_raw_private_key(const EVP_PKEY_ALG *alg,
   return ret.release();
 }
 
+EVP_PKEY *EVP_PKEY_from_private_seed(const EVP_PKEY_ALG *alg, const uint8_t *in,
+                                     size_t len) {
+  if (alg->method->set_priv_seed == nullptr) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
+    return nullptr;
+  }
+  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  if (ret == nullptr || !alg->method->set_priv_seed(ret.get(), in, len)) {
+    return nullptr;
+  }
+  return ret.release();
+}
+
 EVP_PKEY *EVP_PKEY_from_raw_public_key(const EVP_PKEY_ALG *alg,
                                        const uint8_t *in, size_t len) {
   if (alg->method->set_pub_raw == nullptr) {
@@ -280,6 +293,16 @@ int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, uint8_t *out,
   }
 
   return pkey->ameth->get_priv_raw(pkey, out, out_len);
+}
+
+int EVP_PKEY_get_private_seed(const EVP_PKEY *pkey, uint8_t *out,
+                              size_t *out_len) {
+  if (pkey->ameth->get_priv_seed == nullptr) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    return 0;
+  }
+
+  return pkey->ameth->get_priv_seed(pkey, out, out_len);
 }
 
 int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, uint8_t *out,

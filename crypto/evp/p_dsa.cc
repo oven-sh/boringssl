@@ -220,8 +220,10 @@ const EVP_PKEY_ASN1_METHOD dsa_asn1_meth = {
     dsa_priv_encode,
 
     /*set_priv_raw=*/nullptr,
+    /*set_priv_seed=*/nullptr,
     /*set_pub_raw=*/nullptr,
     /*get_priv_raw=*/nullptr,
+    /*get_priv_seed=*/nullptr,
     /*get_pub_raw=*/nullptr,
     /*set1_tls_encodedpoint=*/nullptr,
     /*get1_tls_encodedpoint=*/nullptr,

@@ -269,8 +269,10 @@ const EVP_PKEY_ASN1_METHOD rsa_asn1_meth = {
     rsa_priv_encode,
 
     /*set_priv_raw=*/nullptr,
+    /*set_priv_seed=*/nullptr,
     /*set_pub_raw=*/nullptr,
     /*get_priv_raw=*/nullptr,
+    /*get_priv_seed=*/nullptr,
     /*get_pub_raw=*/nullptr,
     /*set1_tls_encodedpoint=*/nullptr,
     /*get1_tls_encodedpoint=*/nullptr,
@@ -303,8 +305,10 @@ const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth = {
     rsa_priv_encode_pss,
 
     /*set_priv_raw=*/nullptr,
+    /*set_priv_seed=*/nullptr,
     /*set_pub_raw=*/nullptr,
     /*get_priv_raw=*/nullptr,
+    /*get_priv_seed=*/nullptr,
     /*get_pub_raw=*/nullptr,
     /*set1_tls_encodedpoint=*/nullptr,
     /*get1_tls_encodedpoint=*/nullptr,

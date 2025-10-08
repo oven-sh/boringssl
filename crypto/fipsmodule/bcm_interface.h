@@ -252,6 +252,10 @@ OPENSSL_EXPORT bcm_status BCM_mldsa65_private_key_from_seed(
 OPENSSL_EXPORT bcm_status BCM_mldsa65_public_from_private(
     MLDSA65_public_key *out_public_key, const MLDSA65_private_key *private_key);
 
+// BCM_mldsa65_public_of_private returns the public half of |private_key|.
+const MLDSA65_public_key *BCM_mldsa65_public_of_private(
+    const MLDSA65_private_key *private_key);
+
 OPENSSL_EXPORT bcm_status
 BCM_mldsa65_check_key_fips(MLDSA65_private_key *private_key);
 
@@ -335,6 +339,11 @@ OPENSSL_EXPORT bcm_status BCM_mldsa65_verify_internal(
 OPENSSL_EXPORT bcm_status BCM_mldsa65_marshal_private_key(
     CBB *out, const MLDSA65_private_key *private_key);
 
+// BCM_mldsa65_public_keys_equal returns one if |a| and |b| are equal and zero
+// otherwise.
+int BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
+                                  const MLDSA65_public_key *b);
+
 
 // BCM_MLDSA87_PRIVATE_KEY_BYTES is the number of bytes in an encoded ML-DSA-87
 // private key.
@@ -349,6 +358,10 @@ OPENSSL_EXPORT bcm_status BCM_mldsa87_private_key_from_seed(
 
 OPENSSL_EXPORT bcm_status BCM_mldsa87_public_from_private(
     MLDSA87_public_key *out_public_key, const MLDSA87_private_key *private_key);
+
+// BCM_mldsa87_public_of_private returns the public half of |private_key|.
+const MLDSA87_public_key *BCM_mldsa87_public_of_private(
+    const MLDSA87_private_key *private_key);
 
 OPENSSL_EXPORT bcm_status
 BCM_mldsa87_check_key_fips(MLDSA87_private_key *private_key);
@@ -433,6 +446,11 @@ OPENSSL_EXPORT bcm_status BCM_mldsa87_verify_internal(
 OPENSSL_EXPORT bcm_status BCM_mldsa87_marshal_private_key(
     CBB *out, const MLDSA87_private_key *private_key);
 
+// BCM_mldsa87_public_keys_equal returns one if |a| and |b| are equal and zero
+// otherwise.
+int BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
+                                  const MLDSA87_public_key *b);
+
 // BCM_MLDSA44_PRIVATE_KEY_BYTES is the number of bytes in an encoded ML-DSA-44
 // private key.
 #define BCM_MLDSA44_PRIVATE_KEY_BYTES 2560
@@ -446,6 +464,10 @@ OPENSSL_EXPORT bcm_status BCM_mldsa44_private_key_from_seed(
 
 OPENSSL_EXPORT bcm_status BCM_mldsa44_public_from_private(
     MLDSA44_public_key *out_public_key, const MLDSA44_private_key *private_key);
+
+// BCM_mldsa44_public_of_private returns the public half of |private_key|.
+const MLDSA44_public_key *BCM_mldsa44_public_of_private(
+    const MLDSA44_private_key *private_key);
 
 OPENSSL_EXPORT bcm_status
 BCM_mldsa44_check_key_fips(MLDSA44_private_key *private_key);
@@ -529,6 +551,11 @@ OPENSSL_EXPORT bcm_status BCM_mldsa44_verify_internal(
 // NIST format for ML-DSA-44 private keys.
 OPENSSL_EXPORT bcm_status BCM_mldsa44_marshal_private_key(
     CBB *out, const MLDSA44_private_key *private_key);
+
+// BCM_mldsa44_public_keys_equal returns one if |a| and |b| are equal and zero
+// otherwise.
+int BCM_mldsa44_public_keys_equal(const MLDSA44_public_key *a,
+                                  const MLDSA44_public_key *b);
 
 
 // ML-KEM
