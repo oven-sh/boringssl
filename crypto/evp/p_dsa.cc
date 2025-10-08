@@ -24,6 +24,10 @@
 #include "internal.h"
 
 
+namespace {
+
+extern const EVP_PKEY_ASN1_METHOD dsa_asn1_meth;
+
 static evp_decode_result_t dsa_pub_decode(const EVP_PKEY_ALG *alg,
                                           EVP_PKEY *out, CBS *params,
                                           CBS *key) {
@@ -233,6 +237,8 @@ const EVP_PKEY_ASN1_METHOD dsa_asn1_meth = {
 
     int_dsa_free,
 };
+
+}  // namespace
 
 const EVP_PKEY_ALG *EVP_pkey_dsa(void) {
   static const EVP_PKEY_ALG kAlg = {&dsa_asn1_meth};

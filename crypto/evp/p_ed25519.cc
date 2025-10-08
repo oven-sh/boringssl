@@ -22,15 +22,18 @@
 #include "../internal.h"
 #include "internal.h"
 
+namespace {
 
-typedef struct {
+struct ED25519_KEY {
   // key is the concatenation of the private seed and public key. It is stored
   // as a single 64-bit array to allow passing to |ED25519_sign|. If
   // |has_private| is false, the first 32 bytes are uninitialized and the public
   // key is in the last 32 bytes.
   uint8_t key[64];
-  char has_private;
-} ED25519_KEY;
+  bool has_private;
+};
+
+extern const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth;
 
 #define ED25519_PUBLIC_KEY_OFFSET 32
 
@@ -55,7 +58,7 @@ static int ed25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
   // full representation which we use from it.
   uint8_t pubkey_unused[32];
   ED25519_keypair_from_seed(pubkey_unused, key->key, in);
-  key->has_private = 1;
+  key->has_private = true;
   evp_pkey_set0(pkey, &ed25519_asn1_meth, key);
   return 1;
 }
@@ -73,7 +76,7 @@ static int ed25519_set_pub_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
   }
 
   OPENSSL_memcpy(key->key + ED25519_PUBLIC_KEY_OFFSET, in, 32);
-  key->has_private = 0;
+  key->has_private = false;
   evp_pkey_set0(pkey, &ed25519_asn1_meth, key);
   return 1;
 }
@@ -239,11 +242,6 @@ const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth = {
     ed25519_free,
 };
 
-const EVP_PKEY_ALG *EVP_pkey_ed25519(void) {
-  static const EVP_PKEY_ALG kAlg = {&ed25519_asn1_meth};
-  return &kAlg;
-}
-
 // Ed25519 has no parameters to copy.
 static int pkey_ed25519_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) { return 1; }
 
@@ -256,7 +254,7 @@ static int pkey_ed25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 
   uint8_t pubkey_unused[32];
   ED25519_keypair(pubkey_unused, key->key);
-  key->has_private = 1;
+  key->has_private = true;
 
   evp_pkey_set0(pkey, &ed25519_asn1_meth, key);
   return 1;
@@ -304,6 +302,8 @@ static int pkey_ed25519_verify_message(EVP_PKEY_CTX *ctx, const uint8_t *sig,
   return 1;
 }
 
+}  // namespace
+
 const EVP_PKEY_CTX_METHOD ed25519_pkey_meth = {
     /*pkey_id=*/EVP_PKEY_ED25519,
     /*init=*/nullptr,
@@ -321,3 +321,8 @@ const EVP_PKEY_CTX_METHOD ed25519_pkey_meth = {
     /*paramgen=*/nullptr,
     /*ctrl=*/nullptr,
 };
+
+const EVP_PKEY_ALG *EVP_pkey_ed25519(void) {
+  static const EVP_PKEY_ALG kAlg = {&ed25519_asn1_meth};
+  return &kAlg;
+}

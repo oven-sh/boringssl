@@ -39,6 +39,9 @@ struct EVP_PKEY_ALG_RSA_PSS : public EVP_PKEY_ALG {
   rsa_pss_params_t pss_params;
 };
 
+extern const EVP_PKEY_ASN1_METHOD rsa_asn1_meth;
+extern const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth;
+
 static int rsa_pub_encode(CBB *out, const EVP_PKEY *key) {
   // See RFC 3279, section 2.3.1.
   const RSA *rsa = reinterpret_cast<const RSA *>(key->pkey);
@@ -249,6 +252,75 @@ static void int_rsa_free(EVP_PKEY *pkey) {
   RSA_free(reinterpret_cast<RSA *>(pkey->pkey));
   pkey->pkey = nullptr;
 }
+
+const EVP_PKEY_ASN1_METHOD rsa_asn1_meth = {
+    EVP_PKEY_RSA,
+    // 1.2.840.113549.1.1.1
+    {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01},
+    9,
+
+    &rsa_pkey_meth,
+
+    rsa_pub_decode,
+    rsa_pub_encode,
+    rsa_pub_cmp,
+
+    rsa_priv_decode,
+    rsa_priv_encode,
+
+    /*set_priv_raw=*/nullptr,
+    /*set_pub_raw=*/nullptr,
+    /*get_priv_raw=*/nullptr,
+    /*get_pub_raw=*/nullptr,
+    /*set1_tls_encodedpoint=*/nullptr,
+    /*get1_tls_encodedpoint=*/nullptr,
+
+    rsa_opaque,
+
+    int_rsa_size,
+    rsa_bits,
+
+    /*param_missing=*/nullptr,
+    /*param_copy=*/nullptr,
+    /*param_cmp=*/nullptr,
+
+    int_rsa_free,
+};
+
+const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth = {
+    EVP_PKEY_RSA_PSS,
+    // 1.2.840.113549.1.1.10
+    {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a},
+    9,
+
+    &rsa_pss_pkey_meth,
+
+    rsa_pub_decode_pss,
+    rsa_pub_encode_pss,
+    rsa_pub_cmp,
+
+    rsa_priv_decode_pss,
+    rsa_priv_encode_pss,
+
+    /*set_priv_raw=*/nullptr,
+    /*set_pub_raw=*/nullptr,
+    /*get_priv_raw=*/nullptr,
+    /*get_pub_raw=*/nullptr,
+    /*set1_tls_encodedpoint=*/nullptr,
+    /*get1_tls_encodedpoint=*/nullptr,
+
+    rsa_opaque,
+
+    int_rsa_size,
+    rsa_bits,
+
+    /*param_missing=*/nullptr,
+    /*param_copy=*/nullptr,
+    /*param_cmp=*/nullptr,
+
+    int_rsa_free,
+};
+
 
 struct RSA_PKEY_CTX {
   // Key gen parameters
@@ -729,75 +801,6 @@ static int pkey_rsa_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 }
 
 }  // namespace
-
-const EVP_PKEY_ASN1_METHOD rsa_asn1_meth = {
-    EVP_PKEY_RSA,
-    // 1.2.840.113549.1.1.1
-    {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01},
-    9,
-
-    &rsa_pkey_meth,
-
-    rsa_pub_decode,
-    rsa_pub_encode,
-    rsa_pub_cmp,
-
-    rsa_priv_decode,
-    rsa_priv_encode,
-
-    /*set_priv_raw=*/nullptr,
-    /*set_pub_raw=*/nullptr,
-    /*get_priv_raw=*/nullptr,
-    /*get_pub_raw=*/nullptr,
-    /*set1_tls_encodedpoint=*/nullptr,
-    /*get1_tls_encodedpoint=*/nullptr,
-
-    rsa_opaque,
-
-    int_rsa_size,
-    rsa_bits,
-
-    /*param_missing=*/nullptr,
-    /*param_copy=*/nullptr,
-    /*param_cmp=*/nullptr,
-
-    int_rsa_free,
-};
-
-const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth = {
-    EVP_PKEY_RSA_PSS,
-    // 1.2.840.113549.1.1.10
-    {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a},
-    9,
-
-    &rsa_pss_pkey_meth,
-
-    rsa_pub_decode_pss,
-    rsa_pub_encode_pss,
-    rsa_pub_cmp,
-
-    rsa_priv_decode_pss,
-    rsa_priv_encode_pss,
-
-    /*set_priv_raw=*/nullptr,
-    /*set_pub_raw=*/nullptr,
-    /*get_priv_raw=*/nullptr,
-    /*get_pub_raw=*/nullptr,
-    /*set1_tls_encodedpoint=*/nullptr,
-    /*get1_tls_encodedpoint=*/nullptr,
-
-    rsa_opaque,
-
-    int_rsa_size,
-    rsa_bits,
-
-    /*param_missing=*/nullptr,
-    /*param_copy=*/nullptr,
-    /*param_cmp=*/nullptr,
-
-    int_rsa_free,
-};
-
 
 const EVP_PKEY_ALG *EVP_pkey_rsa(void) {
   static const EVP_PKEY_ALG kAlg = {&rsa_asn1_meth};

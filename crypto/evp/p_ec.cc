@@ -41,6 +41,8 @@ struct EVP_PKEY_ALG_EC : public EVP_PKEY_ALG {
   const EC_GROUP *(*ec_group)();
 };
 
+extern const EVP_PKEY_ASN1_METHOD ec_asn1_meth;
+
 static int eckey_pub_encode(CBB *out, const EVP_PKEY *key) {
   const EC_KEY *ec_key = reinterpret_cast<const EC_KEY *>(key->pkey);
   const EC_GROUP *group = EC_KEY_get0_group(ec_key);
@@ -258,8 +260,6 @@ static int eckey_opaque(const EVP_PKEY *pkey) {
   return EC_KEY_is_opaque(ec_key);
 }
 
-}  // namespace
-
 const EVP_PKEY_ASN1_METHOD ec_asn1_meth = {
     EVP_PKEY_EC,
     // 1.2.840.10045.2.1
@@ -293,6 +293,8 @@ const EVP_PKEY_ASN1_METHOD ec_asn1_meth = {
 
     int_ec_free,
 };
+
+}  // namespace
 
 const EVP_PKEY_ALG *EVP_pkey_ec_p224(void) {
   static const EVP_PKEY_ALG_EC kAlg = {{&ec_asn1_meth}, &EC_group_p224};

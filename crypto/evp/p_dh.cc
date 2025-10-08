@@ -89,7 +89,7 @@ static int dh_pub_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
   return BN_cmp(DH_get0_pub_key(a_dh), DH_get0_pub_key(b_dh)) == 0;
 }
 
-const EVP_PKEY_ASN1_METHOD dh_asn1_meth = {
+static const EVP_PKEY_ASN1_METHOD dh_asn1_meth = {
     /*pkey_id=*/EVP_PKEY_DH,
     /*oid=*/{0},
     /*oid_len=*/0,

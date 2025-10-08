@@ -253,14 +253,6 @@ struct evp_pkey_ctx_method_st {
   int (*ctrl)(EVP_PKEY_CTX *ctx, int type, int p1, void *p2);
 } /* EVP_PKEY_CTX_METHOD */;
 
-extern const EVP_PKEY_ASN1_METHOD dsa_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD ec_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD rsa_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD x25519_asn1_meth;
-extern const EVP_PKEY_ASN1_METHOD dh_asn1_meth;
-
 extern const EVP_PKEY_CTX_METHOD rsa_pkey_meth;
 extern const EVP_PKEY_CTX_METHOD rsa_pss_pkey_meth;
 extern const EVP_PKEY_CTX_METHOD ec_pkey_meth;

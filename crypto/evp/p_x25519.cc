@@ -23,11 +23,15 @@
 #include "internal.h"
 
 
-typedef struct {
+namespace {
+
+struct X25519_KEY {
   uint8_t pub[32];
   uint8_t priv[32];
-  char has_private;
-} X25519_KEY;
+  bool has_private;
+};
+
+extern const EVP_PKEY_ASN1_METHOD x25519_asn1_meth;
 
 static void x25519_free(EVP_PKEY *pkey) {
   OPENSSL_free(pkey->pkey);
@@ -48,7 +52,7 @@ static int x25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
 
   OPENSSL_memcpy(key->priv, in, 32);
   X25519_public_from_private(key->pub, key->priv);
-  key->has_private = 1;
+  key->has_private = true;
 
   evp_pkey_set0(pkey, &x25519_asn1_meth, key);
   return 1;
@@ -67,7 +71,7 @@ static int x25519_set_pub_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
   }
 
   OPENSSL_memcpy(key->pub, in, 32);
-  key->has_private = 0;
+  key->has_private = false;
 
   evp_pkey_set0(pkey, &x25519_asn1_meth, key);
   return 1;
@@ -248,6 +252,8 @@ const EVP_PKEY_ASN1_METHOD x25519_asn1_meth = {
     x25519_free,
 };
 
+}  // namespace
+
 const EVP_PKEY_ALG *EVP_pkey_x25519(void) {
   static const EVP_PKEY_ALG kAlg = {&x25519_asn1_meth};
   return &kAlg;
@@ -264,7 +270,7 @@ static int pkey_x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   }
 
   X25519_keypair(key->pub, key->priv);
-  key->has_private = 1;
+  key->has_private = true;
   evp_pkey_set0(pkey, &x25519_asn1_meth, key);
   return 1;
 }
