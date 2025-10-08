@@ -41,7 +41,7 @@ extern "C" {
 // object should never leave the address space since the format is unstable.
 struct MLDSA65_private_key {
   union {
-    uint8_t bytes[32 + 32 + 64 + 256 * 4 * (5 + 6 + 6)];
+    uint8_t bytes[(32 + 64 + 256 * 4 * 6) + 32 + 256 * 4 * (5 + 6 + 6)];
     uint32_t alignment;
   } opaque;
 };
@@ -180,7 +180,7 @@ OPENSSL_EXPORT int MLDSA65_parse_public_key(
 // object should never leave the address space since the format is unstable.
 struct MLDSA87_private_key {
   union {
-    uint8_t bytes[32 + 32 + 64 + 256 * 4 * (7 + 8 + 8)];
+    uint8_t bytes[(32 + 64 + 256 * 4 * 8) + 32 + 256 * 4 * (7 + 8 + 8)];
     uint32_t alignment;
   } opaque;
 };
@@ -316,7 +316,7 @@ OPENSSL_EXPORT int MLDSA87_parse_public_key(
 // object should never leave the address space since the format is unstable.
 struct MLDSA44_private_key {
   union {
-    uint8_t bytes[32 + 32 + 64 + 256 * 4 * (4 + 4 + 4)];
+    uint8_t bytes[(32 + 64 + 256 * 4 * 4) + 32 + 256 * 4 * (4 + 4 + 4)];
     uint32_t alignment;
   } opaque;
 };
