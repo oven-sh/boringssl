@@ -143,7 +143,7 @@ ssl_open_record_t tls_open_record(SSL *ssl, uint8_t *out_type,
     return ssl_open_record_partial;
   }
 
-  Span<const uint8_t> header = in.subspan(0, SSL3_RT_HEADER_LENGTH);
+  auto header = in.first(SSL3_RT_HEADER_LENGTH);
   ssl_do_msg_callback(ssl, 0 /* read */, SSL3_RT_HEADER, header);
 
   *out_consumed = in.size() - CBS_len(&cbs);

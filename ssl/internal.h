@@ -1358,10 +1358,11 @@ size_t ssl_ech_confirmation_signal_hello_offset(const SSL *ssl);
 // |transcript| with |msg|. The |ECH_CONFIRMATION_SIGNAL_LEN| bytes from
 // |offset| in |msg| are replaced with zeros before hashing. This function
 // returns true on success, and false on failure.
-bool ssl_ech_accept_confirmation(const SSL_HANDSHAKE *hs, Span<uint8_t> out,
-                                 Span<const uint8_t> client_random,
-                                 const SSLTranscript &transcript, bool is_hrr,
-                                 Span<const uint8_t> msg, size_t offset);
+bool ssl_ech_accept_confirmation(
+    const SSL_HANDSHAKE *hs, Span<uint8_t, ECH_CONFIRMATION_SIGNAL_LEN> out,
+    Span<const uint8_t, SSL3_RANDOM_SIZE> client_random,
+    const SSLTranscript &transcript, bool is_hrr, Span<const uint8_t> msg,
+    size_t offset);
 
 // ssl_is_valid_ech_public_name returns true if |public_name| is a valid ECH
 // public name and false otherwise. It is exported for testing.

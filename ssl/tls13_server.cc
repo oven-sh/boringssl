@@ -757,7 +757,7 @@ static enum ssl_hs_wait_t do_send_hello_retry_request(SSL_HANDSHAKE *hs) {
     // Now that the message is encoded, fill in the whole value.
     size_t offset = hrr.size() - ECH_CONFIRMATION_SIGNAL_LEN;
     if (!ssl_ech_accept_confirmation(
-            hs, Span(hrr).last(ECH_CONFIRMATION_SIGNAL_LEN),
+            hs, Span(hrr).last<ECH_CONFIRMATION_SIGNAL_LEN>(),
             ssl->s3->client_random, hs->transcript, /*is_hrr=*/true, hrr,
             offset)) {
       return ssl_hs_error;
@@ -947,7 +947,7 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
   if (hs->ech_is_inner) {
     // Fill in the ECH confirmation signal.
     const size_t offset = ssl_ech_confirmation_signal_hello_offset(ssl);
-    Span<uint8_t> random_suffix = random.last(ECH_CONFIRMATION_SIGNAL_LEN);
+    auto random_suffix = random.last<ECH_CONFIRMATION_SIGNAL_LEN>();
     if (!ssl_ech_accept_confirmation(hs, random_suffix, ssl->s3->client_random,
                                      hs->transcript,
                                      /*is_hrr=*/false, server_hello, offset)) {
@@ -955,8 +955,8 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
     }
 
     // Update |server_hello|.
-    Span<uint8_t> server_hello_out =
-        Span(server_hello).subspan(offset, ECH_CONFIRMATION_SIGNAL_LEN);
+    auto server_hello_out =
+        Span(server_hello).subspan(offset).first<ECH_CONFIRMATION_SIGNAL_LEN>();
     OPENSSL_memcpy(server_hello_out.data(), random_suffix.data(),
                    ECH_CONFIRMATION_SIGNAL_LEN);
   }

@@ -2613,9 +2613,9 @@ static bool ext_certificate_authorities_add_clienthello(
   if (ssl_has_CA_names(hs->config)) {
     CBB ca_contents;
     if (!CBB_add_u16(out_compressible,
-                     TLSEXT_TYPE_certificate_authorities) ||  //
-        !CBB_add_u16_length_prefixed(out_compressible, &ca_contents) ||    //
-        !ssl_add_CA_names(hs, &ca_contents) ||                //
+                     TLSEXT_TYPE_certificate_authorities) ||             //
+        !CBB_add_u16_length_prefixed(out_compressible, &ca_contents) ||  //
+        !ssl_add_CA_names(hs, &ca_contents) ||                           //
         !CBB_flush(out_compressible)) {
       return false;
     }
@@ -3221,7 +3221,7 @@ bool ssl_ext_pake_parse_serverhello(SSL_HANDSHAKE *hs,
   uint8_t prover_secret[spake2plus::kSecretSize];
   if (!hs->pake_prover->ComputeConfirmation(
           prover_confirm, prover_secret,
-          pake_msg_span.subspan(0, spake2plus::kShareSize),
+          pake_msg_span.first<spake2plus::kShareSize>(),
           pake_msg_span.subspan(spake2plus::kShareSize))) {
     // Record a failure before releasing the answer to the client.
     hs->credential->ClaimPAKEAttempt();
@@ -4337,11 +4337,11 @@ static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_cb(
   assert(ticket.size() >= SSL_TICKET_KEY_NAME_LEN + EVP_MAX_IV_LENGTH);
   ScopedEVP_CIPHER_CTX cipher_ctx;
   ScopedHMAC_CTX hmac_ctx;
-  auto name = ticket.subspan(0, SSL_TICKET_KEY_NAME_LEN);
+  auto name = ticket.first<SSL_TICKET_KEY_NAME_LEN>();
   // The actual IV is shorter, but the length is determined by the callback's
   // chosen cipher. Instead we pass in |EVP_MAX_IV_LENGTH| worth of IV to ensure
   // the callback has enough.
-  auto iv = ticket.subspan(SSL_TICKET_KEY_NAME_LEN, EVP_MAX_IV_LENGTH);
+  auto iv = ticket.subspan<SSL_TICKET_KEY_NAME_LEN, EVP_MAX_IV_LENGTH>();
   int cb_ret = hs->ssl->session_ctx->ticket_key_cb(
       hs->ssl, const_cast<uint8_t *>(name.data()),
       const_cast<uint8_t *>(iv.data()), cipher_ctx.get(), hmac_ctx.get(),
@@ -4370,7 +4370,7 @@ static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_ticket_keys(
   }
 
   const EVP_CIPHER *cipher = EVP_aes_128_cbc();
-  auto name = ticket.subspan(0, SSL_TICKET_KEY_NAME_LEN);
+  auto name = ticket.first<SSL_TICKET_KEY_NAME_LEN>();
   auto iv =
       ticket.subspan(SSL_TICKET_KEY_NAME_LEN, EVP_CIPHER_iv_length(cipher));
 
