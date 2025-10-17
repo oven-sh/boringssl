@@ -1696,7 +1696,7 @@ int mldsa_generate_key_external_entropy(
 // FIPS 204, Algorithm 7 (`ML-DSA.Sign_internal`), using a pre-computed mu.
 // Returns 1 on success and 0 on failure.
 template <int K, int L>
-int mldsa_sign_mu(
+int mldsa_sign_mu_no_self_test(
     uint8_t out_encoded_signature[signature_bytes<K>()],
     const private_key<K, L> *priv, const uint8_t mu[kMuBytes],
     const uint8_t randomizer[BCM_MLDSA_SIGNATURE_RANDOMIZER_BYTES]) {
@@ -1833,6 +1833,18 @@ int mldsa_sign_mu(
   }
 }
 
+// FIPS 204, Algorithm 7 (`ML-DSA.Sign_internal`), using a pre-computed mu.
+// Returns 1 on success and 0 on failure.
+template <int K, int L>
+int mldsa_sign_mu(
+    uint8_t out_encoded_signature[signature_bytes<K>()],
+    const private_key<K, L> *priv, const uint8_t mu[kMuBytes],
+    const uint8_t randomizer[BCM_MLDSA_SIGNATURE_RANDOMIZER_BYTES]) {
+  fips::ensure_sign_self_test();
+  return mldsa_sign_mu_no_self_test(out_encoded_signature, priv, mu,
+                                    randomizer);
+}
+
 // FIPS 204, Algorithm 7 (`ML-DSA.Sign_internal`). Returns 1 on success and 0
 // on failure.
 template <int K, int L>
@@ -1852,7 +1864,8 @@ int mldsa_sign_internal_no_self_test(
   BORINGSSL_keccak_absorb(&keccak_ctx, msg, msg_len);
   BORINGSSL_keccak_squeeze(&keccak_ctx, mu, kMuBytes);
 
-  return mldsa_sign_mu(out_encoded_signature, priv, mu, randomizer);
+  return mldsa_sign_mu_no_self_test(out_encoded_signature, priv, mu,
+                                    randomizer);
 }
 
 // FIPS 204, Algorithm 7 (`ML-DSA.Sign_internal`). Returns 1 on success and 0
