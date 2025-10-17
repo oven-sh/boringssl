@@ -291,6 +291,11 @@ OPENSSL_EXPORT bcm_status BCM_mldsa65_sign_message_representative(
     const MLDSA65_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
+OPENSSL_EXPORT bcm_status BCM_mldsa65_verify_message_representative(
+    const MLDSA65_public_key *public_key,
+    const uint8_t signature[MLDSA65_SIGNATURE_BYTES],
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
 OPENSSL_EXPORT bcm_status
 BCM_mldsa65_marshal_public_key(CBB *out, const MLDSA65_public_key *public_key);
 
@@ -398,6 +403,11 @@ OPENSSL_EXPORT bcm_status BCM_mldsa87_sign_message_representative(
     const MLDSA87_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
+OPENSSL_EXPORT bcm_status BCM_mldsa87_verify_message_representative(
+    const MLDSA87_public_key *public_key,
+    const uint8_t signature[MLDSA87_SIGNATURE_BYTES],
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
 OPENSSL_EXPORT bcm_status
 BCM_mldsa87_marshal_public_key(CBB *out, const MLDSA87_public_key *public_key);
 
@@ -502,6 +512,11 @@ OPENSSL_EXPORT void BCM_mldsa44_prehash_finalize(
 OPENSSL_EXPORT bcm_status BCM_mldsa44_sign_message_representative(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key,
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
+OPENSSL_EXPORT bcm_status BCM_mldsa44_verify_message_representative(
+    const MLDSA44_public_key *public_key,
+    const uint8_t signature[MLDSA44_SIGNATURE_BYTES],
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
 OPENSSL_EXPORT bcm_status

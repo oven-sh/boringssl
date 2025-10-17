@@ -1911,13 +1911,13 @@ void mldsa_prehash_finalize(uint8_t out_msg_rep[kMuBytes],
                            kMuBytes);
 }
 
-// FIPS 204, Algorithm 8 (`ML-DSA.Verify_internal`).
+// FIPS 204, Algorithm 8 (`ML-DSA.Verify_internal`), using a pre-computed mu.
+// Returns 1 on success and 0 on failure.
 template <int K, int L>
-int mldsa_verify_internal_no_self_test(
+int mldsa_verify_mu_no_self_test(
     const public_key<K> *pub,
-    const uint8_t encoded_signature[signature_bytes<K>()], const uint8_t *msg,
-    size_t msg_len, const uint8_t *context_prefix, size_t context_prefix_len,
-    const uint8_t *context, size_t context_len) {
+    const uint8_t encoded_signature[signature_bytes<K>()],
+    const uint8_t mu[kMuBytes]) {
   // Intermediate values, allocated on the heap to allow use when there is a
   // limited amount of stack.
   struct Values {
@@ -1940,16 +1940,6 @@ int mldsa_verify_internal_no_self_test(
   }
 
   matrix_expand(&values->a_ntt, pub->rho);
-
-  uint8_t mu[kMuBytes];
-  BORINGSSL_keccak_st keccak_ctx;
-  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake256);
-  BORINGSSL_keccak_absorb(&keccak_ctx, pub->public_key_hash,
-                          sizeof(pub->public_key_hash));
-  BORINGSSL_keccak_absorb(&keccak_ctx, context_prefix, context_prefix_len);
-  BORINGSSL_keccak_absorb(&keccak_ctx, context, context_len);
-  BORINGSSL_keccak_absorb(&keccak_ctx, msg, msg_len);
-  BORINGSSL_keccak_squeeze(&keccak_ctx, mu, kMuBytes);
 
   scalar c_ntt;
   scalar_sample_in_ball_vartime(&c_ntt, values->sign.c_tilde,
@@ -1975,6 +1965,7 @@ int mldsa_verify_internal_no_self_test(
   w1_encode(w1_encoded, w1);
 
   uint8_t c_tilde[2 * lambda_bytes<K>()];
+  BORINGSSL_keccak_st keccak_ctx;
   BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake256);
   BORINGSSL_keccak_absorb(&keccak_ctx, mu, kMuBytes);
   BORINGSSL_keccak_absorb(&keccak_ctx, w1_encoded, w1_bytes<K>());
@@ -1985,6 +1976,39 @@ int mldsa_verify_internal_no_self_test(
          OPENSSL_memcmp(c_tilde, values->sign.c_tilde, 2 * lambda_bytes<K>()) ==
              0;
 }
+
+// FIPS 204, Algorithm 8 (`ML-DSA.Verify_internal`), using a pre-computed mu.
+// Returns 1 on success and 0 on failure.
+template <int K, int L>
+int mldsa_verify_mu(
+    const public_key<K> *pub,
+    const uint8_t encoded_signature[signature_bytes<K>()],
+    const uint8_t mu[kMuBytes]) {
+  fips::ensure_verify_self_test();
+  return mldsa_verify_mu_no_self_test<K, L>(pub, encoded_signature, mu);
+}
+
+// FIPS 204, Algorithm 8 (`ML-DSA.Verify_internal`).
+template <int K, int L>
+int mldsa_verify_internal_no_self_test(
+    const public_key<K> *pub,
+    const uint8_t encoded_signature[signature_bytes<K>()], const uint8_t *msg,
+    size_t msg_len, const uint8_t *context_prefix, size_t context_prefix_len,
+    const uint8_t *context, size_t context_len) {
+  uint8_t mu[kMuBytes];
+  BORINGSSL_keccak_st keccak_ctx;
+  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake256);
+  BORINGSSL_keccak_absorb(&keccak_ctx, pub->public_key_hash,
+                          sizeof(pub->public_key_hash));
+  BORINGSSL_keccak_absorb(&keccak_ctx, context_prefix, context_prefix_len);
+  BORINGSSL_keccak_absorb(&keccak_ctx, context, context_len);
+  BORINGSSL_keccak_absorb(&keccak_ctx, msg, msg_len);
+  BORINGSSL_keccak_squeeze(&keccak_ctx, mu, kMuBytes);
+
+  return mldsa_verify_mu_no_self_test<K, L>(pub, encoded_signature, mu);
+}
+
+// FIPS 204, Algorithm 8 (`ML-DSA.Verify_internal`).
 template <int K, int L>
 int mldsa_verify_internal(const public_key<K> *pub,
                           const uint8_t encoded_signature[signature_bytes<K>()],
@@ -2435,6 +2459,15 @@ bcm_status BCM_mldsa65_sign_message_representative(
       msg_rep, randomizer));
 }
 
+// ML-DSA pre-hashed API: verifying a message representative.
+bcm_status BCM_mldsa65_verify_message_representative(
+    const MLDSA65_public_key *public_key,
+    const uint8_t signature[MLDSA65_SIGNATURE_BYTES],
+    const uint8_t msg_rep[MLDSA_MU_BYTES]) {
+  return bcm_as_approved_status(mldsa::mldsa_verify_mu<6, 5>(
+      mldsa::public_key_from_external_65(public_key), signature, msg_rep));
+}
+
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).
 bcm_status BCM_mldsa65_verify(const MLDSA65_public_key *public_key,
                               const uint8_t signature[MLDSA65_SIGNATURE_BYTES],
@@ -2653,6 +2686,15 @@ bcm_status BCM_mldsa87_sign_message_representative(
       msg_rep, randomizer));
 }
 
+// ML-DSA pre-hashed API: verifying a message representative.
+bcm_status BCM_mldsa87_verify_message_representative(
+    const MLDSA87_public_key *public_key,
+    const uint8_t signature[MLDSA87_SIGNATURE_BYTES],
+    const uint8_t msg_rep[MLDSA_MU_BYTES]) {
+  return bcm_as_approved_status(mldsa::mldsa_verify_mu<8, 7>(
+      mldsa::public_key_from_external_87(public_key), signature, msg_rep));
+}
+
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).
 bcm_status BCM_mldsa87_verify(const MLDSA87_public_key *public_key,
                               const uint8_t *signature, const uint8_t *msg,
@@ -2869,6 +2911,15 @@ bcm_status BCM_mldsa44_sign_message_representative(
   return bcm_as_approved_status(mldsa_sign_mu(
       out_encoded_signature, mldsa::private_key_from_external_44(private_key),
       msg_rep, randomizer));
+}
+
+// ML-DSA pre-hashed API: verifying a message representative.
+bcm_status BCM_mldsa44_verify_message_representative(
+    const MLDSA44_public_key *public_key,
+    const uint8_t signature[MLDSA44_SIGNATURE_BYTES],
+    const uint8_t msg_rep[MLDSA_MU_BYTES]) {
+  return bcm_as_approved_status(mldsa::mldsa_verify_mu<4, 4>(
+      mldsa::public_key_from_external_44(public_key), signature, msg_rep));
 }
 
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).

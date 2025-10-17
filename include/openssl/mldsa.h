@@ -157,6 +157,17 @@ OPENSSL_EXPORT int MLDSA65_sign_message_representative(
     const struct MLDSA65_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
+// MLDSA65_verify_message_representative verifies that |signature| constitutes a
+// valid signature for the pre-hashed message |msg_rep| using |public_key|. The
+// |msg_rep| should be obtained via calls to |MLDSA65_prehash_init|,
+// |MLDSA65_prehash_update| and |MLDSA65_prehash_finalize| using |public key|
+// and the same context as when the signature was generated. Returns 1 on
+// success or 0 on error.
+OPENSSL_EXPORT int MLDSA65_verify_message_representative(
+    const struct MLDSA65_public_key *public_key,
+    const uint8_t *signature, size_t signature_len,
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
 // MLDSA65_marshal_public_key serializes |public_key| to |out| in the standard
 // format for ML-DSA-65 public keys. It returns 1 on success or 0 on
 // allocation error.
@@ -296,6 +307,17 @@ OPENSSL_EXPORT int MLDSA87_sign_message_representative(
     const struct MLDSA87_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
+// MLDSA87_verify_message_representative verifies that |signature| constitutes a
+// valid signature for the pre-hashed message |msg_rep| using |public_key|. The
+// |msg_rep| should be obtained via calls to |MLDSA87_prehash_init|,
+// |MLDSA87_prehash_update| and |MLDSA87_prehash_finalize| using |public key|
+// and the same context as when the signature was generated. Returns 1 on
+// success or 0 on error.
+OPENSSL_EXPORT int MLDSA87_verify_message_representative(
+    const struct MLDSA87_public_key *public_key,
+    const uint8_t *signature, size_t signature_len,
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
 // MLDSA87_marshal_public_key serializes |public_key| to |out| in the standard
 // format for ML-DSA-87 public keys. It returns 1 on success or 0 on
 // allocation error.
@@ -430,6 +452,17 @@ OPENSSL_EXPORT void MLDSA44_prehash_finalize(
 OPENSSL_EXPORT int MLDSA44_sign_message_representative(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const struct MLDSA44_private_key *private_key,
+    const uint8_t msg_rep[MLDSA_MU_BYTES]);
+
+// MLDSA44_verify_message_representative verifies that |signature| constitutes a
+// valid signature for the pre-hashed message |msg_rep| using |public_key|. The
+// |msg_rep| should be obtained via calls to |MLDSA44_prehash_init|,
+// |MLDSA44_prehash_update| and |MLDSA44_prehash_finalize| using |public key|
+// and the same context as when the signature was generated. Returns 1 on
+// success or 0 on error.
+OPENSSL_EXPORT int MLDSA44_verify_message_representative(
+    const struct MLDSA44_public_key *public_key,
+    const uint8_t *signature, size_t signature_len,
     const uint8_t msg_rep[MLDSA_MU_BYTES]);
 
 // MLDSA44_marshal_public_key serializes |public_key| to |out| in the standard
