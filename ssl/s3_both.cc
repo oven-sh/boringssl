@@ -99,7 +99,8 @@ bool tls_add_message(SSL *ssl, Array<uint8_t> msg) {
   Span<const uint8_t> rest = msg;
   if (!SSL_is_quic(ssl) && ssl->s3->aead_write_ctx->is_null_cipher()) {
     while (!rest.empty()) {
-      Span<const uint8_t> chunk = rest.subspan(0, ssl->max_send_fragment);
+      Span<const uint8_t> chunk =
+          rest.subspan(0, /* up to */ ssl->max_send_fragment);
       rest = rest.subspan(chunk.size());
 
       if (!add_record_to_flight(ssl, SSL3_RT_HANDSHAKE, chunk)) {
@@ -118,7 +119,7 @@ bool tls_add_message(SSL *ssl, Array<uint8_t> msg) {
       size_t pending_len =
           ssl->s3->pending_hs_data ? ssl->s3->pending_hs_data->length : 0;
       Span<const uint8_t> chunk =
-          rest.subspan(0, ssl->max_send_fragment - pending_len);
+          rest.subspan(0, /* up to */ ssl->max_send_fragment - pending_len);
       assert(!chunk.empty());
       rest = rest.subspan(chunk.size());
 
