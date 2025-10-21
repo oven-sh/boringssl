@@ -56,7 +56,7 @@ static int STRING_PIECE_equals(const STRING_PIECE *a, const char *b) {
 static int STRING_PIECE_split(STRING_PIECE *out_left, STRING_PIECE *out_right,
                               const STRING_PIECE *in, char sep) {
   const char *p = (const char *)OPENSSL_memchr(in->data, sep, in->len);
-  if (p == NULL) {
+  if (p == nullptr) {
     return 0;
   }
   // |out_left| or |out_right| may alias |in|, so make a copy.
