@@ -136,7 +136,7 @@ bool tls_add_message(SSL *ssl, Array<uint8_t> msg) {
   ssl_do_msg_callback(ssl, 1 /* write */, SSL3_RT_HANDSHAKE, msg);
   // TODO(svaldez): Move this up a layer to fix abstraction for SSLTranscript on
   // hs.
-  if (ssl->s3->hs != NULL &&  //
+  if (ssl->s3->hs != nullptr &&  //
       !ssl->s3->hs->transcript.Update(msg)) {
     return false;
   }
@@ -363,7 +363,7 @@ static ssl_open_record_t read_v2_client_hello(SSL *ssl, size_t *out_consumed,
   // Add the null compression scheme and finish.
   if (!CBB_add_u8(&hello_body, 1) ||  //
       !CBB_add_u8(&hello_body, 0) ||  //
-      !CBB_finish(client_hello.get(), NULL, &ssl->s3->hs_buf->length)) {
+      !CBB_finish(client_hello.get(), nullptr, &ssl->s3->hs_buf->length)) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
     return ssl_open_record_error;
   }

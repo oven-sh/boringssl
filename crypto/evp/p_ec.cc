@@ -115,7 +115,7 @@ static int pkey_ec_derive(EVP_PKEY_CTX *ctx, uint8_t *key, size_t *keylen) {
   // NB: unlike PKCS#3 DH, if *outlen is less than maximum size this is
   // not an error, the result is truncated.
   size_t outlen = *keylen;
-  int ret = ECDH_compute_key(key, outlen, pubkey, eckey, 0);
+  int ret = ECDH_compute_key(key, outlen, pubkey, eckey, nullptr);
   if (ret < 0) {
     return 0;
   }
@@ -162,15 +162,16 @@ static int pkey_ec_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
 static int pkey_ec_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   EC_PKEY_CTX *dctx = reinterpret_cast<EC_PKEY_CTX *>(ctx->data);
   const EC_GROUP *group = dctx->gen_group;
-  if (group == NULL) {
-    if (ctx->pkey == NULL) {
+  if (group == nullptr) {
+    if (ctx->pkey == nullptr) {
       OPENSSL_PUT_ERROR(EVP, EVP_R_NO_PARAMETERS_SET);
       return 0;
     }
     group = EC_KEY_get0_group(reinterpret_cast<EC_KEY *>(ctx->pkey->pkey));
   }
   EC_KEY *ec = EC_KEY_new();
-  if (ec == NULL || !EC_KEY_set_group(ec, group) || !EC_KEY_generate_key(ec)) {
+  if (ec == nullptr || !EC_KEY_set_group(ec, group) ||
+      !EC_KEY_generate_key(ec)) {
     EC_KEY_free(ec);
     return 0;
   }
@@ -180,12 +181,12 @@ static int pkey_ec_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 
 static int pkey_ec_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   EC_PKEY_CTX *dctx = reinterpret_cast<EC_PKEY_CTX *>(ctx->data);
-  if (dctx->gen_group == NULL) {
+  if (dctx->gen_group == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_NO_PARAMETERS_SET);
     return 0;
   }
   EC_KEY *ec = EC_KEY_new();
-  if (ec == NULL || !EC_KEY_set_group(ec, dctx->gen_group)) {
+  if (ec == nullptr || !EC_KEY_set_group(ec, dctx->gen_group)) {
     EC_KEY_free(ec);
     return 0;
   }
@@ -200,12 +201,12 @@ const EVP_PKEY_CTX_METHOD ec_pkey_meth = {
     pkey_ec_cleanup,
     pkey_ec_keygen,
     pkey_ec_sign,
-    NULL /* sign_message */,
+    nullptr /* sign_message */,
     pkey_ec_verify,
-    NULL /* verify_message */,
-    NULL /* verify_recover */,
-    NULL /* encrypt */,
-    NULL /* decrypt */,
+    nullptr /* verify_message */,
+    nullptr /* verify_recover */,
+    nullptr /* encrypt */,
+    nullptr /* decrypt */,
     pkey_ec_derive,
     pkey_ec_paramgen,
     pkey_ec_ctrl,

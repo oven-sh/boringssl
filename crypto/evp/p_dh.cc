@@ -32,7 +32,7 @@ typedef struct dh_pkey_ctx_st {
 static int pkey_dh_init(EVP_PKEY_CTX *ctx) {
   DH_PKEY_CTX *dctx =
       reinterpret_cast<DH_PKEY_CTX *>(OPENSSL_zalloc(sizeof(DH_PKEY_CTX)));
-  if (dctx == NULL) {
+  if (dctx == nullptr) {
     return 0;
   }
 
@@ -53,17 +53,18 @@ static int pkey_dh_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) {
 
 static void pkey_dh_cleanup(EVP_PKEY_CTX *ctx) {
   OPENSSL_free(ctx->data);
-  ctx->data = NULL;
+  ctx->data = nullptr;
 }
 
 static int pkey_dh_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   DH *dh = DH_new();
-  if (dh == NULL || !EVP_PKEY_assign_DH(pkey, dh)) {
+  if (dh == nullptr || !EVP_PKEY_assign_DH(pkey, dh)) {
     DH_free(dh);
     return 0;
   }
 
-  if (ctx->pkey != NULL && !EVP_PKEY_copy_parameters(pkey, ctx->pkey.get())) {
+  if (ctx->pkey != nullptr &&
+      !EVP_PKEY_copy_parameters(pkey, ctx->pkey.get())) {
     return 0;
   }
 
@@ -72,25 +73,25 @@ static int pkey_dh_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 
 static int pkey_dh_derive(EVP_PKEY_CTX *ctx, uint8_t *out, size_t *out_len) {
   DH_PKEY_CTX *dctx = reinterpret_cast<DH_PKEY_CTX *>(ctx->data);
-  if (ctx->pkey == NULL || ctx->peerkey == NULL) {
+  if (ctx->pkey == nullptr || ctx->peerkey == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_KEYS_NOT_SET);
     return 0;
   }
 
   DH *our_key = reinterpret_cast<DH *>(ctx->pkey->pkey);
   DH *peer_key = reinterpret_cast<DH *>(ctx->peerkey->pkey);
-  if (our_key == NULL || peer_key == NULL) {
+  if (our_key == nullptr || peer_key == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_KEYS_NOT_SET);
     return 0;
   }
 
   const BIGNUM *pub_key = DH_get0_pub_key(peer_key);
-  if (pub_key == NULL) {
+  if (pub_key == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_KEYS_NOT_SET);
     return 0;
   }
 
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = DH_size(our_key);
     return 1;
   }
@@ -149,5 +150,5 @@ const EVP_PKEY_CTX_METHOD dh_pkey_meth = {
 
 int EVP_PKEY_CTX_set_dh_pad(EVP_PKEY_CTX *ctx, int pad) {
   return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DH, EVP_PKEY_OP_DERIVE,
-                           EVP_PKEY_CTRL_DH_PAD, pad, NULL);
+                           EVP_PKEY_CTRL_DH_PAD, pad, nullptr);
 }

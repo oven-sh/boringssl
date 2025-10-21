@@ -724,7 +724,7 @@ TEST(ASN1Test, UnusedBooleanBits) {
   EXPECT_TRUE(val->value.ptr);
 
   // Set |val| to a BOOLEAN containing FALSE.
-  ASN1_TYPE_set(val.get(), V_ASN1_BOOLEAN, NULL);
+  ASN1_TYPE_set(val.get(), V_ASN1_BOOLEAN, nullptr);
   EXPECT_EQ(V_ASN1_BOOLEAN, val->type);
   EXPECT_FALSE(val->value.ptr);
 }

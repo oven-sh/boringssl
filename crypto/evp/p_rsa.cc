@@ -193,7 +193,7 @@ static int pkey_rsa_verify_recover(EVP_PKEY_CTX *ctx, uint8_t *out,
   RSA *rsa = reinterpret_cast<RSA *>(ctx->pkey->pkey);
   const size_t key_len = EVP_PKEY_size(ctx->pkey.get());
 
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = key_len;
     return 1;
   }
@@ -203,7 +203,7 @@ static int pkey_rsa_verify_recover(EVP_PKEY_CTX *ctx, uint8_t *out,
     return 0;
   }
 
-  if (rctx->md == NULL) {
+  if (rctx->md == nullptr) {
     return RSA_verify_raw(rsa, out_len, out, *out_len, sig, sig_len,
                           rctx->pad_mode);
   }
@@ -238,7 +238,7 @@ static int pkey_rsa_verify_recover(EVP_PKEY_CTX *ctx, uint8_t *out,
     return 0;
   }
 
-  if (out != NULL) {
+  if (out != nullptr) {
     OPENSSL_memcpy(out, tbuf.data() + rslen - hash_len, hash_len);
   }
   *out_len = hash_len;
@@ -354,7 +354,7 @@ static int pkey_rsa_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
         OPENSSL_PUT_ERROR(EVP, EVP_R_ILLEGAL_OR_UNSUPPORTED_PADDING_MODE);
         return 0;
       }
-      if (p1 == RSA_PKCS1_OAEP_PADDING && rctx->md == NULL) {
+      if (p1 == RSA_PKCS1_OAEP_PADDING && rctx->md == nullptr) {
         rctx->md = EVP_sha1();
       }
       rctx->pad_mode = p1;

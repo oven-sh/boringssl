@@ -25,7 +25,7 @@
 
 static void ed25519_free(EVP_PKEY *pkey) {
   OPENSSL_free(pkey->pkey);
-  pkey->pkey = NULL;
+  pkey->pkey = nullptr;
 }
 
 static int ed25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
@@ -36,7 +36,7 @@ static int ed25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
 
   ED25519_KEY *key =
       reinterpret_cast<ED25519_KEY *>(OPENSSL_malloc(sizeof(ED25519_KEY)));
-  if (key == NULL) {
+  if (key == nullptr) {
     return 0;
   }
 
@@ -57,7 +57,7 @@ static int ed25519_set_pub_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
 
   ED25519_KEY *key =
       reinterpret_cast<ED25519_KEY *>(OPENSSL_malloc(sizeof(ED25519_KEY)));
-  if (key == NULL) {
+  if (key == nullptr) {
     return 0;
   }
 
@@ -75,7 +75,7 @@ static int ed25519_get_priv_raw(const EVP_PKEY *pkey, uint8_t *out,
     return 0;
   }
 
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = 32;
     return 1;
   }
@@ -94,7 +94,7 @@ static int ed25519_get_priv_raw(const EVP_PKEY *pkey, uint8_t *out,
 static int ed25519_get_pub_raw(const EVP_PKEY *pkey, uint8_t *out,
                                size_t *out_len) {
   const ED25519_KEY *key = reinterpret_cast<const ED25519_KEY *>(pkey->pkey);
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = 32;
     return 1;
   }
@@ -217,14 +217,14 @@ const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth = {
     ed25519_set_pub_raw,
     ed25519_get_priv_raw,
     ed25519_get_pub_raw,
-    /*set1_tls_encodedpoint=*/NULL,
-    /*get1_tls_encodedpoint=*/NULL,
-    /*pkey_opaque=*/NULL,
+    /*set1_tls_encodedpoint=*/nullptr,
+    /*get1_tls_encodedpoint=*/nullptr,
+    /*pkey_opaque=*/nullptr,
     ed25519_size,
     ed25519_bits,
-    /*param_missing=*/NULL,
-    /*param_copy=*/NULL,
-    /*param_cmp=*/NULL,
+    /*param_missing=*/nullptr,
+    /*param_copy=*/nullptr,
+    /*param_cmp=*/nullptr,
     ed25519_free,
 };
 

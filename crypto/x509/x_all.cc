@@ -85,13 +85,13 @@ int X509_sign_ctx(X509 *x, EVP_MD_CTX *ctx) {
 
 int X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md) {
   asn1_encoding_clear(&x->req_info->enc);
-  return ASN1_item_sign(ASN1_ITEM_rptr(X509_REQ_INFO), x->sig_alg, NULL,
+  return ASN1_item_sign(ASN1_ITEM_rptr(X509_REQ_INFO), x->sig_alg, nullptr,
                         x->signature, x->req_info, pkey, md);
 }
 
 int X509_REQ_sign_ctx(X509_REQ *x, EVP_MD_CTX *ctx) {
   asn1_encoding_clear(&x->req_info->enc);
-  return ASN1_item_sign_ctx(ASN1_ITEM_rptr(X509_REQ_INFO), x->sig_alg, NULL,
+  return ASN1_item_sign_ctx(ASN1_ITEM_rptr(X509_REQ_INFO), x->sig_alg, nullptr,
                             x->signature, x->req_info, ctx);
 }
 
@@ -108,7 +108,7 @@ int X509_CRL_sign_ctx(X509_CRL *x, EVP_MD_CTX *ctx) {
 }
 
 int NETSCAPE_SPKI_sign(NETSCAPE_SPKI *x, EVP_PKEY *pkey, const EVP_MD *md) {
-  return ASN1_item_sign(ASN1_ITEM_rptr(NETSCAPE_SPKAC), x->sig_algor, NULL,
+  return ASN1_item_sign(ASN1_ITEM_rptr(NETSCAPE_SPKAC), x->sig_algor, nullptr,
                         x->signature, x->spkac, pkey, md);
 }
 
@@ -256,18 +256,18 @@ int X509_pubkey_digest(const X509 *data, const EVP_MD *type, unsigned char *md,
   if (!key) {
     return 0;
   }
-  return EVP_Digest(key->data, key->length, md, len, type, NULL);
+  return EVP_Digest(key->data, key->length, md, len, type, nullptr);
 }
 
 int X509_digest(const X509 *x509, const EVP_MD *md, uint8_t *out,
                 unsigned *out_len) {
-  uint8_t *der = NULL;
+  uint8_t *der = nullptr;
   int der_len = i2d_X509(x509, &der);
   if (der_len < 0) {
     return 0;
   }
 
-  int ret = EVP_Digest(der, der_len, out, out_len, md, NULL);
+  int ret = EVP_Digest(der, der_len, out, out_len, md, nullptr);
   OPENSSL_free(der);
   return ret;
 }

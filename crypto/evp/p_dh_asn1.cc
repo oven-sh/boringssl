@@ -24,7 +24,7 @@
 
 static void dh_free(EVP_PKEY *pkey) {
   DH_free(reinterpret_cast<DH *>(pkey->pkey));
-  pkey->pkey = NULL;
+  pkey->pkey = nullptr;
 }
 
 static int dh_size(const EVP_PKEY *pkey) {
@@ -37,7 +37,7 @@ static int dh_bits(const EVP_PKEY *pkey) {
 
 static int dh_param_missing(const EVP_PKEY *pkey) {
   const DH *dh = reinterpret_cast<const DH *>(pkey->pkey);
-  return dh == NULL || DH_get0_p(dh) == NULL || DH_get0_g(dh) == NULL;
+  return dh == nullptr || DH_get0_p(dh) == nullptr || DH_get0_g(dh) == nullptr;
 }
 
 static int dh_param_copy(EVP_PKEY *to, const EVP_PKEY *from) {
@@ -49,9 +49,9 @@ static int dh_param_copy(EVP_PKEY *to, const EVP_PKEY *from) {
   const DH *dh = reinterpret_cast<DH *>(from->pkey);
   const BIGNUM *q_old = DH_get0_q(dh);
   BIGNUM *p = BN_dup(DH_get0_p(dh));
-  BIGNUM *q = q_old == NULL ? NULL : BN_dup(q_old);
+  BIGNUM *q = q_old == nullptr ? nullptr : BN_dup(q_old);
   BIGNUM *g = BN_dup(DH_get0_g(dh));
-  if (p == NULL || (q_old != NULL && q == NULL) || g == NULL ||
+  if (p == nullptr || (q_old != nullptr && q == nullptr) || g == nullptr ||
       !DH_set0_pqg(reinterpret_cast<DH *>(to->pkey), p, q, g)) {
     BN_free(p);
     BN_free(q);
@@ -130,14 +130,14 @@ int EVP_PKEY_assign_DH(EVP_PKEY *pkey, DH *key) {
 DH *EVP_PKEY_get0_DH(const EVP_PKEY *pkey) {
   if (EVP_PKEY_id(pkey) != EVP_PKEY_DH) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_EXPECTING_A_DH_KEY);
-    return NULL;
+    return nullptr;
   }
   return reinterpret_cast<DH *>(const_cast<EVP_PKEY *>(pkey)->pkey);
 }
 
 DH *EVP_PKEY_get1_DH(const EVP_PKEY *pkey) {
   DH *dh = EVP_PKEY_get0_DH(pkey);
-  if (dh != NULL) {
+  if (dh != nullptr) {
     DH_up_ref(dh);
   }
   return dh;

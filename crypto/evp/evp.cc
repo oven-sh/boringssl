@@ -37,8 +37,8 @@ OPENSSL_DECLARE_ERROR_REASON(EVP, EMPTY_PSK)
 EVP_PKEY *EVP_PKEY_new(void) {
   EVP_PKEY *ret =
       reinterpret_cast<EVP_PKEY *>(OPENSSL_zalloc(sizeof(EVP_PKEY)));
-  if (ret == NULL) {
-    return NULL;
+  if (ret == nullptr) {
+    return nullptr;
   }
 
   ret->references = 1;
@@ -46,7 +46,7 @@ EVP_PKEY *EVP_PKEY_new(void) {
 }
 
 void EVP_PKEY_free(EVP_PKEY *pkey) {
-  if (pkey == NULL) {
+  if (pkey == nullptr) {
     return;
   }
 
@@ -274,7 +274,7 @@ EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *unused,
 
 int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, uint8_t *out,
                                  size_t *out_len) {
-  if (pkey->ameth->get_priv_raw == NULL) {
+  if (pkey->ameth->get_priv_raw == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -284,7 +284,7 @@ int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, uint8_t *out,
 
 int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, uint8_t *out,
                                 size_t *out_len) {
-  if (pkey->ameth->get_pub_raw == NULL) {
+  if (pkey->ameth->get_pub_raw == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -320,7 +320,7 @@ void *EVP_PKEY_get0(const EVP_PKEY *pkey) {
   // rather than reading |pkey->pkey| directly. This avoids problems if our
   // internal representation does not match the type the caller expects from
   // OpenSSL.
-  return NULL;
+  return nullptr;
 }
 
 void OpenSSL_add_all_algorithms(void) {}
@@ -335,7 +335,7 @@ void EVP_cleanup(void) {}
 
 int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
                                    size_t len) {
-  if (pkey->ameth->set1_tls_encodedpoint == NULL) {
+  if (pkey->ameth->set1_tls_encodedpoint == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -344,7 +344,7 @@ int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
 }
 
 size_t EVP_PKEY_get1_tls_encodedpoint(const EVP_PKEY *pkey, uint8_t **out_ptr) {
-  if (pkey->ameth->get1_tls_encodedpoint == NULL) {
+  if (pkey->ameth->get1_tls_encodedpoint == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }

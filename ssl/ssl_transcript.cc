@@ -183,7 +183,7 @@ bool SSLTranscript::AddToBufferOrHash(Span<const uint8_t> in) {
     return false;
   }
 
-  if (EVP_MD_CTX_md(hash_.get()) != NULL) {
+  if (EVP_MD_CTX_md(hash_.get()) != nullptr) {
     EVP_DigestUpdate(hash_.get(), in.data(), in.size());
   }
 

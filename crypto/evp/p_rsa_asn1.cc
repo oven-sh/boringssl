@@ -241,7 +241,7 @@ static int rsa_bits(const EVP_PKEY *pkey) {
 
 static void int_rsa_free(EVP_PKEY *pkey) {
   RSA_free(reinterpret_cast<RSA *>(pkey->pkey));
-  pkey->pkey = NULL;
+  pkey->pkey = nullptr;
 }
 
 }  // namespace
@@ -358,14 +358,14 @@ RSA *EVP_PKEY_get0_RSA(const EVP_PKEY *pkey) {
   int pkey_id = EVP_PKEY_id(pkey);
   if (pkey_id != EVP_PKEY_RSA && pkey_id != EVP_PKEY_RSA_PSS) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_EXPECTING_AN_RSA_KEY);
-    return NULL;
+    return nullptr;
   }
   return reinterpret_cast<RSA *>(pkey->pkey);
 }
 
 RSA *EVP_PKEY_get1_RSA(const EVP_PKEY *pkey) {
   RSA *rsa = EVP_PKEY_get0_RSA(pkey);
-  if (rsa != NULL) {
+  if (rsa != nullptr) {
     RSA_up_ref(rsa);
   }
   return rsa;

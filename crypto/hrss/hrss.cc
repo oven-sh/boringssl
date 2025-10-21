@@ -1885,8 +1885,8 @@ static struct private_key *private_key_from_external(
 static void *malloc_align32(void **out_ptr, size_t size) {
   void *ptr = OPENSSL_malloc(size + 31);
   if (!ptr) {
-    *out_ptr = NULL;
-    return NULL;
+    *out_ptr = nullptr;
+    return nullptr;
   }
 
   *out_ptr = ptr;

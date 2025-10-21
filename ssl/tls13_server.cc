@@ -375,7 +375,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
 
   // Negotiate the cipher suite.
   hs->new_cipher = choose_tls13_cipher(ssl, &client_hello);
-  if (hs->new_cipher == NULL) {
+  if (hs->new_cipher == nullptr) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_NO_SHARED_CIPHER);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
     return ssl_hs_error;
@@ -652,7 +652,7 @@ static enum ssl_hs_wait_t do_select_session(SSL_HANDSHAKE *hs) {
     }
   }
 
-  if (ssl->ctx->dos_protection_cb != NULL &&
+  if (ssl->ctx->dos_protection_cb != nullptr &&
       ssl->ctx->dos_protection_cb(&client_hello) == 0) {
     // Connection rejected for DOS reasons.
     OPENSSL_PUT_ERROR(SSL, SSL_R_CONNECTION_REJECTED);

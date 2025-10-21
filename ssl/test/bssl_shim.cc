@@ -222,7 +222,8 @@ static int DoRead(SSL *ssl, uint8_t *out, size_t max_out) {
     // during a renegotiation.
     if (config->use_exporter_between_reads) {
       uint8_t buf;
-      if (!SSL_export_keying_material(ssl, &buf, 1, NULL, 0, NULL, 0, 0)) {
+      if (!SSL_export_keying_material(ssl, &buf, 1, nullptr, 0, nullptr, 0,
+                                      0)) {
         fprintf(stderr, "failed to export keying material\n");
         return -1;
       }

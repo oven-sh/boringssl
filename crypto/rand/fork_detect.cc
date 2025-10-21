@@ -54,7 +54,7 @@ static void init_fork_detect(void) {
     return;
   }
 
-  void *addr = mmap(NULL, (size_t)page_size, PROT_READ | PROT_WRITE,
+  void *addr = mmap(nullptr, (size_t)page_size, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (addr == MAP_FAILED) {
     return;
@@ -92,7 +92,7 @@ uint64_t CRYPTO_get_fork_generation(void) {
   // before it observes this. Therefore, we must synchronize the logic below.
 
   bssl::Atomic<uint32_t> *const flag_ptr = g_fork_detect_addr;
-  if (flag_ptr == NULL) {
+  if (flag_ptr == nullptr) {
     // Our kernel is too old to support |MADV_WIPEONFORK| or
     // |g_force_madv_wipeonfork| is set.
     if (g_force_madv_wipeonfork && g_force_madv_wipeonfork_enabled) {

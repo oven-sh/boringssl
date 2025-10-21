@@ -25,7 +25,7 @@
 
 static void x25519_free(EVP_PKEY *pkey) {
   OPENSSL_free(pkey->pkey);
-  pkey->pkey = NULL;
+  pkey->pkey = nullptr;
 }
 
 static int x25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
@@ -36,7 +36,7 @@ static int x25519_set_priv_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
 
   X25519_KEY *key =
       reinterpret_cast<X25519_KEY *>(OPENSSL_malloc(sizeof(X25519_KEY)));
-  if (key == NULL) {
+  if (key == nullptr) {
     return 0;
   }
 
@@ -56,7 +56,7 @@ static int x25519_set_pub_raw(EVP_PKEY *pkey, const uint8_t *in, size_t len) {
 
   X25519_KEY *key =
       reinterpret_cast<X25519_KEY *>(OPENSSL_malloc(sizeof(X25519_KEY)));
-  if (key == NULL) {
+  if (key == nullptr) {
     return 0;
   }
 
@@ -75,7 +75,7 @@ static int x25519_get_priv_raw(const EVP_PKEY *pkey, uint8_t *out,
     return 0;
   }
 
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = 32;
     return 1;
   }
@@ -93,7 +93,7 @@ static int x25519_get_priv_raw(const EVP_PKEY *pkey, uint8_t *out,
 static int x25519_get_pub_raw(const EVP_PKEY *pkey, uint8_t *out,
                               size_t *out_len) {
   const X25519_KEY *key = reinterpret_cast<X25519_KEY *>(pkey->pkey);
-  if (out == NULL) {
+  if (out == nullptr) {
     *out_len = 32;
     return 1;
   }
@@ -116,13 +116,13 @@ static int x25519_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
 static size_t x25519_get1_tls_encodedpoint(const EVP_PKEY *pkey,
                                            uint8_t **out_ptr) {
   const X25519_KEY *key = reinterpret_cast<X25519_KEY *>(pkey->pkey);
-  if (key == NULL) {
+  if (key == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_NO_KEY_SET);
     return 0;
   }
 
   *out_ptr = reinterpret_cast<uint8_t *>(OPENSSL_memdup(key->pub, 32));
-  return *out_ptr == NULL ? 0 : 32;
+  return *out_ptr == nullptr ? 0 : 32;
 }
 
 static evp_decode_result_t x25519_pub_decode(const EVP_PKEY_ALG *alg,
@@ -233,12 +233,12 @@ const EVP_PKEY_ASN1_METHOD x25519_asn1_meth = {
     x25519_get_pub_raw,
     x25519_set1_tls_encodedpoint,
     x25519_get1_tls_encodedpoint,
-    /*pkey_opaque=*/NULL,
+    /*pkey_opaque=*/nullptr,
     x25519_size,
     x25519_bits,
-    /*param_missing=*/NULL,
-    /*param_copy=*/NULL,
-    /*param_cmp=*/NULL,
+    /*param_missing=*/nullptr,
+    /*param_copy=*/nullptr,
+    /*param_cmp=*/nullptr,
     x25519_free,
 };
 

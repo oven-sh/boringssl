@@ -220,7 +220,7 @@ TEST(CompilerTest, PointerRepresentation) {
 
 static uintptr_t aba(uintptr_t *a, void **b) {
   *a = (uintptr_t)1;
-  *b = NULL;
+  *b = nullptr;
   return *a;  // 0 if a == b, 1 if a and b are disjoint
 }
 

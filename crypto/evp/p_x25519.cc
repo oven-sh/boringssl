@@ -27,7 +27,7 @@ static int pkey_x25519_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) { return 1; }
 static int pkey_x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   X25519_KEY *key =
       reinterpret_cast<X25519_KEY *>(OPENSSL_malloc(sizeof(X25519_KEY)));
-  if (key == NULL) {
+  if (key == nullptr) {
     return 0;
   }
 
@@ -39,7 +39,7 @@ static int pkey_x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 
 static int pkey_x25519_derive(EVP_PKEY_CTX *ctx, uint8_t *out,
                               size_t *out_len) {
-  if (ctx->pkey == NULL || ctx->peerkey == NULL) {
+  if (ctx->pkey == nullptr || ctx->peerkey == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_KEYS_NOT_SET);
     return 0;
   }
@@ -48,7 +48,7 @@ static int pkey_x25519_derive(EVP_PKEY_CTX *ctx, uint8_t *out,
       reinterpret_cast<const X25519_KEY *>(ctx->pkey->pkey);
   const X25519_KEY *peer_key =
       reinterpret_cast<const X25519_KEY *>(ctx->peerkey->pkey);
-  if (our_key == NULL || peer_key == NULL) {
+  if (our_key == nullptr || peer_key == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_KEYS_NOT_SET);
     return 0;
   }
@@ -58,7 +58,7 @@ static int pkey_x25519_derive(EVP_PKEY_CTX *ctx, uint8_t *out,
     return 0;
   }
 
-  if (out != NULL) {
+  if (out != nullptr) {
     if (*out_len < 32) {
       OPENSSL_PUT_ERROR(EVP, EVP_R_BUFFER_TOO_SMALL);
       return 0;
@@ -88,18 +88,18 @@ static int pkey_x25519_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
 
 const EVP_PKEY_CTX_METHOD x25519_pkey_meth = {
     /*pkey_id=*/EVP_PKEY_X25519,
-    /*init=*/NULL,
+    /*init=*/nullptr,
     /*copy=*/pkey_x25519_copy,
-    /*cleanup=*/NULL,
+    /*cleanup=*/nullptr,
     /*keygen=*/pkey_x25519_keygen,
-    /*sign=*/NULL,
-    /*sign_message=*/NULL,
-    /*verify=*/NULL,
-    /*verify_message=*/NULL,
-    /*verify_recover=*/NULL,
-    /*encrypt=*/NULL,
-    /*decrypt=*/NULL,
+    /*sign=*/nullptr,
+    /*sign_message=*/nullptr,
+    /*verify=*/nullptr,
+    /*verify_message=*/nullptr,
+    /*verify_recover=*/nullptr,
+    /*encrypt=*/nullptr,
+    /*decrypt=*/nullptr,
     /*derive=*/pkey_x25519_derive,
-    /*paramgen=*/NULL,
+    /*paramgen=*/nullptr,
     /*ctrl=*/pkey_x25519_ctrl,
 };

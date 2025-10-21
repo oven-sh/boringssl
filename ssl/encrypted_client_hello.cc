@@ -584,7 +584,7 @@ bool ECHServerConfig::SetupContext(EVP_HPKE_CTX *ctx, uint16_t kdf_id,
   }
 
   assert(kdf_id == EVP_HPKE_HKDF_SHA256);
-  assert(get_ech_aead(aead_id) != NULL);
+  assert(get_ech_aead(aead_id) != nullptr);
   return EVP_HPKE_CTX_setup_recipient(ctx, key_.get(), EVP_hpke_hkdf_sha256(),
                                       get_ech_aead(aead_id), enc.data(),
                                       enc.size(), CBB_data(info_cbb.get()),

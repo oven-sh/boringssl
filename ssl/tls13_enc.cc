@@ -98,7 +98,7 @@ static bool hkdf_expand_label_with_prefix(Span<uint8_t> out,
   // arbitrary prefix for the label instead of using the hardcoded "tls13 "
   // prefix.
   CBB cbb, child;
-  uint8_t *hkdf_label = NULL;
+  uint8_t *hkdf_label = nullptr;
   size_t hkdf_label_len;
   CBB_zero(&cbb);
   if (!CBB_init(&cbb,

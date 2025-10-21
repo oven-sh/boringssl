@@ -1253,12 +1253,12 @@ TEST(SSLTest, SessionEncoding) {
 
     // Verify the SSL_SESSION also decodes with the legacy API.
     const uint8_t *cptr = input.data();
-    session.reset(d2i_SSL_SESSION(NULL, &cptr, input.size()));
+    session.reset(d2i_SSL_SESSION(nullptr, &cptr, input.size()));
     ASSERT_TRUE(session) << "d2i_SSL_SESSION failed";
     EXPECT_EQ(cptr, input.data() + input.size());
 
     // Verify the SSL_SESSION encoding round-trips via the legacy API.
-    int len = i2d_SSL_SESSION(session.get(), NULL);
+    int len = i2d_SSL_SESSION(session.get(), nullptr);
     ASSERT_GT(len, 0) << "i2d_SSL_SESSION failed";
     ASSERT_EQ(static_cast<size_t>(len), input.size())
         << "i2d_SSL_SESSION(NULL) returned invalid length";
@@ -1650,7 +1650,7 @@ static bssl::UniquePtr<X509> X509FromBuffer(
   }
   const uint8_t *derp = CRYPTO_BUFFER_data(buffer.get());
   return bssl::UniquePtr<X509>(
-      d2i_X509(NULL, &derp, CRYPTO_BUFFER_len(buffer.get())));
+      d2i_X509(nullptr, &derp, CRYPTO_BUFFER_len(buffer.get())));
 }
 
 static bssl::UniquePtr<X509> GetTestCertificate() {
@@ -3838,11 +3838,11 @@ TEST_P(SSLVersionTest, GetPeerCertificate) {
   SSL_CTX_set_verify(client_ctx_.get(),
                      SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                      nullptr);
-  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, NULL);
+  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, nullptr);
   SSL_CTX_set_verify(server_ctx_.get(),
                      SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                      nullptr);
-  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, NULL);
+  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, nullptr);
 
   ASSERT_TRUE(Connect());
 
@@ -3868,8 +3868,8 @@ TEST_P(SSLVersionTest, GetPeerCertificate) {
 
 TEST_P(SSLVersionTest, NoPeerCertificate) {
   SSL_CTX_set_verify(server_ctx_.get(), SSL_VERIFY_PEER, nullptr);
-  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, NULL);
-  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, NULL);
+  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, nullptr);
+  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, nullptr);
 
   ASSERT_TRUE(Connect());
 
@@ -3880,7 +3880,7 @@ TEST_P(SSLVersionTest, NoPeerCertificate) {
 }
 
 TEST_P(SSLVersionTest, RetainOnlySHA256OfCerts) {
-  uint8_t *cert_der = NULL;
+  uint8_t *cert_der = nullptr;
   int cert_der_len = i2d_X509(cert_.get(), &cert_der);
   ASSERT_GE(cert_der_len, 0);
   bssl::UniquePtr<uint8_t> free_cert_der(cert_der);
@@ -3898,8 +3898,8 @@ TEST_P(SSLVersionTest, RetainOnlySHA256OfCerts) {
   SSL_CTX_set_verify(server_ctx_.get(),
                      SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                      nullptr);
-  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, NULL);
-  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, NULL);
+  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, nullptr);
+  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, nullptr);
   SSL_CTX_set_retain_only_sha256_of_client_certs(server_ctx_.get(), 1);
 
   ASSERT_TRUE(Connect());
@@ -4149,8 +4149,9 @@ static int RenewTicketCallback(SSL *ssl, uint8_t *key_name, uint8_t *iv,
     return 0;
   }
 
-  if (!HMAC_Init_ex(hmac_ctx, kZeros, sizeof(kZeros), EVP_sha256(), NULL) ||
-      !EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), NULL, kZeros, iv, encrypt)) {
+  if (!HMAC_Init_ex(hmac_ctx, kZeros, sizeof(kZeros), EVP_sha256(), nullptr) ||
+      !EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), nullptr, kZeros, iv,
+                         encrypt)) {
     return -1;
   }
 
@@ -4728,8 +4729,8 @@ TEST_P(SSLVersionTest, AutoChain) {
   SSL_CTX_set_verify(server_ctx_.get(),
                      SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                      nullptr);
-  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, NULL);
-  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, NULL);
+  SSL_CTX_set_cert_verify_callback(client_ctx_.get(), VerifySucceed, nullptr);
+  SSL_CTX_set_cert_verify_callback(server_ctx_.get(), VerifySucceed, nullptr);
 
   // By default, the client and server should each only send the leaf.
   ASSERT_TRUE(Connect());
