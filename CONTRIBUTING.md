@@ -118,6 +118,24 @@ the Apache 2.0 appendix. Thus new files should begin with the following header:
     // See the License for the specific language governing permissions and
     // limitations under the License.
 
+# Testing
+See the [build instructions](./BUILDING.md) for instructions on how to run
+tests.
+
+Additionally, our Gerrit instance is configured to run our tests on a range of
+platforms. This is called the "commit queue" or CQ. Project members can set the
+`Commit-Queue` label to +1 for a dry run, which runs the tests without
+submitting the CL.
+
+# Pre-generated files
+There are a number of files in BoringSSL which are checked into the source tree,
+to reduce dependencies for consumers of the library. When modifying their
+inputs, the generated files must be updated. The CQ and `depot_tools` presubmit
+scripts will check that they are correct.
+
+See [pre-generated file documentation](./gen/README.md) for how to update these
+files.
+
 # The small print
 Contributions made by corporations are covered by a different agreement than
 the one above, the
