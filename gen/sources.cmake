@@ -245,6 +245,39 @@ set(
 )
 
 set(
+  BENCH_SOURCES
+
+  bench/aead.cc
+  bench/aes.cc
+  bench/base64.cc
+  bench/curve25519.cc
+  bench/ecdh.cc
+  bench/ecdsa.cc
+  bench/hash.cc
+  bench/hash_to_curve.cc
+  bench/hrss.cc
+  bench/main.cc
+  bench/mldsa.cc
+  bench/mlkem.cc
+  bench/rand.cc
+  bench/rsa.cc
+  bench/rsakeygen.cc
+  bench/scrypt.cc
+  bench/selftest.cc
+  bench/siphash.cc
+  bench/slhdsa.cc
+  bench/spake2.cc
+  bench/trust_token.cc
+  bench/x509.cc
+)
+
+set(
+  BENCH_INTERNAL_HEADERS
+
+  bench/internal.h
+)
+
+set(
   BSSL_SOURCES
 
   tool/args.cc
@@ -261,7 +294,6 @@ set(
   tool/rand.cc
   tool/server.cc
   tool/sign.cc
-  tool/speed.cc
   tool/tool.cc
   tool/transport_common.cc
 )

@@ -416,6 +416,29 @@ if(BUILD_TESTING)
       third_party/googletest/googlemock
       third_party/googletest/googletest
   )
+
+  # Wrap this in a function for variable scoping. Switch to block() when our
+  # minimum CMake is at least CMake 3.25.
+  function(add_google_benchmark)
+    set(GOOGLETEST_PATH "${PROJECT_SOURCE_DIR}/third_party/googletest")
+    set(BENCHMARK_DOWNLOAD_DEPENDENCIES OFF)
+    set(BENCHMARK_ENABLE_TESTING OFF)
+    set(BENCHMARK_ENABLE_INSTALL OFF)
+    set(BENCHMARK_INSTALL_DOCS OFF)
+    set(CXXFEATURECHECK_DEBUG ON)
+    if(USE_CUSTOM_LIBCXX)
+      # benchmark's feature testing does not pick up the custom STL.
+      set(HAVE_STD_REGEX 1)
+    endif()
+    if(DEFINED CMAKE_OSX_SYSROOT)
+      # CMAKE_CROSSCOMPILING is not correctly set when using CMAKE_OSX_SYSROOT
+      # to specify iOS vs macOS. Set CMAKE_CROSSCOMPILING so benchmark feature
+      # detection does not try to run its test programs.
+      set(CMAKE_CROSSCOMPILING 1)
+    endif()
+    add_subdirectory(third_party/benchmark)
+  endfunction()
+  add_google_benchmark()
 endif()
 
 if(FUZZ AND LIBFUZZER_FROM_DEPS)
@@ -733,6 +756,11 @@ if(BUILD_TESTING)
 
   add_executable(jitter_deltas util/fipstools/entropy/jitter_deltas.cc)
   target_link_libraries(jitter_deltas crypto)
+
+  if(BUILD_TESTING)
+    add_executable(bssl_bench ${BENCH_SOURCES})
+    target_link_libraries(bssl_bench ssl pki crypto benchmark::benchmark)
+  endif()
 endif()
 
 if(FIPS)
