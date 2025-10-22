@@ -111,7 +111,7 @@ static void rand_thread_state_free(void *state_in) {
   struct rand_thread_state *state =
       reinterpret_cast<rand_thread_state *>(state_in);
 
-  if (state_in == NULL) {
+  if (state_in == nullptr) {
     return;
   }
 
@@ -366,10 +366,10 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
   struct rand_thread_state *state = reinterpret_cast<rand_thread_state *>(
       CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_RAND));
 
-  if (state == NULL) {
+  if (state == nullptr) {
     state = reinterpret_cast<rand_thread_state *>(
         OPENSSL_zalloc(sizeof(struct rand_thread_state)));
-    if (state == NULL ||
+    if (state == nullptr ||
         !CRYPTO_set_thread_local(OPENSSL_THREAD_LOCAL_RAND, state,
                                  rand_thread_state_free)) {
       // If the system is out of memory, use an ephemeral state on the
