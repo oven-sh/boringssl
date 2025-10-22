@@ -62,7 +62,7 @@ err:
 #define EXT_IA5STRING(nid)                                                 \
   {                                                                        \
     nid, 0, ASN1_ITEM_ref(ASN1_IA5STRING), 0, 0, 0, 0, i2s_ASN1_IA5STRING, \
-        s2i_ASN1_IA5STRING, 0, 0, 0, 0, NULL                               \
+        s2i_ASN1_IA5STRING, 0, 0, 0, 0, nullptr                            \
   }
 
 const X509V3_EXT_METHOD v3_netscape_base_url =

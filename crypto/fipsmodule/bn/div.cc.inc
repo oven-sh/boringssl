@@ -713,7 +713,7 @@ BN_ULONG BN_mod_word(const BIGNUM *a, BN_ULONG w) {
   // fall back to using |BN_div_word|.
   if (w > ((BN_ULONG)1 << BN_BITS4)) {
     BIGNUM *tmp = BN_dup(a);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
       return (BN_ULONG)-1;
     }
     ret = BN_div_word(tmp, w);

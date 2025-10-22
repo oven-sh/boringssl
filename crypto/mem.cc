@@ -63,7 +63,7 @@ static void __asan_unpoison_memory_region(const void *addr, size_t size) {}
   }
 #else
 #define WEAK_SYMBOL_FUNC(rettype, name, args) \
-  static rettype(*const name) args = NULL;
+  static rettype(*const name) args = nullptr;
 #endif
 
 #if defined(BORINGSSL_DETECT_SDALLOCX)
@@ -121,7 +121,7 @@ static void malloc_exit_handler(void) {
 
 static void init_malloc_failure(void) {
   const char *env = getenv("MALLOC_NUMBER_TO_FAIL");
-  if (env != NULL && env[0] != 0) {
+  if (env != nullptr && env[0] != 0) {
     char *endptr;
     malloc_number_to_fail = strtoull(env, &endptr, 10);
     if (*endptr == 0) {
@@ -129,7 +129,7 @@ static void init_malloc_failure(void) {
       atexit(malloc_exit_handler);
     }
   }
-  break_on_malloc_fail = getenv("MALLOC_BREAK_ON_FAIL") != NULL;
+  break_on_malloc_fail = getenv("MALLOC_BREAK_ON_FAIL") != nullptr;
 }
 
 // should_fail_allocation returns one if the current allocation should fail and

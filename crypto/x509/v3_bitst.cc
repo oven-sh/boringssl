@@ -88,7 +88,8 @@ static void *v2i_ASN1_BIT_STRING(const X509V3_EXT_METHOD *method,
 #define EXT_BITSTRING(nid, table)                                             \
   {                                                                           \
     nid, 0, ASN1_ITEM_ref(ASN1_BIT_STRING), 0, 0, 0, 0, 0, 0,                 \
-        i2v_ASN1_BIT_STRING, v2i_ASN1_BIT_STRING, NULL, NULL, (void *)(table) \
+        i2v_ASN1_BIT_STRING, v2i_ASN1_BIT_STRING, nullptr, nullptr,           \
+    (void *)(table)                                                           \
   }
 
 const X509V3_EXT_METHOD v3_nscert =

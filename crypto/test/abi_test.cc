@@ -698,7 +698,7 @@ static void EnableUnwindTestsImpl() {
   sigemptyset(&trap_action.sa_mask);
   trap_action.sa_flags = SA_SIGINFO;
   trap_action.sa_sigaction = TrapHandler;
-  if (sigaction(SIGTRAP, &trap_action, NULL) != 0) {
+  if (sigaction(SIGTRAP, &trap_action, nullptr) != 0) {
     perror("sigaction");
     abort();
   }

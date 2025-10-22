@@ -157,8 +157,8 @@ int i2d_X509_REQ_bio(BIO *bp, const X509_REQ *req) {
 #define IMPLEMENT_D2I_FP(type, name, bio_func) \
   type *name(FILE *fp, type **obj) {           \
     BIO *bio = BIO_new_fp(fp, BIO_NOCLOSE);    \
-    if (bio == NULL) {                         \
-      return NULL;                             \
+    if (bio == nullptr) {                      \
+      return nullptr;                          \
     }                                          \
     type *ret = bio_func(bio, obj);            \
     BIO_free(bio);                             \
@@ -168,7 +168,7 @@ int i2d_X509_REQ_bio(BIO *bp, const X509_REQ *req) {
 #define IMPLEMENT_I2D_FP(type, name, bio_func) \
   int name(FILE *fp, const type *obj) {        \
     BIO *bio = BIO_new_fp(fp, BIO_NOCLOSE);    \
-    if (bio == NULL) {                         \
+    if (bio == nullptr) {                      \
       return 0;                                \
     }                                          \
     int ret = bio_func(bio, obj);              \
@@ -193,7 +193,7 @@ IMPLEMENT_I2D_FP(RSA, i2d_RSA_PUBKEY_fp, i2d_RSA_PUBKEY_bio)
     uint8_t *data;                                      \
     size_t len;                                         \
     if (!BIO_read_asn1(bio, &data, &len, 100 * 1024)) { \
-      return NULL;                                      \
+      return nullptr;                                   \
     }                                                   \
     const uint8_t *ptr = data;                          \
     type *ret = d2i_func(obj, &ptr, (long)len);         \
@@ -203,7 +203,7 @@ IMPLEMENT_I2D_FP(RSA, i2d_RSA_PUBKEY_fp, i2d_RSA_PUBKEY_bio)
 
 #define IMPLEMENT_I2D_BIO(type, name, i2d_func) \
   int name(BIO *bio, const type *obj) {         \
-    uint8_t *data = NULL;                       \
+    uint8_t *data = nullptr;                    \
     int len = i2d_func(obj, &data);             \
     if (len < 0) {                              \
       return 0;                                 \

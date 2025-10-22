@@ -56,7 +56,7 @@
 #else
 static FILE *fopen_if_available(const char *path, const char *mode) {
   errno = ENOENT;
-  return NULL;
+  return nullptr;
 }
 #endif
 

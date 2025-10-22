@@ -163,7 +163,7 @@ static void we_are_forked(void) {
 }
 
 static void init_pthread_fork_detection(void) {
-  if (pthread_atfork(NULL, NULL, we_are_forked) != 0) {
+  if (pthread_atfork(nullptr, nullptr, we_are_forked) != 0) {
     abort();
   }
   g_atfork_fork_generation = 1;
