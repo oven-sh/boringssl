@@ -21,6 +21,7 @@
 #include <openssl/mem.h>
 
 #include "../../internal.h"
+#include "../bn/internal.h"
 #include "internal.h"
 
 

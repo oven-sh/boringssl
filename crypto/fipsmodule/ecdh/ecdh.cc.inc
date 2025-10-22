@@ -23,6 +23,7 @@
 #include <openssl/mem.h>
 
 #include "../../internal.h"
+#include "../bcm_interface.h"
 #include "../ec/internal.h"
 #include "../service_indicator/internal.h"
 
