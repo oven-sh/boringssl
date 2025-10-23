@@ -2228,6 +2228,7 @@ func (m *certificateMsg) unmarshal(data []byte) bool {
 					if !body.ReadUint8(&statusType) ||
 						statusType != statusTypeOCSP ||
 						!readUint24LengthPrefixedBytes(&body, &cert.ocspResponse) ||
+						len(cert.ocspResponse) == 0 ||
 						len(body) != 0 {
 						return false
 					}
@@ -2377,6 +2378,7 @@ func (m *certificateStatusMsg) unmarshal(data []byte) bool {
 	if !reader.ReadUint8(&m.statusType) ||
 		m.statusType != statusTypeOCSP ||
 		!readUint24LengthPrefixedBytes(&reader, &m.response) ||
+		len(m.response) == 0 ||
 		len(reader) != 0 {
 		return false
 	}
