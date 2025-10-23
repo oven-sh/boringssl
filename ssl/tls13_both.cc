@@ -256,6 +256,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
           status_type != TLSEXT_STATUSTYPE_ocsp ||
           !CBS_get_u24_length_prefixed(&status_request.data, &ocsp_response) ||
           CBS_len(&ocsp_response) == 0 || CBS_len(&status_request.data) != 0) {
+        OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
         ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
         return false;
       }

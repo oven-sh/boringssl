@@ -1864,6 +1864,22 @@ func addExtensionTests() {
 				shimCertificate: rsaCertificate.WithOCSP(testOCSPResponse).WithSCTList(testSCTList),
 			})
 
+			// The client should reject empty OCSP responses from the server. A server
+			// with no OCSP response should not send the status_request extension.
+			testCases = append(testCases, testCase{
+				protocol: protocol,
+				testType: clientTest,
+				name:     "RejectEmptyOCSPResponse-" + suffix,
+				config: Config{
+					MaxVersion: ver.version,
+					Credential: rsaCertificate.WithOCSP([]byte{}),
+				},
+				flags:              []string{"-enable-ocsp-stapling"},
+				shouldFail:         true,
+				expectedError:      ":DECODE_ERROR:",
+				expectedLocalError: "remote error: error decoding message",
+			})
+
 			// Extension permutation should interact correctly with other extensions,
 			// HelloVerifyRequest, HelloRetryRequest, and ECH. SSLTest.PermuteExtensions
 			// in ssl_test.cc tests that the extensions are actually permuted. This
