@@ -849,17 +849,10 @@ TEST(EVPTest, X25519TestVectors) {
   RunEVPTests("crypto/evp/test/x25519_tests.txt");
 }
 
-void RunWycheproofVerifyTest(const char *path) {
+void RunWycheproofVerifyTest(const char *path, const EVP_PKEY_ALG *alg) {
   SCOPED_TRACE(path);
-  FileTestGTest(path, [](FileTest *t) {
+  FileTestGTest(path, [&](FileTest *t) {
     t->IgnoreAllUnusedInstructions();
-
-    std::vector<uint8_t> der;
-    ASSERT_TRUE(t->GetInstructionBytes(&der, "publicKeyDer"));
-    CBS cbs;
-    CBS_init(&cbs, der.data(), der.size());
-    bssl::UniquePtr<EVP_PKEY> key(EVP_parse_public_key(&cbs));
-    ASSERT_TRUE(key);
 
     const EVP_MD *md = nullptr;
     if (t->HasInstruction("sha")) {
@@ -883,8 +876,31 @@ void RunWycheproofVerifyTest(const char *path) {
     ASSERT_TRUE(t->GetBytes(&msg, "msg"));
     std::vector<uint8_t> sig;
     ASSERT_TRUE(t->GetBytes(&sig, "sig"));
+    std::vector<uint8_t> sig_ctx;
+    if (t->HasAttribute("ctx")) {
+      ASSERT_TRUE(t->GetBytes(&sig_ctx, "ctx"));
+    }
     WycheproofResult result;
     ASSERT_TRUE(GetWycheproofResult(t, &result));
+    // BoringSSL does not enforce policies on weak keys and leaves it to the
+    // caller.
+    bool expect_valid =
+        result.IsValid({"SmallModulus", "SmallPublicKey", "WeakHash"});
+
+    std::vector<uint8_t> der;
+    ASSERT_TRUE(t->GetInstructionBytes(&der, "publicKeyDer"));
+    bssl::UniquePtr<EVP_PKEY> key(
+        EVP_PKEY_from_subject_public_key_info(der.data(), der.size(), &alg, 1));
+    if (!key) {
+      EXPECT_FALSE(expect_valid);
+      return;
+    }
+
+    // We do not currently support signature contexts.
+    // TODO(crbug.com/449751916): Support this.
+    if (!sig_ctx.empty()) {
+      return;
+    }
 
     if (EVP_PKEY_id(key.get()) == EVP_PKEY_DSA) {
       // DSA is deprecated and is not usable via EVP.
@@ -910,81 +926,125 @@ void RunWycheproofVerifyTest(const char *path) {
       }
       int ret = EVP_DigestVerify(ctx.get(), sig.data(), sig.size(), msg.data(),
                                  msg.size());
-      // BoringSSL does not enforce policies on weak keys and leaves it to the
-      // caller.
-      EXPECT_EQ(ret,
-                result.IsValid({"SmallModulus", "SmallPublicKey", "WeakHash"})
-                    ? 1
-                    : 0);
+      EXPECT_EQ(ret, expect_valid ? 1 : 0);
     }
   });
 }
 
 TEST(EVPTest, WycheproofDSA) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/dsa_2048_224_sha224_test.txt");
+      "third_party/wycheproof_testvectors/dsa_2048_224_sha224_test.txt",
+      EVP_pkey_dsa());
 }
 
 TEST(EVPTest, WycheproofECDSAP224) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha224_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha224_test.txt",
+      EVP_pkey_ec_p224());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha256_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha256_test.txt",
+      EVP_pkey_ec_p224());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha512_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp224r1_sha512_test.txt",
+      EVP_pkey_ec_p224());
 }
 
 TEST(EVPTest, WycheproofECDSAP256) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp256r1_sha256_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp256r1_sha256_test.txt",
+      EVP_pkey_ec_p256());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp256r1_sha512_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp256r1_sha512_test.txt",
+      EVP_pkey_ec_p256());
 }
 
 TEST(EVPTest, WycheproofECDSAP384) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp384r1_sha384_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp384r1_sha384_test.txt",
+      EVP_pkey_ec_p384());
+  RunWycheproofVerifyTest(
+      "third_party/wycheproof_testvectors/ecdsa_secp384r1_sha512_test.txt",
+      EVP_pkey_ec_p384());
 }
 
 TEST(EVPTest, WycheproofECDSAP521) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp384r1_sha512_test.txt");
-  RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ecdsa_secp521r1_sha512_test.txt");
+      "third_party/wycheproof_testvectors/ecdsa_secp521r1_sha512_test.txt",
+      EVP_pkey_ec_p521());
 }
 
 TEST(EVPTest, WycheproofEd25519) {
+  RunWycheproofVerifyTest("third_party/wycheproof_testvectors/ed25519_test.txt",
+                          EVP_pkey_ed25519());
+}
+
+// TODO(crbug.com/449751916): We also test these in the low-level ML-DSA code.
+// The EVP-level tests are not yet redundant:
+//
+// * We can't yet run the tests with a context argument.
+// * We can't yet run the signing tests with external entropy.
+//
+// When/if we add |EVP_PKEY|-based APIs for those, we may be able to remove the
+// low-level copy.
+
+TEST(EVPTest, WycheproofMLDSA44) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/ed25519_test.txt");
+      "third_party/wycheproof_testvectors/mldsa_44_verify_test.txt",
+      EVP_pkey_ml_dsa_44());
+}
+
+TEST(EVPTest, WycheproofMLDSA65) {
+  RunWycheproofVerifyTest(
+      "third_party/wycheproof_testvectors/mldsa_65_verify_test.txt",
+      EVP_pkey_ml_dsa_65());
+}
+
+TEST(EVPTest, WycheproofMLDSA87) {
+  RunWycheproofVerifyTest(
+      "third_party/wycheproof_testvectors/mldsa_87_verify_test.txt",
+      EVP_pkey_ml_dsa_87());
 }
 
 TEST(EVPTest, WycheproofRSAPKCS1) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_2048_sha224_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_2048_sha224_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_2048_sha256_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_2048_sha256_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_2048_sha384_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_2048_sha384_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_2048_sha512_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_2048_sha512_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_3072_sha256_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_3072_sha256_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_3072_sha384_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_3072_sha384_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_3072_sha512_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_3072_sha512_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_4096_sha256_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_4096_sha256_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_4096_sha384_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_4096_sha384_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_4096_sha512_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_4096_sha512_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_8192_sha256_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_8192_sha256_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_8192_sha384_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_8192_sha384_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_signature_8192_sha512_test.txt");
+      "third_party/wycheproof_testvectors/rsa_signature_8192_sha512_test.txt",
+      EVP_pkey_rsa());
 }
 
 void RunWycheproofSignTest(FileTest *t) {
@@ -1043,23 +1103,26 @@ TEST(EVPTest, WycheproofRSAPKCS1Sign) {
 
 TEST(EVPTest, WycheproofRSAPSS) {
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_pss_2048_sha1_mgf1_20_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_2048_sha1_mgf1_20_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_pss_2048_sha256_mgf1_0_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_2048_sha256_mgf1_0_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/"
-      "rsa_pss_2048_sha256_mgf1_32_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_2048_sha256_mgf1_32_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/"
-      "rsa_pss_3072_sha256_mgf1_32_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_3072_sha256_mgf1_32_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/"
-      "rsa_pss_4096_sha256_mgf1_32_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_4096_sha256_mgf1_32_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/"
-      "rsa_pss_4096_sha512_mgf1_32_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_4096_sha512_mgf1_32_test.txt",
+      EVP_pkey_rsa());
   RunWycheproofVerifyTest(
-      "third_party/wycheproof_testvectors/rsa_pss_misc_test.txt");
+      "third_party/wycheproof_testvectors/rsa_pss_misc_test.txt",
+      EVP_pkey_rsa());
 }
 
 void RunWycheproofDecryptTest(
