@@ -107,6 +107,9 @@ TEST(CompilerTest, IntegerRepresentation) {
   // size_t does not exceed uint64_t.
   static_assert(sizeof(size_t) <= 8u, "size_t must not exceed uint64_t");
 
+  // The positive maximum of |int| must fit into |size_t|.
+  static_assert(sizeof(int) <= sizeof(size_t), "int must not exceed size_t");
+
   // Require that |int| be exactly 32 bits. OpenSSL historically mixed up
   // |unsigned| and |uint32_t|, so we require it be at least 32 bits. Requiring
   // at most 32-bits is a bit more subtle. C promotes arithmetic operands to
