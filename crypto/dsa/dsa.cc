@@ -559,7 +559,7 @@ DSA_SIG *DSA_do_sign(const uint8_t *digest, size_t digest_len, const DSA *dsa) {
     // retry is negligible, let alone 32. Unfortunately, DSA was mis-specified,
     // so invalid parameters are reachable from most callers handling untrusted
     // private keys. (The |dsa_check_key| call above is not sufficient. Checking
-    // whether arbitrary paremeters form a valid DSA group is expensive.)
+    // whether arbitrary parameters form a valid DSA group is expensive.)
     static const int kMaxIterations = 32;
     int iters = 0;
   redo:

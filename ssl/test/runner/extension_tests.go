@@ -1781,7 +1781,7 @@ func addExtensionTests() {
 			differentSCTList = append(differentSCTList, testSCTList...)
 			differentSCTList[len(differentSCTList)-1] ^= 1
 
-			// The SCT extension did not specify that it must only be sent on the inital handshake as it
+			// The SCT extension did not specify that it must only be sent on the initial handshake as it
 			// should have, so test that we tolerate but ignore it. This is only an issue pre-1.3, since
 			// SCTs are sent in the CertificateEntry message in 1.3, whereas they were previously sent
 			// in an extension in the ServerHello pre-1.3.

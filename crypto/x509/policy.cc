@@ -262,7 +262,7 @@ static int process_certificate_policies(const X509 *x509,
     }
 
     // This does the same thing as RFC 5280, section 6.1.3, step (d), though in
-    // a slighty different order. |level| currently contains
+    // a slightly different order. |level| currently contains
     // "expected_policy_set" values of the previous level. See
     // |process_policy_mappings| for details.
     const int previous_level_has_any_policy = level->has_any_policy;
@@ -348,7 +348,7 @@ static int delete_if_mapped(X509_POLICY_NODE *node, void *data) {
 // with P1 in |parent_policies|.
 //
 // This is equivalent to the |X509_POLICY_LEVEL| that would result if the next
-// certificats contained anyPolicy. |process_certificate_policies| will filter
+// certificates contained anyPolicy. |process_certificate_policies| will filter
 // this result down to compute the actual level.
 static X509_POLICY_LEVEL *process_policy_mappings(const X509 *cert,
                                                   X509_POLICY_LEVEL *level,

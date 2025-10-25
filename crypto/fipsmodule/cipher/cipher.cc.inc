@@ -187,7 +187,7 @@ int EVP_CipherInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
 
   ctx->buf_len = 0;
   ctx->final_used = 0;
-  // Clear the poisoned flag to permit re-use of a CTX that previously had a
+  // Clear the poisoned flag to permit reuse of a CTX that previously had a
   // failed operation.
   ctx->poisoned = 0;
   return 1;

@@ -97,7 +97,7 @@ ASN1_GENERALIZEDTIME *ASN1_TIME_to_generalizedtime(const ASN1_TIME *in,
     goto done;
   }
 
-  // Grow the string to accomodate the two-digit century.
+  // Grow the string to accommodate the two-digit century.
   if (!ASN1_STRING_set(ret, nullptr, in->length + 2)) {
     goto err;
   }

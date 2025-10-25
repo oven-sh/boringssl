@@ -2827,7 +2827,7 @@ TEST(X509Test, TestFromBufferReused) {
   ASSERT_TRUE(PEMToDER(&data2, &data2_len, kLeafPEM));
   EXPECT_EQ(root->buf, buf.get());
 
-  // Historically, this function tested the interaction betweeen
+  // Historically, this function tested the interaction between
   // |X509_parse_from_buffer| and object reuse. We no longer support object
   // reuse, so |d2i_X509| will replace |raw| with a new object. However, we
   // retain this test to verify that releasing objects from |d2i_X509| works

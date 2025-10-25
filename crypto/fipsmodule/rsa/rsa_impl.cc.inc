@@ -691,7 +691,7 @@ static int mod_montgomery(BIGNUM *r, const BIGNUM *I, const BIGNUM *p,
   // I * R mod p here and save a reduction per prime. But this would require
   // changing the RSAZ code and may not be worth it. Note that the RSAZ code
   // uses a different radix, so it uses R' = 2^1044. There we'd actually want
-  // R^2 * R', and would futher benefit from a precomputed R'^2. It currently
+  // R^2 * R', and would further benefit from a precomputed R'^2. It currently
   // converts |mont_p->RR| to R'^2.
   return 1;
 }

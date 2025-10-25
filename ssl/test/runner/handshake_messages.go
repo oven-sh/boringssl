@@ -690,7 +690,7 @@ func (m *clientHelloMsg) marshalBody(hello *cryptobyte.Builder, typ clientHelloT
 				for _, extID := range m.outerExtensions {
 					// m.outerExtensions may intentionally contain duplicates to test the
 					// server's reaction. If m.reorderOuterExtensionsWithoutCompressing
-					// is set, we are targetting the second ClientHello and wish to send a
+					// is set, we are targeting the second ClientHello and wish to send a
 					// valid first ClientHello. In that case, deduplicate so the error
 					// only appears later.
 					if _, written := extsWritten[extID]; m.reorderOuterExtensionsWithoutCompressing && written {

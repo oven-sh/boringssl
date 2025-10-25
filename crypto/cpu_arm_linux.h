@@ -50,7 +50,7 @@ static int STRING_PIECE_equals(const STRING_PIECE *a, const char *b) {
   return a->len == b_len && OPENSSL_memcmp(a->data, b, b_len) == 0;
 }
 
-// STRING_PIECE_split finds the first occurence of |sep| in |in| and, if found,
+// STRING_PIECE_split finds the first occurrence of |sep| in |in| and, if found,
 // sets |*out_left| and |*out_right| to |in| split before and after it. It
 // returns one if |sep| was found and zero otherwise.
 static int STRING_PIECE_split(STRING_PIECE *out_left, STRING_PIECE *out_right,

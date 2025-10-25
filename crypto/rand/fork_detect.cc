@@ -187,7 +187,7 @@ uint64_t CRYPTO_get_fork_generation(void) { return 0xc0ffee; }
 
 // These platforms may fork, but we do not have a mitigation mechanism in
 // place.  Returning a constant zero value makes BoringSSL assume that address
-// space duplication could have occured on any call entropy must be added to
+// space duplication could have occurred on any call entropy must be added to
 // every RAND_bytes call.
 uint64_t CRYPTO_get_fork_generation(void) { return 0; }
 

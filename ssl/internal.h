@@ -3667,7 +3667,7 @@ bool ssl_parse_serverhello_tlsext(SSL_HANDSHAKE *hs, const CBS *extensions);
 //       fresh ticket should be sent, but the given ticket cannot be used.
 //   |ssl_ticket_aead_retry|: the ticket could not be immediately decrypted.
 //       Retry later.
-//   |ssl_ticket_aead_error|: an error occured that is fatal to the connection.
+//   |ssl_ticket_aead_error|: an error occurred that is fatal to the connection.
 enum ssl_ticket_aead_result_t ssl_process_ticket(
     SSL_HANDSHAKE *hs, UniquePtr<SSL_SESSION> *out_session,
     bool *out_renew_ticket, Span<const uint8_t> ticket,
@@ -3696,7 +3696,7 @@ bool tls1_record_handshake_hashes_for_channel_id(SSL_HANDSHAKE *hs);
 // ssl_can_write returns whether |ssl| is allowed to write.
 bool ssl_can_write(const SSL *ssl);
 
-// ssl_can_read returns wheter |ssl| is allowed to read.
+// ssl_can_read returns whether |ssl| is allowed to read.
 bool ssl_can_read(const SSL *ssl);
 
 OPENSSL_timeval ssl_ctx_get_current_time(const SSL_CTX *ctx);
@@ -3743,12 +3743,12 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
 
   // conf_max_version is the maximum acceptable protocol version configured by
   // |SSL_CTX_set_max_proto_version|. Note this version is normalized in DTLS
-  // and is further constrainted by |SSL_OP_NO_*|.
+  // and is further constrained by |SSL_OP_NO_*|.
   uint16_t conf_max_version = 0;
 
   // conf_min_version is the minimum acceptable protocol version configured by
   // |SSL_CTX_set_min_proto_version|. Note this version is normalized in DTLS
-  // and is further constrainted by |SSL_OP_NO_*|.
+  // and is further constrained by |SSL_OP_NO_*|.
   uint16_t conf_min_version = 0;
 
   // num_tickets is the number of tickets to send immediately after the TLS 1.3

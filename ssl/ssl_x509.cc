@@ -72,7 +72,7 @@ static void ssl_crypto_x509_cert_flush_cached_chain(CERT *cert) {
 
 // ssl_cert_set1_chain sets elements 1.. of |cert->chain| to the serialised
 // forms of elements of |chain|. It returns one on success or zero on error, in
-// which case no change to |cert->chain| is made. It preverses the existing
+// which case no change to |cert->chain| is made. It preserves the existing
 // leaf from |cert->chain|, if any.
 static bool ssl_cert_set1_chain(CERT *cert, STACK_OF(X509) *chain) {
   cert->legacy_credential->ClearIntermediateCerts();

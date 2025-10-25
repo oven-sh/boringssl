@@ -360,7 +360,7 @@ static size_t left_idx(size_t idx) {
   // |ptrdiff_t|, a signed type, is the same size as |size_t|, this cannot
   // overflow.
   assert(idx <= PTRDIFF_MAX);
-  static_assert(PTRDIFF_MAX <= (SIZE_MAX - 1) / 2, "2 * idx + 1 may oveflow");
+  static_assert(PTRDIFF_MAX <= (SIZE_MAX - 1) / 2, "2 * idx + 1 may overflow");
   return 2 * idx + 1;
 }
 

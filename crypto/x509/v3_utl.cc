@@ -203,8 +203,8 @@ ASN1_INTEGER *s2i_ASN1_INTEGER(const X509V3_EXT_METHOD *method,
   } else {
     // Decoding from decimal scales quadratically in the input length. Bound the
     // largest decimal input we accept in the config parser. 8,192 decimal
-    // digits allows values up to 27,213 bits. Ths exceeds the largest RSA, DSA,
-    // or DH modulus we support, and those are not usefully represented in
+    // digits allows values up to 27,213 bits. This exceeds the largest RSA,
+    // DSA, or DH modulus we support, and those are not usefully represented in
     // decimal.
     if (strlen(value) > 8192) {
       BN_free(bn);

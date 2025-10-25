@@ -50,7 +50,7 @@ BIO *BIO_new_mem_buf(const void *buf, ossl_ssize_t len) {
 
   // |num| is used to store the value that this BIO will return when it runs
   // out of data. If it's negative then the retry flags will also be set. Since
-  // this is static data, retrying wont help
+  // this is static data, retrying won't help
   ret->num = 0;
 
   return ret;

@@ -42,7 +42,7 @@ static int crl_lookup(X509_CRL *crl, X509_REVOKED **ret,
                       const ASN1_INTEGER *serial, X509_NAME *issuer);
 
 // The X509_CRL_INFO structure needs a bit of customisation. Since we cache
-// the original encoding the signature wont be affected by reordering of the
+// the original encoding the signature won't be affected by reordering of the
 // revoked field.
 static int crl_inf_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
                       void *exarg) {

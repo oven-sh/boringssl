@@ -110,10 +110,11 @@ OPENSSL_EXPORT int EVP_PKEY_bits(const EVP_PKEY *pkey);
 #define EVP_PKEY_ML_DSA_87 NID_ML_DSA_87
 
 // EVP_PKEY_id returns the type of |pkey|, which is one of the |EVP_PKEY_*|
-// values above. These type values generally corresond to the algorithm OID, but
-// not the parameters, of a SubjectPublicKeyInfo (RFC 5280) or PrivateKeyInfo
-// (RFC 5208) AlgorithmIdentifier. Algorithm parameters can be inspected with
-// algorithm-specific accessors, e.g. |EVP_PKEY_get_ec_curve_nid|.
+// values above. These type values generally correspond to the algorithm OID,
+// but not the parameters, of a SubjectPublicKeyInfo (RFC 5280) or
+// PrivateKeyInfo (RFC 5208) AlgorithmIdentifier. Algorithm parameters can be
+// inspected with algorithm-specific accessors, e.g.
+// |EVP_PKEY_get_ec_curve_nid|.
 OPENSSL_EXPORT int EVP_PKEY_id(const EVP_PKEY *pkey);
 
 
@@ -294,7 +295,7 @@ OPENSSL_EXPORT EVP_PKEY *EVP_PKEY_from_subject_public_key_info(
 // Prefer |EVP_PKEY_from_subject_public_key_info| instead. This function has
 // several pitfalls:
 //
-// Callers are expected to handle trailing data retuned from |cbs|, making more
+// Callers are expected to handle trailing data returned from |cbs|, making more
 // common cases error-prone.
 //
 // There is also no way to pass in supported algorithms. This function instead
@@ -331,7 +332,7 @@ OPENSSL_EXPORT EVP_PKEY *EVP_PKEY_from_private_key_info(
 // Prefer |EVP_PKEY_from_private_key_info| instead. This function has
 // several pitfalls:
 //
-// Callers are expected to handle trailing data retuned from |cbs|, making more
+// Callers are expected to handle trailing data returned from |cbs|, making more
 // common cases error-prone.
 //
 // There is also no way to pass in supported algorithms. This function instead

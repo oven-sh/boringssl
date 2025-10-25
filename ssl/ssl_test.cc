@@ -425,7 +425,7 @@ static const CipherTest kCipherTests[] = {
         },
         false,
     },
-    // Although alises like "RSA" do not match 3DES when adding ciphers, they do
+    // Although aliases like "RSA" do not match 3DES when adding ciphers, they do
     // match it when removing ciphers.
     {
         "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:RSA:RSA+3DES:!RSA",
@@ -4286,7 +4286,7 @@ TEST_P(SSLVersionTest, SessionTimeout) {
       g_current_time.tv_sec = new_start_time + timeout + 1;
       TRACED_CALL(ExpectSessionReused(client_ctx_.get(), server_ctx_.get(),
                                       new_session.get(),
-                                      false /* expect session ot reused */));
+                                      false /* expect session not reused */));
 
       // Renew the session until it begins just past the auth timeout.
       time_t auth_end_time = kStartTime + SSL_DEFAULT_SESSION_AUTH_TIMEOUT;
@@ -4309,7 +4309,7 @@ TEST_P(SSLVersionTest, SessionTimeout) {
       g_current_time.tv_sec = auth_end_time + 1;
       TRACED_CALL(ExpectSessionReused(client_ctx_.get(), server_ctx_.get(),
                                       new_session.get(),
-                                      false /* expect session ot reused */));
+                                      false /* expect session not reused */));
     } else {
       // The new session is usable just before the old expiration.
       g_current_time.tv_sec = kStartTime + timeout - 1;
@@ -5152,8 +5152,8 @@ TEST_P(SSLVersionTest, SmallBuffer) {
 }
 
 TEST(SSLTest, AddChainCertHack) {
-  // Ensure that we don't accidently break the hack that we have in place to
-  // keep curl and serf happy when they use an |X509| even after transfering
+  // Ensure that we don't accidentally break the hack that we have in place to
+  // keep curl and serf happy when they use an |X509| even after transferring
   // ownership.
 
   bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
@@ -6823,8 +6823,8 @@ TEST(SSLTest, ApplyHandoffRemovesUnsupportedCurves) {
 }
 
 TEST(SSLTest, ZeroSizedWiteFlushesHandshakeMessages) {
-  // If there are pending handshake mesages, an |SSL_write| of zero bytes should
-  // flush them.
+  // If there are pending handshake messages, an |SSL_write| of zero bytes
+  // should flush them.
   bssl::UniquePtr<SSL_CTX> server_ctx(
       CreateContextWithTestCertificate(TLS_method()));
   ASSERT_TRUE(server_ctx);

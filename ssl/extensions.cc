@@ -210,7 +210,7 @@ bool tls1_get_shared_group(SSL_HANDSHAKE *hs, uint16_t *out_group_id) {
   //
   // However, in the interests of compatibility, we will skip ECDH if the
   // client didn't send an extension because we can't be sure that they'll
-  // support our favoured group. Thus we do not special-case an emtpy
+  // support our favoured group. Thus we do not special-case an empty
   // |peer_supported_group_list|.
 
   Span<const uint16_t> groups = hs->config->supported_group_list;
@@ -440,7 +440,7 @@ bool ssl_parse_flags_extension_response(const CBS *cbs, SSLFlags *out,
 // is additionally passed two output |CBB|s. If the extension is the same
 // independent of the value of |type|, the callback may write to
 // |out_compressible| instead of |out|. When serializing the ClientHelloInner,
-// all compressible extensions will be made continguous and replaced with
+// all compressible extensions will be made contiguous and replaced with
 // ech_outer_extensions when encrypted. When serializing the ClientHelloOuter
 // or not offering ECH, |out| will be equal to |out_compressible|, so writing to
 // |out_compressible| still works.
@@ -3793,7 +3793,7 @@ static bool ssl_add_clienthello_tlsext_inner(SSL_HANDSHAKE *hs, CBB *out,
   // ClientHellos concurrently, to handle compression. Uncompressed extensions
   // are written to |extensions| and copied to |extensions_encoded|. Compressed
   // extensions are buffered in |compressed| and written to the end. (ECH can
-  // only compress continguous extensions.)
+  // only compress contiguous extensions.)
   SSL *const ssl = hs->ssl;
   bssl::ScopedCBB compressed, outer_extensions;
   CBB extensions, extensions_encoded;

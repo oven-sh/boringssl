@@ -856,7 +856,7 @@ static bool parse_sigalgs_list(Array<uint16_t> *out, const char *str) {
           buf[buf_used++] = c;
         } else {
           OPENSSL_PUT_ERROR(SSL, SSL_R_INVALID_SIGNATURE_ALGORITHM);
-          ERR_add_error_dataf("invalid character 0x%02x at offest %zu", c,
+          ERR_add_error_dataf("invalid character 0x%02x at offset %zu", c,
                               offset);
           return false;
         }

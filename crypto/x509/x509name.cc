@@ -54,8 +54,8 @@ int X509_NAME_get_text_by_OBJ(const X509_NAME *name, const ASN1_OBJECT *obj,
   }
   CBS cbs;
   CBS_init(&cbs, text, text_len);
-  // Fail if the UTF-8 encoding constains a 0 byte because this is
-  // returned as a C string and callers very often do not check.
+  // Fail if the UTF-8 encoding contains a 0 byte because this is returned as a
+  // C string and callers very often do not check.
   if (CBS_contains_zero_byte(&cbs)) {
     goto out;
   }
@@ -92,7 +92,7 @@ int X509_NAME_get_index_by_NID(const X509_NAME *name, int nid, int lastpos) {
   return X509_NAME_get_index_by_OBJ(name, obj, lastpos);
 }
 
-// NOTE: you should be passsing -1, not 0 as lastpos
+// NOTE: you should be passing -1, not 0 as lastpos
 int X509_NAME_get_index_by_OBJ(const X509_NAME *name, const ASN1_OBJECT *obj,
                                int lastpos) {
   if (name == nullptr) {

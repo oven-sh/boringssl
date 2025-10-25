@@ -33,7 +33,7 @@
 // becomes a performance bottleneck, some possible optimizations by
 // specializing it to the curve:
 //
-// - Rather than using a generic |felem_exp|, specialize the exponentation to
+// - Rather than using a generic |felem_exp|, specialize the exponentiation to
 //   c2 with a faster addition chain.
 //
 // - |felem_mul| and |felem_sqr| are indirect calls to generic Montgomery

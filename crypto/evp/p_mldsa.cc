@@ -283,7 +283,7 @@ struct MLDSAImplementation {
     // whether a private key is valid. We only implement the "seed"
     // representation. Give this case a different error for easier diagnostics.
     //
-    // The "expandedKey" representation was a last-minute accomodation for
+    // The "expandedKey" representation was a last-minute accommodation for
     // legacy hardware, which should be updated to use seeds. Supporting it
     // complicates the notion of a private key with both seedful and seedless
     // variants.

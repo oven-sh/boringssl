@@ -939,7 +939,7 @@ static bool ssl_cipher_process_rulestr(const char *rule_str,
             // enables deprecated ciphers, deprecated ciphers are included. This
             // is slightly different from the bitmasks in that adding aliases
             // can increase the set of matched ciphers. This is so that an alias
-            // like "RSA" will only specifiy AES-based RSA ciphers, but
+            // like "RSA" will only specify AES-based RSA ciphers, but
             // "RSA+3DES" will still specify 3DES.
             alias.include_deprecated |= kCipherAliases[j].include_deprecated;
 

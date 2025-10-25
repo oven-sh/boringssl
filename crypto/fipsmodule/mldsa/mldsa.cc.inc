@@ -1191,7 +1191,7 @@ void scalar_uniform(scalar *out, const uint8_t derived_seed[kSigmaBytes + 2]) {
       uint32_t t1 = block[i] >> 4;
       // FIPS 204, Algorithm 15 (`CoefFromHalfByte`). Although both the input
       // and output here are secret, it is OK to leak when we rejected a byte.
-      // Individual bytes of the SHAKE-256 stream are (indistiguishable from)
+      // Individual bytes of the SHAKE-256 stream are (indistinguishable from)
       // independent of each other and the original seed, so leaking information
       // about the rejected bytes does not reveal the input or output.
       uint32_t v;

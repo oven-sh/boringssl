@@ -92,7 +92,7 @@ void ASN1_item_ex_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
       }
       asn1_enc_free(pval, it);
       // If we free up as normal we will invalidate any ANY DEFINED BY
-      // field and we wont be able to determine the type of the field it
+      // field and we won't be able to determine the type of the field it
       // defines. So free up in reverse order.
       for (int i = it->tcount - 1; i >= 0; i--) {
         const ASN1_TEMPLATE *seqtt = asn1_do_adb(pval, &it->templates[i], 0);
@@ -128,7 +128,7 @@ void ASN1_template_free(ASN1_VALUE **pval, const ASN1_TEMPLATE *tt) {
 
 void ASN1_primitive_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
   // Historically, |it->funcs| for primitive types contained an
-  // |ASN1_PRIMITIVE_FUNCS| table of calbacks.
+  // |ASN1_PRIMITIVE_FUNCS| table of callbacks.
   assert(it->funcs == nullptr);
 
   int utype = it->itype == ASN1_ITYPE_MSTRING ? -1 : it->utype;

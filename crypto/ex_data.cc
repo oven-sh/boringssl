@@ -27,8 +27,8 @@
 
 
 struct crypto_ex_data_func_st {
-  long argl;   // Arbitary long
-  void *argp;  // Arbitary void pointer
+  long argl;   // Arbitrary long
+  void *argp;  // Arbitrary void pointer
   CRYPTO_EX_free *free_func;
   // next points to the next |CRYPTO_EX_DATA_FUNCS| or NULL if this is the last
   // one. It may only be read if synchronized with a read from |num_funcs|.

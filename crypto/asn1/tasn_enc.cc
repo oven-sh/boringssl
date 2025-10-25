@@ -87,7 +87,7 @@ int asn1_item_ex_i2d_opt(ASN1_VALUE **pval, unsigned char **out,
   // Historically, |aclass| was repurposed to pass additional flags into the
   // encoding process.
   assert((aclass & ASN1_TFLG_TAG_CLASS) == aclass);
-  // If not overridding the tag, |aclass| is ignored and should be zero.
+  // If not overriding the tag, |aclass| is ignored and should be zero.
   assert(tag != -1 || aclass == 0);
 
   // All fields are pointers, except for boolean |ASN1_ITYPE_PRIMITIVE|s.
@@ -238,7 +238,7 @@ static int asn1_template_ex_i2d(ASN1_VALUE **pval, unsigned char **out,
   // Historically, |iclass| was repurposed to pass additional flags into the
   // encoding process.
   assert((iclass & ASN1_TFLG_TAG_CLASS) == iclass);
-  // If not overridding the tag, |iclass| is ignored and should be zero.
+  // If not overriding the tag, |iclass| is ignored and should be zero.
   assert(tag != -1 || iclass == 0);
 
   // Work out tag and class to use: tagging may come either from the

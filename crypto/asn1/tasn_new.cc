@@ -214,7 +214,7 @@ static int ASN1_primitive_new(ASN1_VALUE **pval, const ASN1_ITEM *it) {
   }
 
   // Historically, |it->funcs| for primitive types contained an
-  // |ASN1_PRIMITIVE_FUNCS| table of calbacks.
+  // |ASN1_PRIMITIVE_FUNCS| table of callbacks.
   assert(it->funcs == nullptr);
 
   int utype;
@@ -261,7 +261,7 @@ static int ASN1_primitive_new(ASN1_VALUE **pval, const ASN1_ITEM *it) {
 static void asn1_primitive_clear(ASN1_VALUE **pval, const ASN1_ITEM *it) {
   int utype;
   // Historically, |it->funcs| for primitive types contained an
-  // |ASN1_PRIMITIVE_FUNCS| table of calbacks.
+  // |ASN1_PRIMITIVE_FUNCS| table of callbacks.
   assert(it == nullptr || it->funcs == nullptr);
   if (!it || (it->itype == ASN1_ITYPE_MSTRING)) {
     utype = -1;
