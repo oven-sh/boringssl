@@ -445,7 +445,7 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-21",
         },
     },
 )
@@ -460,7 +460,7 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-21",
             "CMAKE_BUILD_TYPE": "Release",
             # Although Android now requires NEON support, on one builder, we
             # ignore the |__ARM_NEON| preprocessor option, to keep testing
@@ -500,7 +500,7 @@ both_builders(
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
             "ANDROID_ARM_MODE": "arm",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-21",
             "CMAKE_BUILD_TYPE": "Release",
         },
     },
