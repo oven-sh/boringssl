@@ -203,6 +203,16 @@ int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
   return EVP_CipherInit_ex(ctx, cipher, impl, key, iv, 0);
 }
 
+// CopyToPrefix copies a span of bytes from |from| into |to|. It aborts if there
+// is not enough space.
+//
+// TODO(crbug.com/404286922): Can we simplify this in a C++20 world (e.g.
+// std::ranges::copy)? Must preserve range checking on the destination span.
+static void CopyToPrefix(bssl::Span<const uint8_t> from,
+                         bssl::Span<uint8_t> to) {
+  OPENSSL_memcpy(to.first(from.size()).data(), from.data(), from.size());
+}
+
 // block_remainder returns the number of bytes to remove from |len| to get a
 // multiple of |ctx|'s block size.
 static size_t block_remainder(const EVP_CIPHER_CTX *ctx, size_t len) {
@@ -253,60 +263,59 @@ int EVP_EncryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
 
   // Ciphers that use blocks may write up to |block_size| extra bytes. Ensure
   // the output does not overflow |*out_len|.
+  bssl::Span<const uint8_t> in_span(in, in_len);
   size_t block_size = ctx->cipher->block_size;
 
-  if (in_len == 0) {
+  if (in_span.empty()) {
     ctx->poisoned = 0;
     return 1;
   }
 
   size_t buf_len = ctx->buf_len;
   assert(block_size <= sizeof(ctx->buf));
+  bssl::Span<uint8_t> out_span(out, max_out_len);
   if (buf_len != 0) {
-    if (block_size - buf_len > in_len) {
-      OPENSSL_memcpy(&ctx->buf[buf_len], in, in_len);
-      ctx->buf_len += in_len;
+    if (block_size - buf_len > in_span.size()) {
+      CopyToPrefix(in_span, bssl::Span(ctx->buf).subspan(buf_len));
+      ctx->buf_len += in_span.size();
       ctx->poisoned = 0;
       return 1;
     } else {
       size_t j = block_size - buf_len;
-      OPENSSL_memcpy(&ctx->buf[buf_len], in, j);
-      if (max_out_len < block_size) {
+      CopyToPrefix(in_span.first(j), bssl::Span(ctx->buf).subspan(buf_len));
+      if (out_span.size() < block_size) {
         OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
         return 0;
       }
-      if (!ctx->cipher->cipher_update(ctx, out, ctx->buf, block_size)) {
+      if (!ctx->cipher->cipher_update(ctx, out_span.data(), ctx->buf,
+                                      block_size)) {
         return 0;
       }
-      in_len -= j;
-      in += j;
-      out += block_size;
-      *out_len = block_size;
-      max_out_len -= block_size;
+      in_span = in_span.subspan(j);
+      out_span = out_span.subspan(block_size);
     }
   }
 
-  size_t remainder = block_remainder(ctx, in_len);
-  in_len -= remainder;
-  if (in_len > 0) {
-    if (max_out_len < in_len) {
+  size_t whole_blocks = in_span.size() - block_remainder(ctx, in_span.size());
+  if (whole_blocks > 0) {
+    if (out_span.size() < whole_blocks) {
       OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
-      *out_len = 0;
       return 0;
     }
-    if (!ctx->cipher->cipher_update(ctx, out, in, in_len)) {
-      *out_len = 0;
+    if (!ctx->cipher->cipher_update(ctx, out_span.data(), in_span.data(),
+                                    whole_blocks)) {
       return 0;
     }
-    *out_len += in_len;
-    max_out_len -= in_len;
+    in_span = in_span.subspan(whole_blocks);
+    out_span = out_span.subspan(whole_blocks);
   }
 
-  if (remainder != 0) {
-    OPENSSL_memcpy(ctx->buf, &in[in_len], remainder);
-  }
-  ctx->buf_len = remainder;
+  assert(in_span.size() < block_size);
+  CopyToPrefix(in_span, ctx->buf);
+  ctx->buf_len = in_span.size();
   ctx->poisoned = 0;
+
+  *out_len = max_out_len - out_span.size();
   return 1;
 }
 
@@ -322,7 +331,6 @@ int EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
 int EVP_EncryptFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
                          size_t max_out_len) {
   *out_len = 0;
-
   if (ctx->poisoned) {
     OPENSSL_PUT_ERROR(CIPHER, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
@@ -354,14 +362,18 @@ int EVP_EncryptFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
   for (size_t i = buf_len; i < block_size; i++) {
     ctx->buf[i] = padding;
   }
-  if (max_out_len < block_size) {
+
+  bssl::Span<uint8_t> out_span(out, max_out_len);
+  if (out_span.size() < block_size) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
-  if (!ctx->cipher->cipher_update(ctx, out, ctx->buf, block_size)) {
+  if (!ctx->cipher->cipher_update(ctx, out_span.data(), ctx->buf, block_size)) {
     return 0;
   }
-  *out_len = block_size;
+  out_span = out_span.subspan(block_size);
+
+  *out_len = max_out_len - out_span.size();
   EVP_Cipher_verify_service_indicator(ctx);
   return 1;
 }
@@ -403,33 +415,34 @@ int EVP_DecryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
 
   // Ciphers that use blocks may write up to |block_size| extra bytes. Ensure
   // the output does not overflow |*out_len|.
+  bssl::Span<const uint8_t> in_span(in, in_len);
   size_t block_size = ctx->cipher->block_size;
 
-  if (in_len == 0) {
+  if (in_span.empty()) {
     return 1;
   }
 
+  bssl::Span<uint8_t> out_span(out, max_out_len);
   if (ctx->flags & EVP_CIPH_NO_PADDING) {
     // Use the shared block handling logic from encryption.
-    return EVP_EncryptUpdate_ex(ctx, out, out_len, max_out_len, in, in_len);
+    return EVP_EncryptUpdate_ex(ctx, out_span.data(), out_len, out_span.size(),
+                                in_span.data(), in_span.size());
   }
 
   assert(block_size <= sizeof(ctx->final));
-  bool fix_len = false;
   if (ctx->final_used) {
-    if (max_out_len < block_size) {
+    if (out_span.size() < block_size) {
       OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
       return 0;
     }
-    OPENSSL_memcpy(out, ctx->final, block_size);
+    CopyToPrefix(bssl::Span(ctx->final).first(block_size), out_span);
     ctx->final_used = 0;
-    out += block_size;
-    max_out_len -= block_size;
-    fix_len = true;
+    out_span = out_span.subspan(block_size);
   }
 
   // Use the shared block handling logic from encryption.
-  if (block_size > 1 && block_remainder(ctx, ctx->buf_len + in_len) == 0) {
+  if (block_size > 1 &&
+      block_remainder(ctx, ctx->buf_len + in_span.size()) == 0) {
     // Decryption would end on a block boundary. In this case, although we
     // can decrypt up to the block boundary, we cannot output the final
     // plaintext block yet. It may be the final block, with padding to
@@ -441,13 +454,17 @@ int EVP_DecryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
     // NOTE: Not _really_ necessary, but let's try aligning the second
     // EVP_EncryptUpdate_ex call to a block boundary to mess with the buffer
     // less.
-    size_t head = in_len > block_size ? in_len - block_size : 0;
-    if (!EVP_EncryptUpdate_ex(ctx, out, out_len, max_out_len, in, head)) {
+    size_t head = in_span.size() > block_size ? in_span.size() - block_size : 0;
+    size_t head_out_len = 0;
+    if (!EVP_EncryptUpdate_ex(ctx, out_span.data(), &head_out_len,
+                                out_span.size(), in_span.data(), head)) {
       return 0;
     }
+    in_span = in_span.subspan(head);
+    out_span = out_span.subspan(head_out_len);
     size_t final_size;
     if (!EVP_EncryptUpdate_ex(ctx, ctx->final, &final_size, sizeof(ctx->final),
-                              in + head, in_len - head)) {
+                              in_span.data(), in_span.size())) {
       return 0;
     }
     ctx->final_used = 1;
@@ -455,16 +472,17 @@ int EVP_DecryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
     assert(ctx->buf_len == 0);
   } else {
     // Buffer will be non-empty.
-    if (!EVP_EncryptUpdate_ex(ctx, out, out_len, max_out_len, in, in_len)) {
+    size_t written_out_len;
+    if (!EVP_EncryptUpdate_ex(ctx, out_span.data(), &written_out_len,
+                              out_span.size(), in_span.data(),
+                              in_span.size())) {
       return 0;
     }
     assert(block_size == 1 || ctx->buf_len != 0);
+    out_span = out_span.subspan(written_out_len);
   }
 
-  if (fix_len) {
-    *out_len += block_size;
-  }
-
+  *out_len = max_out_len - out_span.size();
   return 1;
 }
 
@@ -480,7 +498,6 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len) {
 int EVP_DecryptFinal_ex2(EVP_CIPHER_CTX *ctx, unsigned char *out,
                          size_t *out_len, size_t max_out_len) {
   *out_len = 0;
-
   if (ctx->poisoned) {
     OPENSSL_PUT_ERROR(CIPHER, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
@@ -529,14 +546,16 @@ int EVP_DecryptFinal_ex2(EVP_CIPHER_CTX *ctx, unsigned char *out,
     }
   }
 
+  bssl::Span<uint8_t> out_span(out, max_out_len);
   size_t payload = ctx->cipher->block_size - padding;
-  if (max_out_len < payload) {
+  if (out_span.size() < payload) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
-  OPENSSL_memcpy(out, ctx->final, payload);
-  *out_len = payload;
+  CopyToPrefix(bssl::Span(ctx->final).first(payload), out_span);
+  out_span = out_span.subspan(payload);
 
+  *out_len = max_out_len - out_span.size();
   EVP_Cipher_verify_service_indicator(ctx);
   return 1;
 }
