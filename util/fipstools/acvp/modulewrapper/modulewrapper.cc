@@ -817,7 +817,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "mode": "keyGen",
         "revision": "FIPS205",
         "parameterSets": [
-          "SLH-DSA-SHA2-128s"
+          "SLH-DSA-SHA2-128s",
+          "SLH-DSA-SHAKE-256f"
         ]
       },
       {
@@ -832,7 +833,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "capabilities": [
           {
             "parameterSets": [
-              "SLH-DSA-SHA2-128s"
+              "SLH-DSA-SHA2-128s",
+              "SLH-DSA-SHAKE-256f"
             ],
             "messageLength": [
               {
@@ -856,7 +858,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "capabilities": [
           {
             "parameterSets": [
-              "SLH-DSA-SHA2-128s"
+              "SLH-DSA-SHA2-128s",
+              "SLH-DSA-SHAKE-256f"
             ],
             "messageLength": [
               {
@@ -2262,67 +2265,76 @@ static bool MLKEMDecap(const Span<const uint8_t> args[],
   return write_reply({shared_secret});
 }
 
+template <size_t N, size_t PublicKeyBytes, size_t PrivateKeyBytes,
+          bcm_infallible (*GenerateFromSeed)(uint8_t *, uint8_t *,
+                                             const uint8_t *)>
 static bool SLHDSAKeyGen(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> seed = args[0];
 
-  if (seed.size() != 3 * BCM_SLHDSA_SHA2_128S_N) {
+  if (seed.size() != 3 * N) {
     LOG_ERROR("Bad seed size.\n");
     return false;
   }
 
-  uint8_t public_key[BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES];
-  uint8_t private_key[BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES];
-  BCM_slhdsa_sha2_128s_generate_key_from_seed(public_key, private_key,
-                                              seed.data());
+  uint8_t public_key[PublicKeyBytes];
+  uint8_t private_key[PrivateKeyBytes];
+  GenerateFromSeed(public_key, private_key, seed.data());
 
   return write_reply({private_key, public_key});
 }
 
+template <size_t N, size_t PrivateKeyBytes, size_t SignatureBytes,
+          bcm_infallible (*SignInternal)(
+              uint8_t *, const uint8_t *, const uint8_t *, const uint8_t *,
+              size_t, const uint8_t *, size_t, const uint8_t *)>
 static bool SLHDSASigGen(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> private_key = args[0];
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> entropy_span = args[2];
 
-  if (private_key.size() != BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES) {
+  if (private_key.size() != PrivateKeyBytes) {
     LOG_ERROR("Bad private key size.\n");
     return false;
   }
 
-  uint8_t entropy[BCM_SLHDSA_SHA2_128S_N];
+  uint8_t entropy[N];
   if (!entropy_span.empty()) {
-    if (entropy_span.size() != BCM_SLHDSA_SHA2_128S_N) {
+    if (entropy_span.size() != N) {
       LOG_ERROR("Bad entropy size.\n");
       return false;
     }
-    memcpy(entropy, entropy_span.data(), entropy_span.size());
+    memcpy(entropy, entropy_span.data(), N);
   } else {
-    memcpy(entropy, private_key.data() + 32, 16);
+    memcpy(entropy, private_key.data() + 2 * N, N);
   }
 
-  uint8_t signature[BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES];
-  BCM_slhdsa_sha2_128s_sign_internal(signature, private_key.data(), nullptr,
-                                     nullptr, 0, msg.data(), msg.size(),
-                                     entropy);
+  std::vector<uint8_t> signature(SignatureBytes);
+  SignInternal(signature.data(), private_key.data(), nullptr, nullptr, 0, msg.data(),
+               msg.size(), entropy);
 
-  return write_reply({signature});
+  return write_reply({Span<const uint8_t>(signature)});
 }
 
+template <size_t PublicKeyBytes, size_t SignatureBytes,
+          bcm_status (*VerifyInternal)(const uint8_t *, size_t, const uint8_t *,
+                                       const uint8_t *, const uint8_t *, size_t,
+                                       const uint8_t *, size_t)>
 static bool SLHDSASigVer(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> public_key = args[0];
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> signature = args[2];
 
-  if (public_key.size() != BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES) {
+  if (public_key.size() != PublicKeyBytes) {
     LOG_ERROR("Bad public key size.\n");
     return false;
   }
 
-  const int ok = bcm_success(BCM_slhdsa_sha2_128s_verify_internal(
-      signature.data(), signature.size(), public_key.data(), nullptr, nullptr,
-      0, msg.data(), msg.size()));
+  const int ok = bcm_success(VerifyInternal(signature.data(), signature.size(),
+                                            public_key.data(), nullptr, nullptr,
+                                            0, msg.data(), msg.size()));
 
   const uint8_t ok_byte = ok ? 1 : 0;
   return write_reply({Span<const uint8_t>(&ok_byte, 1)});
@@ -2479,9 +2491,33 @@ static constexpr struct {
     {"ML-KEM-1024/decap", 2,
      MLKEMDecap<MLKEM1024_private_key, BCM_mlkem1024_parse_private_key,
                 BCM_mlkem1024_decap>},
-    {"SLH-DSA-SHA2-128s/keyGen", 1, SLHDSAKeyGen},
-    {"SLH-DSA-SHA2-128s/sigGen", 3, SLHDSASigGen},
-    {"SLH-DSA-SHA2-128s/sigVer", 3, SLHDSASigVer},
+    {"SLH-DSA-SHA2-128s/keyGen", 1,
+     SLHDSAKeyGen<BCM_SLHDSA_SHA2_128S_N, BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES,
+                  BCM_slhdsa_sha2_128s_generate_key_from_seed>},
+    {"SLH-DSA-SHA2-128s/sigGen", 3,
+     SLHDSASigGen<BCM_SLHDSA_SHA2_128S_N,
+                  BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES,
+                  BCM_slhdsa_sha2_128s_sign_internal>},
+    {"SLH-DSA-SHA2-128s/sigVer", 3,
+     SLHDSASigVer<BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES,
+                  BCM_slhdsa_sha2_128s_verify_internal>},
+    {"SLH-DSA-SHAKE-256f/keyGen", 1,
+     SLHDSAKeyGen<BCM_SLHDSA_SHAKE_256F_N,
+                  BCM_SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_PRIVATE_KEY_BYTES,
+                  BCM_slhdsa_shake_256f_generate_key_from_seed>},
+    {"SLH-DSA-SHAKE-256f/sigGen", 3,
+     SLHDSASigGen<BCM_SLHDSA_SHAKE_256F_N,
+                  BCM_SLHDSA_SHAKE_256F_PRIVATE_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_SIGNATURE_BYTES,
+                  BCM_slhdsa_shake_256f_sign_internal>},
+    {"SLH-DSA-SHAKE-256f/sigVer", 3,
+     SLHDSASigVer<BCM_SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_SIGNATURE_BYTES,
+                  BCM_slhdsa_shake_256f_verify_internal>},
 };
 
 Handler FindHandler(Span<const Span<const uint8_t>> args) {
