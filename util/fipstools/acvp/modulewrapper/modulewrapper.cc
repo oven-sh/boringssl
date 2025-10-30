@@ -1371,10 +1371,10 @@ static bool TDES(const Span<const uint8_t> args[], ReplyCallback write_reply) {
       prev_prev_result = result;
     }
 
-    int out_len;
-    if (!EVP_CipherUpdate(ctx.get(), result.data(), &out_len, result.data(),
-                          result.size()) ||
-        out_len != static_cast<int>(result.size())) {
+    size_t out_len;
+    if (!EVP_CipherUpdate_ex(ctx.get(), result.data(), &out_len, result.size(),
+                             result.data(), result.size()) ||
+        out_len != result.size()) {
       return false;
     }
   }
@@ -1423,13 +1423,14 @@ static bool TDES_CBC(const Span<const uint8_t> args[],
     prev_prev_result = prev_result;
     prev_result = result;
 
-    int out_len, out_len2;
+    size_t out_len, out_len2;
     if (!EVP_CipherInit_ex(ctx.get(), nullptr, nullptr, nullptr, iv.data(),
                            -1) ||
-        !EVP_CipherUpdate(ctx.get(), result.data(), &out_len, input.data(),
-                          input.size()) ||
-        !EVP_CipherFinal_ex(ctx.get(), result.data() + out_len, &out_len2) ||
-        (out_len + out_len2) != static_cast<int>(result.size())) {
+        !EVP_CipherUpdate_ex(ctx.get(), result.data(), &out_len, result.size(),
+                             input.data(), input.size()) ||
+        !EVP_CipherFinal_ex2(ctx.get(), result.data() + out_len, &out_len2,
+                             result.size() - out_len) ||
+        out_len + out_len2 != result.size()) {
       return false;
     }
 
