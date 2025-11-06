@@ -134,7 +134,7 @@ def handle_mixed_c_cxx(
             deps = deps,
             testonly = testonly,
             alwayslink = alwayslink,
-            **linkstatic_kwargs(linkstatic),
+            **linkstatic_kwargs(linkstatic)
         )
 
         # Build the remainder as a C-only target.
