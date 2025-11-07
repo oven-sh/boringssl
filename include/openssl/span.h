@@ -24,6 +24,7 @@ extern "C++" {
 #include <stdlib.h>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <string_view>
 #include <type_traits>
