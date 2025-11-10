@@ -382,9 +382,8 @@ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, uint8_t *out, int *out_len,
     out_len_sz = in_len_sz;
   } else {
     // in_len_sz is < INT_MAX which is no more than half of SIZE_MAX.
-    size_t max_out_len = std::min(
-        in_len_sz + (ctx->cipher->block_size > 1 ? ctx->cipher->block_size : 0),
-        size_t{INT_MAX});
+    size_t max_out_len =
+        std::min(in_len_sz + ctx->cipher->block_size - 1, size_t{INT_MAX});
     if (!EVP_DecryptUpdate_ex(ctx, out, &out_len_sz, max_out_len, in,
                               in_len_sz)) {
       return 0;

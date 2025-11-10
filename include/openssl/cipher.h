@@ -175,7 +175,7 @@ OPENSSL_EXPORT int EVP_EncryptFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out,
 //
 // In ciphers whose block size is not 1, such as CBC, individual calls to
 // |EVP_DecryptUpdate_ex| may output more or less than |in_len| bytes: a single
-// call to |EVP_DecryptUpdate_ex| may output at most |in_len + block_size|
+// call to |EVP_DecryptUpdate_ex| may output at most |in_len + block_size - 1|
 // bytes. Additionally, the total output across all |EVP_DecryptUpdate_ex| and
 // |EVP_DecryptFinal_ex2| calls will be at most the total input.
 //
