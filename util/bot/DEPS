@@ -37,7 +37,7 @@ vars = {
   'android_ndk_version': 'version:3@r27d.chromium.1',
   # infra/3pp/tools/bazel_bootstrap/linux-amd64
   # Keep this in sync with .bazelversion.
-  'bazel_version': 'version:3@7.5.0.chromium.1',
+  'bazel_version': 'version:3@7.6.2.chromium.1',
   # infra/3pp/tools/cmake/linux-amd64
   'cmake_version': 'version:3@3.31.9.chromium.8',
   # infra/3pp/tools/go/linux-amd64
