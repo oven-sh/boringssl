@@ -62,7 +62,7 @@ template <typename T>
 class SpanBase {
   // Put comparison operator implementations into a base class with const T, so
   // they can be used with any type that implicitly converts into a Span.
-  static_assert(std::is_const<T>::value,
+  static_assert(std::is_const_v<T>,
                 "Span<T> must be derived from SpanBase<const T>");
 
   friend bool operator==(Span<T> lhs, Span<T> rhs) {
@@ -193,7 +193,7 @@ class Span : public internal::SpanStorage<T, N> {
       : internal::SpanStorage<T, N>(other.data(), other.size()) {}
 
   template <typename C, typename = internal::EnableIfContainer<C, T>,
-            typename = std::enable_if_t<std::is_const<T>::value, C>,
+            typename = std::enable_if_t<std::is_const_v<T>, C>,
             typename = std::enable_if_t<N == dynamic_extent, C>>
   // NOLINTNEXTLINE(google-explicit-constructor): same as std::span.
   constexpr Span(const C &container)
@@ -202,7 +202,7 @@ class Span : public internal::SpanStorage<T, N> {
   // NOTE: This constructor may abort() at runtime if the container's length
   // differs from the compile-time size, if any.
   template <typename C, typename = internal::EnableIfContainer<C, T>,
-            typename = std::enable_if_t<std::is_const<T>::value, C>,
+            typename = std::enable_if_t<std::is_const_v<T>, C>,
             typename = std::enable_if_t<N != dynamic_extent, C>>
   constexpr explicit Span(const C &container,
                           internal::AllowRedeclaringConstructor = {})
@@ -211,7 +211,7 @@ class Span : public internal::SpanStorage<T, N> {
   // NOTE: This constructor may abort() at runtime if the container's length
   // differs from the compile-time size, if any.
   template <typename C, typename = internal::EnableIfContainer<C, T>,
-            typename = std::enable_if_t<!std::is_const<T>::value, C>>
+            typename = std::enable_if_t<!std::is_const_v<T>, C>>
   constexpr explicit Span(C &container)
       : internal::SpanStorage<T, N>(container.data(), container.size()) {}
 

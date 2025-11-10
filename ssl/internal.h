@@ -166,7 +166,7 @@ class RefCounted {
     CheckSubClass() = default;
   };
   RefCounted(CheckSubClass) {
-    static_assert(std::is_base_of<RefCounted, Derived>::value,
+    static_assert(std::is_base_of_v<RefCounted, Derived>,
                   "Derived must subclass RefCounted<Derived>");
   }
 
