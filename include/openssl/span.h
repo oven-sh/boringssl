@@ -254,14 +254,23 @@ class Span : public internal::SpanStorage<T, N> {
 
  public:
   // NOTE: This method may abort() at runtime if pos or len are out of range.
-  constexpr Span<T> subspan(size_t pos = 0, size_t len = dynamic_extent) const {
+  // NOTE: As opposed to std::span, the |dynamic_extent| value of |len| is not
+  // magical here. This gets rid of a lot of runtime checks.
+  constexpr Span<T> subspan(size_t pos, size_t len) const {
     // absl::Span throws an exception here. Note std::span and Chromium
     // base::span forbid pos + len being out of range, with a special case at
     // npos/dynamic_extent, whereas absl::Span::subspan clips the span. This
     // implements the std::span behavior which is more strict.
     BSSL_CHECK(pos <= size());
-    BSSL_CHECK(len == dynamic_extent || len <= size() - pos);
-    return Span<T>(data() + pos, SubspanOutLen(size(), pos, len));
+    BSSL_CHECK(len <= size() - pos);
+    return Span<T>(data() + pos, len);
+  }
+
+  // NOTE: This method may abort() at runtime if pos is out of range.
+  constexpr Span<T> subspan(size_t pos) const {
+    // absl::Span throws an exception here.
+    BSSL_CHECK(pos <= size());
+    return Span<T>(data() + pos, size() - pos);
   }
 
   // NOTE: This method may abort() at runtime if len is out of range.
