@@ -427,6 +427,9 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,  // open_gather
+    nullptr,  // openv
+    nullptr,  // sealv
+    nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
 };
@@ -444,6 +447,9 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls_implicit_iv = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,          // open_gather
+    nullptr,          // openv
+    nullptr,          // sealv
+    nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,
 };
@@ -461,6 +467,9 @@ static const EVP_AEAD aead_aes_128_cbc_sha256_tls = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,  // open_gather
+    nullptr,  // openv
+    nullptr,  // sealv
+    nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
 };
@@ -478,6 +487,9 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,  // open_gather
+    nullptr,  // openv
+    nullptr,  // sealv
+    nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
 };
@@ -495,6 +507,9 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls_implicit_iv = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,          // open_gather
+    nullptr,          // openv
+    nullptr,          // sealv
+    nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,
 };
@@ -512,6 +527,9 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,  // open_gather
+    nullptr,  // openv
+    nullptr,  // sealv
+    nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
 };
@@ -529,6 +547,9 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls_implicit_iv = {
     aead_tls_open,
     aead_tls_seal_scatter,
     nullptr,          // open_gather
+    nullptr,          // openv
+    nullptr,          // sealv
+    nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,
 };
