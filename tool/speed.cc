@@ -52,10 +52,10 @@
 
 #if defined(OPENSSL_WINDOWS)
 #include <windows.h>
-#elif defined(OPENSSL_APPLE)
-#include <sys/time.h>
 #else
+#include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 #endif
 
 #if defined(OPENSSL_THREADS)
@@ -134,9 +134,35 @@ struct TimeResults {
 bool TimeResults::first_json_printed = false;
 
 #if defined(OPENSSL_WINDOWS)
-static uint64_t time_now() { return GetTickCount64() * 1000; }
-#elif defined(OPENSSL_APPLE)
-static uint64_t time_now() {
+static uint64_t time_now_realtime() { return GetTickCount64() * 1000; }
+#define OPENSSL_TIME_NOW_CPUTIME
+static uint64_t time_now_cputime() {
+  FILETIME ft_create, ft_exit, ft_kernel, ft_user;
+  GetThreadTimes(GetCurrentThread(), &ft_create, &ft_exit, &ft_kernel,
+                 &ft_user);
+  uint64_t ret = ft_user.dwHighDateTime;
+  ret += ft_kernel.dwHighDateTime;
+  // NOTE: Technically this can overflow. But only if this thread has been
+  // running for ten thousands of years...
+  ret <<= 32;
+  ret += ft_user.dwLowDateTime;
+  ret += ft_kernel.dwLowDateTime;
+  ret /= 10;
+  return ret;
+}
+#else  // OPENSSL_WINDOWS
+#if defined(_POSIX_MONOTONIC_CLOCK)
+static uint64_t time_now_realtime() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+
+  uint64_t ret = ts.tv_sec;
+  ret *= 1000000;
+  ret += ts.tv_nsec / 1000;
+  return ret;
+}
+#else   // _POSIX_MONOTONIC_CLOCK
+static uint64_t time_now_realtime() {
   struct timeval tv;
   uint64_t ret;
 
@@ -146,17 +172,23 @@ static uint64_t time_now() {
   ret += tv.tv_usec;
   return ret;
 }
-#else
-static uint64_t time_now() {
+#endif  // _POSIX_MONOTONIC_CLOCK
+#if defined(_POSIX_THREAD_CPUTIME)
+#define OPENSSL_TIME_NOW_CPUTIME
+static uint64_t time_now_cputime() {
   struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
 
   uint64_t ret = ts.tv_sec;
   ret *= 1000000;
   ret += ts.tv_nsec / 1000;
   return ret;
 }
-#endif
+// NOTE: There is no fallback for this one.
+#endif  // _POSIX_THREAD_CPUTIME
+#endif  // OPENSSL_WINDOWS
+
+uint64_t (*time_now)() = time_now_realtime;
 
 static uint64_t g_timeout_seconds = 1;
 static std::vector<size_t> g_chunk_lengths = {16, 256, 1350, 8192, 16384};
@@ -1741,6 +1773,13 @@ static const struct argument kArguments[] = {
         kOptionalArgument,
         "The number of seconds to run each test for (default is 1)",
     },
+#if defined(OPENSSL_TIME_NOW_CPUTIME)
+    {
+        "-cputime",
+        kBooleanArgument,
+        "Measure CPU time, not wall time",
+    },
+#endif
     {
         "-chunks",
         kOptionalArgument,
@@ -1790,6 +1829,12 @@ bool Speed(const std::vector<std::string> &args) {
   if (args_map.count("-timeout") != 0) {
     g_timeout_seconds = atoi(args_map["-timeout"].c_str());
   }
+
+#if defined(OPENSSL_TIME_NOW_CPUTIME)
+  if (args_map.count("-cputime") != 0) {
+    time_now = time_now_cputime;
+  }
+#endif
 
 #if defined(OPENSSL_THREADS)
   if (args_map.count("-threads") != 0) {
