@@ -38,7 +38,7 @@ int PEM_do_header(const EVP_CIPHER_INFO *cipher, uint8_t *data, size_t *len,
 
 
 #ifdef __cplusplus
-}  // extern "C"
+}  // extern C
 #endif
 
 #endif  // OPENSSL_HEADER_CRYPTO_PEM_INTERNAL_H
