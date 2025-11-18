@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -105,4 +106,20 @@ bool GetUnsigned(unsigned *out, const std::string &arg_name,
   *out = static_cast<unsigned>(num);
 
   return true;
+}
+
+std::vector<std::string_view> SplitString(std::string_view s,
+                                          std::string_view sep) {
+  assert(!sep.empty());
+  std::vector<std::string_view> ret;
+  while (true) {
+    size_t idx = s.find(sep);
+    if (idx == std::string_view::npos) {
+      ret.push_back(s);
+      break;
+    }
+    ret.push_back(s.substr(0, idx));
+    s = s.substr(idx + sep.size());
+  }
+  return ret;
 }

@@ -493,22 +493,13 @@ bool Client(const std::vector<std::string> &args) {
   if (args_map.count("-alpn-protos") != 0) {
     const std::string &alpn_protos = args_map["-alpn-protos"];
     std::vector<uint8_t> wire;
-    size_t i = 0;
-    while (i <= alpn_protos.size()) {
-      size_t j = alpn_protos.find(',', i);
-      if (j == std::string::npos) {
-        j = alpn_protos.size();
-      }
-      size_t len = j - i;
-      if (len > 255) {
+    for (std::string_view proto : SplitString(alpn_protos, ",")) {
+      if (proto.empty() || proto.size() > 255) {
         fprintf(stderr, "Invalid ALPN protocols: '%s'\n", alpn_protos.c_str());
         return false;
       }
-      wire.push_back(static_cast<uint8_t>(len));
-      wire.resize(wire.size() + len);
-      OPENSSL_memcpy(wire.data() + wire.size() - len, alpn_protos.data() + i,
-                     len);
-      i = j + 1;
+      wire.push_back(static_cast<uint8_t>(proto.size()));
+      wire.insert(wire.end(), proto.begin(), proto.end());
     }
     if (SSL_CTX_set_alpn_protos(ctx.get(), wire.data(), wire.size()) != 0) {
       return false;
