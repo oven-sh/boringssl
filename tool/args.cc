@@ -123,3 +123,15 @@ std::vector<std::string_view> SplitString(std::string_view s,
   }
   return ret;
 }
+
+std::string_view TrimSpace(std::string_view s) {
+  size_t pos = s.find_first_not_of("\t\n\v\f\r ");
+  if (pos == std::string_view::npos) {
+    return std::string_view();
+  }
+  s = s.substr(pos);
+  pos = s.find_last_not_of("\t\n\v\f\r ");
+  assert(pos != std::string_view::npos);
+  s = s.substr(0, pos + 1);
+  return s;
+}

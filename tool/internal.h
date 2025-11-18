@@ -119,6 +119,9 @@ bool GetUnsigned(unsigned *out, const std::string &arg_name,
 std::vector<std::string_view> SplitString(std::string_view s,
                                           std::string_view sep);
 
+// TrimSpace returns |s| with leading and trailing spaces removed.
+std::string_view TrimSpace(std::string_view s);
+
 bool ReadAll(std::vector<uint8_t> *out, FILE *in);
 bool WriteToFile(const std::string &path, bssl::Span<const uint8_t> in);
 

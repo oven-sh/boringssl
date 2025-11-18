@@ -22,6 +22,7 @@
 #include <winsock2.h>
 #endif
 
+#include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
@@ -187,6 +188,12 @@ static const struct argument kArguments[] = {
         "-renegotiate-freely",
         kBooleanArgument,
         "Allow renegotiations from the peer.",
+    },
+    {
+        "-request-trust-anchors",
+        kOptionalArgument,
+        "A comma-separated list of trust anchor IDs, in text form, to send to "
+        "the server.",
     },
     {
         "-debug",
@@ -584,6 +591,34 @@ bool Client(const std::vector<std::string> &args) {
       return false;
     }
     SSL_CTX_set_verify(ctx.get(), SSL_VERIFY_PEER, nullptr);
+  }
+
+  if (args_map.count("-request-trust-anchors") != 0) {
+    const std::string &trust_anchors = args_map["-request-trust-anchors"];
+    bssl::ScopedCBB cbb;
+    if (!CBB_init(cbb.get(), 32)) {
+      return false;
+    }
+    // Treat an empty input as requesting no trust anchors, rather than a single
+    // empty string.
+    if (!trust_anchors.empty()) {
+      for (std::string_view trust_anchor : SplitString(trust_anchors, ",")) {
+        trust_anchor = TrimSpace(trust_anchor);
+        CBB id;
+        if (!CBB_add_u8_length_prefixed(cbb.get(), &id) ||
+            !CBB_add_asn1_relative_oid_from_text(&id, trust_anchor.data(),
+                                                 trust_anchor.size()) ||
+            !CBB_flush(cbb.get())) {
+          fprintf(stderr, "Invalid trust anchor ID list: '%s'\n",
+                  trust_anchors.c_str());
+          return false;
+        }
+      }
+    }
+    if (!SSL_CTX_set1_requested_trust_anchors(ctx.get(), CBB_data(cbb.get()),
+                                              CBB_len(cbb.get()))) {
+      return false;
+    }
   }
 
   if (args_map.count("-early-data") != 0) {
