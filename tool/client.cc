@@ -33,92 +33,119 @@
 
 static const struct argument kArguments[] = {
     {
-        "-connect", kRequiredArgument,
+        "-connect",
+        kRequiredArgument,
         "The hostname and port of the server to connect to, e.g. foo.com:443",
     },
     {
-        "-cipher", kOptionalArgument,
+        "-cipher",
+        kOptionalArgument,
         "An OpenSSL-style cipher suite string that configures the offered "
         "ciphers",
     },
     {
-        "-curves", kOptionalArgument,
+        "-curves",
+        kOptionalArgument,
         "An OpenSSL-style ECDH curves list that configures the offered curves",
     },
     {
-        "-sigalgs", kOptionalArgument,
+        "-sigalgs",
+        kOptionalArgument,
         "An OpenSSL-style signature algorithms list that configures the "
         "signature algorithm preferences",
     },
     {
-        "-max-version", kOptionalArgument,
+        "-max-version",
+        kOptionalArgument,
         "The maximum acceptable protocol version",
     },
     {
-        "-min-version", kOptionalArgument,
+        "-min-version",
+        kOptionalArgument,
         "The minimum acceptable protocol version",
     },
     {
-        "-server-name", kOptionalArgument, "The server name to advertise",
+        "-server-name",
+        kOptionalArgument,
+        "The server name to advertise",
     },
     {
-        "-ech-grease", kBooleanArgument, "Enable ECH GREASE",
+        "-ech-grease",
+        kBooleanArgument,
+        "Enable ECH GREASE",
     },
     {
-        "-ech-config-list", kOptionalArgument,
+        "-ech-config-list",
+        kOptionalArgument,
         "Path to file containing serialized ECHConfigs",
     },
     {
-        "-select-next-proto", kOptionalArgument,
+        "-select-next-proto",
+        kOptionalArgument,
         "An NPN protocol to select if the server supports NPN",
     },
     {
-        "-alpn-protos", kOptionalArgument,
+        "-alpn-protos",
+        kOptionalArgument,
         "A comma-separated list of ALPN protocols to advertise",
     },
     {
-        "-fallback-scsv", kBooleanArgument, "Enable FALLBACK_SCSV",
+        "-fallback-scsv",
+        kBooleanArgument,
+        "Enable FALLBACK_SCSV",
     },
     {
-        "-ocsp-stapling", kBooleanArgument,
+        "-ocsp-stapling",
+        kBooleanArgument,
         "Advertise support for OCSP stabling",
     },
     {
-        "-signed-certificate-timestamps", kBooleanArgument,
+        "-signed-certificate-timestamps",
+        kBooleanArgument,
         "Advertise support for signed certificate timestamps",
     },
     {
-        "-channel-id-key", kOptionalArgument,
+        "-channel-id-key",
+        kOptionalArgument,
         "The key to use for signing a channel ID",
     },
     {
-        "-false-start", kBooleanArgument, "Enable False Start",
+        "-false-start",
+        kBooleanArgument,
+        "Enable False Start",
     },
     {
-        "-session-in", kOptionalArgument,
+        "-session-in",
+        kOptionalArgument,
         "A file containing a session to resume.",
     },
     {
-        "-session-out", kOptionalArgument,
+        "-session-out",
+        kOptionalArgument,
         "A file to write the negotiated session to.",
     },
     {
-        "-key", kOptionalArgument,
+        "-key",
+        kOptionalArgument,
         "PEM-encoded file containing the private key.",
     },
     {
-        "-cert", kOptionalArgument,
+        "-cert",
+        kOptionalArgument,
         "PEM-encoded file containing the leaf certificate and optional "
         "certificate chain. This is taken from the -key argument if this "
         "argument is not provided.",
     },
     {
-        "-starttls", kOptionalArgument,
+        "-starttls",
+        kOptionalArgument,
         "A STARTTLS mini-protocol to run before the TLS handshake. Supported"
         " values: 'smtp'",
     },
     {
-        "-grease", kBooleanArgument, "Enable GREASE",
+        "-grease",
+        kBooleanArgument,
+        "Enable GREASE",
     },
     {
         "-permute-extensions",
@@ -126,40 +153,50 @@ static const struct argument kArguments[] = {
         "Permute extensions in handshake messages",
     },
     {
-        "-test-resumption", kBooleanArgument,
+        "-test-resumption",
+        kBooleanArgument,
         "Connect to the server twice. The first connection is closed once a "
         "session is established. The second connection offers it.",
     },
     {
-        "-root-certs", kOptionalArgument,
+        "-root-certs",
+        kOptionalArgument,
         "A filename containing one or more PEM root certificates. Implies that "
         "verification is required.",
     },
     {
-        "-root-cert-dir", kOptionalArgument,
+        "-root-cert-dir",
+        kOptionalArgument,
         "A directory containing one or more root certificate PEM files in "
         "OpenSSL's hashed-directory format. Implies that verification is "
         "required.",
     },
     {
-        "-early-data", kOptionalArgument, "Enable early data. The argument to "
+        "-early-data",
+        kOptionalArgument,
+        "Enable early data. The argument to "
         "this flag is the early data to send or if it starts with '@', the "
         "file to read from for early data.",
     },
     {
-        "-http-tunnel", kOptionalArgument,
+        "-http-tunnel",
+        kOptionalArgument,
         "An HTTP proxy server to tunnel the TCP connection through",
     },
     {
-        "-renegotiate-freely", kBooleanArgument,
+        "-renegotiate-freely",
+        kBooleanArgument,
         "Allow renegotiations from the peer.",
     },
     {
-        "-debug", kBooleanArgument,
+        "-debug",
+        kBooleanArgument,
         "Print debug information about the handshake",
     },
     {
-        "", kOptionalArgument, "",
+        "",
+        kOptionalArgument,
+        "",
     },
 };
 
