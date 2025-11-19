@@ -1904,6 +1904,14 @@ bool Speed(const std::vector<std::string> &args) {
                      selected) ||
       !SpeedAEAD(EVP_aead_aes_128_ccm_bluetooth(), "AES-128-CCM-Bluetooth",
                  kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_ctr_hmac_sha256(), "AES-128-CTR-HMAC-SHA256",
+                 kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_256_ctr_hmac_sha256(), "AES-256-CTR-HMAC-SHA256",
+                 kTLSADLen, selected) ||
+      !SpeedAEADOpen(EVP_aead_aes_128_ctr_hmac_sha256(),
+                     "AES-128-CTR-HMAC-SHA256", kTLSADLen, selected) ||
+      !SpeedAEADOpen(EVP_aead_aes_256_ctr_hmac_sha256(),
+                     "AES-256-CTR-HMAC-SHA256", kTLSADLen, selected) ||
       !SpeedAESBlock("AES-128", 128, selected) ||
       !SpeedAESBlock("AES-256", 256, selected) ||
       !SpeedHash(EVP_sha1(), "SHA-1", selected) ||
