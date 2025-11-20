@@ -610,14 +610,6 @@ static bool SpeedAEAD(const EVP_AEAD *aead, const std::string &name,
       return false;
     }
   }
-  return true;
-}
-
-static bool SpeedAEADOpen(const EVP_AEAD *aead, const std::string &name,
-                          size_t ad_len, const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
-    return true;
-  }
 
   for (size_t chunk_len : g_chunk_lengths) {
     if (!SpeedAEADChunk(aead, name, chunk_len, ad_len, evp_aead_open)) {
@@ -1879,39 +1871,46 @@ bool Speed(const std::vector<std::string> &args) {
   if (g_print_json) {
     puts("[");
   }
+
   if (!SpeedRSA(selected) ||
+      // "Proper" AEADs. Not including the _randnonce variants as they don't
+      // differ in runtime performance from using the regular ones and doing
+      // one's own RNG calls. Not including the _tls12 and _tls13 variants as
+      // they only differ in nonce management which is rather simple.
       !SpeedAEAD(EVP_aead_aes_128_gcm(), "AES-128-GCM", kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_192_gcm(), "AES-192-GCM", kTLSADLen, selected) ||
       !SpeedAEAD(EVP_aead_aes_256_gcm(), "AES-256-GCM", kTLSADLen, selected) ||
       !SpeedAEAD(EVP_aead_chacha20_poly1305(), "ChaCha20-Poly1305", kTLSADLen,
                  selected) ||
-      !SpeedAEAD(EVP_aead_des_ede3_cbc_sha1_tls(), "DES-EDE3-CBC-SHA1",
-                 kLegacyADLen, selected) ||
-      !SpeedAEAD(EVP_aead_aes_128_cbc_sha1_tls(), "AES-128-CBC-SHA1",
-                 kLegacyADLen, selected) ||
-      !SpeedAEAD(EVP_aead_aes_256_cbc_sha1_tls(), "AES-256-CBC-SHA1",
-                 kLegacyADLen, selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_128_cbc_sha1_tls(), "AES-128-CBC-SHA1",
-                     kLegacyADLen, selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_256_cbc_sha1_tls(), "AES-256-CBC-SHA1",
-                     kLegacyADLen, selected) ||
-      !SpeedAEAD(EVP_aead_aes_128_gcm_siv(), "AES-128-GCM-SIV", kTLSADLen,
+      !SpeedAEAD(EVP_aead_xchacha20_poly1305(), "XChaCha20-Poly1305", kTLSADLen,
                  selected) ||
-      !SpeedAEAD(EVP_aead_aes_256_gcm_siv(), "AES-256-GCM-SIV", kTLSADLen,
-                 selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_128_gcm_siv(), "AES-128-GCM-SIV", kTLSADLen,
-                     selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_256_gcm_siv(), "AES-256-GCM-SIV", kTLSADLen,
-                     selected) ||
-      !SpeedAEAD(EVP_aead_aes_128_ccm_bluetooth(), "AES-128-CCM-Bluetooth",
-                 kTLSADLen, selected) ||
       !SpeedAEAD(EVP_aead_aes_128_ctr_hmac_sha256(), "AES-128-CTR-HMAC-SHA256",
                  kTLSADLen, selected) ||
       !SpeedAEAD(EVP_aead_aes_256_ctr_hmac_sha256(), "AES-256-CTR-HMAC-SHA256",
                  kTLSADLen, selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_128_ctr_hmac_sha256(),
-                     "AES-128-CTR-HMAC-SHA256", kTLSADLen, selected) ||
-      !SpeedAEADOpen(EVP_aead_aes_256_ctr_hmac_sha256(),
-                     "AES-256-CTR-HMAC-SHA256", kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_gcm_siv(), "AES-128-GCM-SIV", kTLSADLen,
+                 selected) ||
+      !SpeedAEAD(EVP_aead_aes_256_gcm_siv(), "AES-256-GCM-SIV", kTLSADLen,
+                 selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_ccm_bluetooth(), "AES-128-CCM-Bluetooth",
+                 kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_ccm_bluetooth_8(), "AES-128-CCM-Bluetooth8",
+                 kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_ccm_matter(), "AES-128-CCM-Matter", kTLSADLen,
+                 selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_eax(), "AES-128-EAX", kTLSADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_256_eax(), "AES-256-EAX", kTLSADLen, selected) ||
+      // Legacy AEADs used by TLS. Not including the _implicit_iv variants as
+      // they don't differ in runtime performance but only during init.
+      !SpeedAEAD(EVP_aead_aes_128_cbc_sha1_tls(), "AES-128-CBC-SHA1",
+                 kLegacyADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_128_cbc_sha256_tls(), "AES-128-CBC-SHA256",
+                 kLegacyADLen, selected) ||
+      !SpeedAEAD(EVP_aead_aes_256_cbc_sha1_tls(), "AES-256-CBC-SHA1",
+                 kLegacyADLen, selected) ||
+      !SpeedAEAD(EVP_aead_des_ede3_cbc_sha1_tls(), "DES-EDE3-CBC-SHA1",
+                 kLegacyADLen, selected) ||
+      //
       !SpeedAESBlock("AES-128", 128, selected) ||
       !SpeedAESBlock("AES-256", 256, selected) ||
       !SpeedHash(EVP_sha1(), "SHA-1", selected) ||
