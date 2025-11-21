@@ -45,7 +45,7 @@ type benchmarkGroup []record
 
 type groupedBenchmarks map[string]benchmarkGroup
 
-var removeRE = regexp.MustCompile(` \(\d+ bytes\)`)
+var removeRE = regexp.MustCompile(` \(\d+ bytes?\)`)
 
 func (b benchmarks) group() groupedBenchmarks {
 	g := groupedBenchmarks{}
