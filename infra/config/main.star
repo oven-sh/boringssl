@@ -940,6 +940,8 @@ both_builders(
     category = "mac",
     short_name = "bzl",
     recipe = "boringssl_bazel",
+    # TODO(crbug.com/463446310): Re-enable once the builder is fixed.
+    cq_enabled = False,
 )
 both_builders(
     "win32",
