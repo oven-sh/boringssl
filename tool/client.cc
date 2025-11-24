@@ -22,6 +22,8 @@
 #include <winsock2.h>
 #endif
 
+#include <string_view>
+
 #include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
