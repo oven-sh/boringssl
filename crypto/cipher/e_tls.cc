@@ -23,9 +23,11 @@
 #include <openssl/md5.h>
 #include <openssl/mem.h>
 #include <openssl/sha.h>
+#include <openssl/span.h>
 
 #include "../fipsmodule/cipher/internal.h"
 #include "../internal.h"
+#include "../mem_internal.h"
 #include "internal.h"
 
 
@@ -113,14 +115,12 @@ static size_t aead_tls_tag_len(const EVP_AEAD_CTX *ctx, const size_t in_len,
   return hmac_len + pad_len;
 }
 
-static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
-                                 uint8_t *out_tag, size_t *out_tag_len,
-                                 const size_t max_out_tag_len,
-                                 const uint8_t *nonce, const size_t nonce_len,
-                                 const uint8_t *in, const size_t in_len,
-                                 const uint8_t *extra_in,
-                                 const size_t extra_in_len, const uint8_t *ad,
-                                 const size_t ad_len) {
+static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
+                          bssl::Span<const CRYPTO_IOVEC> iovecs,
+                          uint8_t *out_tag, size_t *out_tag_len,
+                          const size_t max_out_tag_len, const uint8_t *nonce,
+                          const size_t nonce_len,
+                          bssl::Span<const CRYPTO_IVEC> aadvecs) {
   AEAD_TLS_CTX *tls_ctx = (AEAD_TLS_CTX *)&ctx->state;
 
   if (!tls_ctx->cipher_ctx.encrypt) {
@@ -129,7 +129,8 @@ static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
     return 0;
   }
 
-  if (max_out_tag_len < aead_tls_tag_len(ctx, in_len, extra_in_len)) {
+  size_t in_len = bssl::iovec::TotalLength(iovecs);
+  if (max_out_tag_len < aead_tls_tag_len(ctx, in_len, 0)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
@@ -139,6 +140,7 @@ static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
     return 0;
   }
 
+  size_t ad_len = bssl::iovec::TotalLength(aadvecs);
   if (ad_len != 13 - 2 /* length bytes */) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_AD_SIZE);
     return 0;
@@ -153,12 +155,24 @@ static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
   // Compute the MAC. This must be first in case the operation is being done
   // in-place.
   uint8_t mac[EVP_MAX_MD_SIZE];
+  if (!HMAC_Init_ex(tls_ctx->hmac_ctx, nullptr, 0, nullptr, nullptr)) {
+    return 0;
+  }
+  for (const CRYPTO_IVEC &aadvec : aadvecs) {
+    if (!HMAC_Update(tls_ctx->hmac_ctx, aadvec.in, aadvec.len)) {
+      return 0;
+    }
+  }
+  if (!HMAC_Update(tls_ctx->hmac_ctx, ad_extra, sizeof(ad_extra))) {
+    return 0;
+  }
+  for (const CRYPTO_IOVEC &iovec : iovecs) {
+    if (!HMAC_Update(tls_ctx->hmac_ctx, iovec.in, iovec.len)) {
+      return 0;
+    }
+  }
   unsigned mac_len;
-  if (!HMAC_Init_ex(tls_ctx->hmac_ctx, nullptr, 0, nullptr, nullptr) ||
-      !HMAC_Update(tls_ctx->hmac_ctx, ad, ad_len) ||
-      !HMAC_Update(tls_ctx->hmac_ctx, ad_extra, sizeof(ad_extra)) ||
-      !HMAC_Update(tls_ctx->hmac_ctx, in, in_len) ||
-      !HMAC_Final(tls_ctx->hmac_ctx, mac, &mac_len)) {
+  if (!HMAC_Final(tls_ctx->hmac_ctx, mac, &mac_len)) {
     return 0;
   }
 
@@ -170,34 +184,59 @@ static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
     return 0;
   }
 
-  // Encrypt the input.
-  size_t len;
-  if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out, &len, in_len, in,
-                            in_len)) {
-    return 0;
-  }
-
-  unsigned block_size = EVP_CIPHER_CTX_block_size(&tls_ctx->cipher_ctx);
+  size_t block_size = EVP_CIPHER_CTX_block_size(&tls_ctx->cipher_ctx);
   assert(block_size == 8 /*3DES*/ || block_size == 16 /*AES*/);
 
-  // Feed the MAC into the cipher in two steps. First complete the final partial
-  // block from encrypting the input and split the result between |out| and
-  // |out_tag|. Then feed the rest.
+  // Encrypt the input.
+  size_t len = 0;
+  size_t tag_len = 0;
+  if (!bssl::iovec::ForEachBlockRange_Dynamic</*WriteOut=*/true>(
+          block_size, iovecs,
+          [&](const uint8_t *in, uint8_t *out, size_t chunk_len) {
+            // Complete block(s).
+            size_t out_len;
+            if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out, &out_len,
+                                      chunk_len, in, chunk_len)) {
+              return false;
+            }
+            assert(out_len == chunk_len);
+            len += out_len;
+            return true;
+          },
+          [&](const uint8_t *in, uint8_t *out, size_t chunk_len) {
+            // Final chunk, possibly with a partial block.
+            size_t out_len;
+            if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out, &out_len,
+                                      chunk_len, in, chunk_len)) {
+              return false;
+            }
+            len += out_len;
+            size_t remaining = chunk_len - out_len;
+            assert(remaining < block_size);
+            if (remaining == 0) {
+              return true;
+            }
 
-  const size_t early_mac_len = (block_size - in_len) & (block_size - 1);
-  if (early_mac_len != 0) {
-    assert(len + block_size - early_mac_len == in_len);
-    uint8_t buf[EVP_MAX_BLOCK_LENGTH];
-    size_t buf_len;
-    if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, buf, &buf_len, sizeof(buf),
-                              mac, early_mac_len)) {
-      return 0;
-    }
-    assert(buf_len == block_size);
-    OPENSSL_memcpy(out + len, buf, block_size - early_mac_len);
-    OPENSSL_memcpy(out_tag, buf + block_size - early_mac_len, early_mac_len);
+            // Feed the MAC into the cipher in two steps. First complete the
+            // final partial block from encrypting the input and split the
+            // result between |out| and |out_tag|. Then feed the rest.
+            const size_t early_mac_len = block_size - remaining;
+            assert(early_mac_len < block_size);
+            assert(len + block_size - early_mac_len == in_len);
+            uint8_t buf[EVP_MAX_BLOCK_LENGTH];
+            size_t buf_len;
+            if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, buf, &buf_len,
+                                      sizeof(buf), mac, early_mac_len)) {
+              return false;
+            }
+            assert(buf_len == block_size);
+            OPENSSL_memcpy(out + out_len, buf, remaining);
+            OPENSSL_memcpy(out_tag, buf + remaining, early_mac_len);
+            tag_len = early_mac_len;
+            return true;
+          })) {
+    return 0;
   }
-  size_t tag_len = early_mac_len;
 
   if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out_tag + tag_len, &len,
                             max_out_tag_len - tag_len, mac + tag_len,
@@ -221,16 +260,17 @@ static int aead_tls_seal_scatter(const EVP_AEAD_CTX *ctx, uint8_t *out,
     return 0;
   }
   assert(len == 0);  // Padding is explicit.
-  assert(tag_len == aead_tls_tag_len(ctx, in_len, extra_in_len));
+  assert(tag_len == aead_tls_tag_len(ctx, in_len, 0));
 
   *out_tag_len = tag_len;
   return 1;
 }
 
-static int aead_tls_open(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
-                         size_t max_out_len, const uint8_t *nonce,
-                         size_t nonce_len, const uint8_t *in, size_t in_len,
-                         const uint8_t *ad, size_t ad_len) {
+static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
+                          bssl::Span<const CRYPTO_IOVEC> iovecs,
+                          size_t *out_total_bytes, const uint8_t *nonce,
+                          size_t nonce_len,
+                          bssl::Span<const CRYPTO_IVEC> aadvecs) {
   AEAD_TLS_CTX *tls_ctx = (AEAD_TLS_CTX *)&ctx->state;
 
   if (tls_ctx->cipher_ctx.encrypt) {
@@ -239,15 +279,9 @@ static int aead_tls_open(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
     return 0;
   }
 
+  size_t in_len = bssl::iovec::TotalLength(iovecs);
   if (in_len < HMAC_size(tls_ctx->hmac_ctx)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
-    return 0;
-  }
-
-  if (max_out_len < in_len) {
-    // This requires that the caller provide space for the MAC, even though it
-    // will always be removed on return.
-    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
@@ -256,6 +290,7 @@ static int aead_tls_open(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
     return 0;
   }
 
+  size_t ad_len = bssl::iovec::TotalLength(aadvecs);
   if (ad_len != 13 - 2 /* length bytes */) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_AD_SIZE);
     return 0;
@@ -271,61 +306,91 @@ static int aead_tls_open(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
 
   // Decrypt to get the plaintext + MAC + padding.
   size_t total = 0;
-  size_t len;
-  if (!EVP_DecryptUpdate_ex(&tls_ctx->cipher_ctx, out, &len, max_out_len, in,
-                            in_len)) {
-    return 0;
+  size_t block_size = EVP_CIPHER_CTX_block_size(&tls_ctx->cipher_ctx);
+  auto decrypt_update = [&](const uint8_t *in, uint8_t *out, size_t len) {
+    size_t out_len;
+    if (!EVP_DecryptUpdate_ex(&tls_ctx->cipher_ctx, out, &out_len, len, in,
+                              len)) {
+      return false;
+    }
+    CONSTTIME_SECRET(out, out_len);
+    if (out_len != len) {
+      // A byte sequence that was not a multiple of the block size was provided
+      // as ciphertext. This is generally invalid and thus should be rejected.
+      OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
+      return false;
+    }
+    total += len;
+    return true;
+  };
+  if (!bssl::iovec::ForEachBlockRange_Dynamic</*WriteOut=*/true>(
+          block_size, iovecs, decrypt_update, decrypt_update)) {
+    return false;
   }
-  total += len;
-  if (!EVP_DecryptFinal_ex2(&tls_ctx->cipher_ctx, out + total, &len,
-                            max_out_len - total)) {
-    return 0;
-  }
-  total += len;
   assert(total == in_len);
 
-  CONSTTIME_SECRET(out, total);
+  for (const CRYPTO_IOVEC &iovec : iovecs) {
+    CONSTTIME_SECRET(iovec.out, iovec.len);
+  }
+
+  const size_t mac_len = HMAC_size(tls_ctx->hmac_ctx);
+
+  // Split the decrypted record into |iovecs_without_trailer| and |trailer|,
+  // based on the public lower bound of where the plaintext ends. The plaintext
+  // is followed by |mac_len| and then at most 256 bytes of padding.
+  bssl::InplaceVector<CRYPTO_IOVEC, CRYPTO_IOVEC_MAX> iovecs_without_trailer;
+  iovecs_without_trailer.CopyFrom(iovecs);
+  uint8_t trailer_buf[EVP_MAX_MD_SIZE + 256];
+  const size_t trailer_len = std::min(in_len, mac_len + 256);
+  std::optional<bssl::Span<const uint8_t>> trailer =
+      bssl::iovec::GetAndRemoveOutSuffix(
+          bssl::Span(trailer_buf).first(trailer_len),
+          bssl::Span(iovecs_without_trailer));
+  BSSL_CHECK(trailer.has_value());
 
   // Remove CBC padding. Code from here on is timing-sensitive with respect to
   // |padding_ok| and |data_plus_mac_len| for CBC ciphers.
-  size_t data_plus_mac_len;
   crypto_word_t padding_ok;
-  if (!EVP_tls_cbc_remove_padding(
-          &padding_ok, &data_plus_mac_len, out, total,
-          EVP_CIPHER_CTX_block_size(&tls_ctx->cipher_ctx),
-          HMAC_size(tls_ctx->hmac_ctx))) {
+  size_t reduced_trailer;
+  if (!EVP_tls_cbc_remove_padding(&padding_ok, &reduced_trailer,
+                                  trailer->data(), trailer->size(), block_size,
+                                  mac_len)) {
     // Publicly invalid. This can be rejected in non-constant time.
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
-  size_t data_len = data_plus_mac_len - HMAC_size(tls_ctx->hmac_ctx);
+  assert(reduced_trailer >= mac_len);
+  size_t data_plus_mac_len = total + reduced_trailer - trailer->size();
+  size_t data_len = data_plus_mac_len - mac_len;
+  size_t data_in_trailer_len = reduced_trailer - mac_len;
 
-  // At this point, if the padding is valid, the first |data_plus_mac_len| bytes
-  // after |out| are the plaintext and MAC. Otherwise, |data_plus_mac_len| is
-  // still large enough to extract a MAC, but it will be irrelevant.
+  // At this point, if the padding is valid, |trailer->first(reduced_trailer)|
+  // is the last bytes of plaintext and the MAC. Otherwise, it is still large
+  // enough to extract a MAC, but it will be irrelevant. Note that
+  // |reduced_trailer| is secret.
 
-  // To allow for CBC mode which changes cipher length, |ad| doesn't include the
-  // length for legacy ciphers.
-  uint8_t ad_fixed[13];
-  OPENSSL_memcpy(ad_fixed, ad, 11);
-  ad_fixed[11] = (uint8_t)(data_len >> 8);
-  ad_fixed[12] = (uint8_t)(data_len & 0xff);
-  ad_len += 2;
+  // To allow for CBC mode which changes cipher length, |ad_len| doesn't
+  // include the length for legacy ciphers.
+  uint8_t ad_extra[2];
+  ad_extra[0] = (uint8_t)(data_len >> 8);
+  ad_extra[1] = (uint8_t)(data_len & 0xff);
 
   // Compute the MAC and extract the one in the record.
   uint8_t mac[EVP_MAX_MD_SIZE];
-  size_t mac_len;
+  size_t got_mac_len;
   assert(EVP_tls_cbc_record_digest_supported(tls_ctx->hmac_ctx->md));
-  if (!EVP_tls_cbc_digest_record(tls_ctx->hmac_ctx->md, mac, &mac_len, ad_fixed,
-                                 out, data_len, total, tls_ctx->mac_key,
-                                 tls_ctx->mac_key_len)) {
+  if (!EVP_tls_cbc_digest_record(tls_ctx->hmac_ctx->md, mac, &got_mac_len,
+                                 ad_extra, aadvecs, iovecs_without_trailer,
+                                 *trailer, data_in_trailer_len,
+                                 tls_ctx->mac_key, tls_ctx->mac_key_len)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
-  assert(mac_len == HMAC_size(tls_ctx->hmac_ctx));
+  assert(got_mac_len == mac_len);
 
   uint8_t record_mac[EVP_MAX_MD_SIZE];
-  EVP_tls_cbc_copy_mac(record_mac, mac_len, out, data_plus_mac_len, total);
+  EVP_tls_cbc_copy_mac(record_mac, mac_len, trailer->data(), reduced_trailer,
+                       trailer->size());
 
   // Perform the MAC check and the padding check in constant-time. It should be
   // safe to simply perform the padding check first, but it would not be under a
@@ -341,11 +406,13 @@ static int aead_tls_open(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
   }
 
   CONSTTIME_DECLASSIFY(&data_len, sizeof(data_len));
-  CONSTTIME_DECLASSIFY(out, data_len);
+  for (const CRYPTO_IOVEC &iovec : iovecs) {
+    CONSTTIME_SECRET(iovec.out, iovec.len);
+  }
 
   // End of timing-sensitive code.
 
-  *out_len = data_len;
+  *out_total_bytes = data_len;
   return 1;
 }
 
@@ -424,11 +491,11 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls = {
     nullptr,  // init
     aead_aes_128_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
+    nullptr,  // open
+    nullptr,  // seal_scatter,
     nullptr,  // open_gather
-    nullptr,  // openv
-    nullptr,  // sealv
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
@@ -444,11 +511,11 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls_implicit_iv = {
     nullptr,  // init
     aead_aes_128_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
-    nullptr,          // open_gather
-    nullptr,          // openv
-    nullptr,          // sealv
+    nullptr,  // open
+    nullptr,  // seal_scatter,
+    nullptr,  // open_gather
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,
@@ -464,11 +531,11 @@ static const EVP_AEAD aead_aes_128_cbc_sha256_tls = {
     nullptr,  // init
     aead_aes_128_cbc_sha256_tls_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
+    nullptr,  // open
+    nullptr,  // seal_scatter,
     nullptr,  // open_gather
-    nullptr,  // openv
-    nullptr,  // sealv
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
@@ -484,11 +551,11 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls = {
     nullptr,  // init
     aead_aes_256_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
+    nullptr,  // open
+    nullptr,  // seal_scatter,
     nullptr,  // open_gather
-    nullptr,  // openv
-    nullptr,  // sealv
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
@@ -504,11 +571,11 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls_implicit_iv = {
     nullptr,  // init
     aead_aes_256_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
-    nullptr,          // open_gather
-    nullptr,          // openv
-    nullptr,          // sealv
+    nullptr,  // open
+    nullptr,  // seal_scatter,
+    nullptr,  // open_gather
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,
@@ -524,11 +591,11 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls = {
     nullptr,  // init
     aead_des_ede3_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
+    nullptr,  // open
+    nullptr,  // seal_scatter,
     nullptr,  // open_gather
-    nullptr,  // openv
-    nullptr,  // sealv
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,  // openv_detached
     nullptr,  // get_iv
     aead_tls_tag_len,
@@ -544,11 +611,11 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls_implicit_iv = {
     nullptr,  // init
     aead_des_ede3_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    aead_tls_open,
-    aead_tls_seal_scatter,
-    nullptr,          // open_gather
-    nullptr,          // openv
-    nullptr,          // sealv
+    nullptr,  // open
+    nullptr,  // seal_scatter,
+    nullptr,  // open_gather
+    aead_tls_openv,
+    aead_tls_sealv,
     nullptr,          // openv_detached
     aead_tls_get_iv,  // get_iv
     aead_tls_tag_len,

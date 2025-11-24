@@ -18,10 +18,11 @@
 #include <openssl/digest.h>
 #include <openssl/nid.h>
 #include <openssl/sha.h>
+#include <openssl/span.h>
 
+#include "../fipsmodule/cipher/internal.h"
 #include "../internal.h"
 #include "internal.h"
-#include "../fipsmodule/cipher/internal.h"
 
 
 int EVP_tls_cbc_remove_padding(crypto_word_t *out_padding_ok, size_t *out_len,
@@ -335,12 +336,12 @@ int EVP_tls_cbc_record_digest_supported(const EVP_MD *md) {
   }
 }
 
-static int tls_cbc_digest_record_sha1(uint8_t *md_out, size_t *md_out_size,
-                                      const uint8_t header[13],
-                                      const uint8_t *data, size_t data_size,
-                                      size_t data_plus_mac_plus_padding_size,
-                                      const uint8_t *mac_secret,
-                                      unsigned mac_secret_length) {
+static int tls_cbc_digest_record_sha1(
+    uint8_t *md_out, size_t *md_out_size, const uint8_t len_header[2],
+    bssl::Span<const CRYPTO_IVEC> aadvecs,
+    bssl::Span<const CRYPTO_IOVEC> iovecs_without_trailer,
+    bssl::Span<const uint8_t> trailer, size_t data_in_trailer_size,
+    const uint8_t *mac_secret, unsigned mac_secret_length) {
   if (mac_secret_length > SHA_CBLOCK) {
     // HMAC pads small keys with zeros and hashes large keys down. This function
     // should never reach the large key case.
@@ -359,24 +360,22 @@ static int tls_cbc_digest_record_sha1(uint8_t *md_out, size_t *md_out_size,
   SHA_CTX ctx;
   SHA1_Init(&ctx);
   SHA1_Update(&ctx, hmac_pad, SHA_CBLOCK);
-  SHA1_Update(&ctx, header, 13);
-
-  // There are at most 256 bytes of padding, so we can compute the public
-  // minimum length for |data_size|.
-  size_t min_data_size = 0;
-  if (data_plus_mac_plus_padding_size > SHA_DIGEST_LENGTH + 256) {
-    min_data_size = data_plus_mac_plus_padding_size - SHA_DIGEST_LENGTH - 256;
+  for (const CRYPTO_IVEC &aadvec : aadvecs) {
+    SHA1_Update(&ctx, aadvec.in, aadvec.len);
   }
+  SHA1_Update(&ctx, len_header, 2);
 
   // Hash the public minimum length directly. This reduces the number of blocks
   // that must be computed in constant-time.
-  SHA1_Update(&ctx, data, min_data_size);
+  for (const CRYPTO_IOVEC &iovec : iovecs_without_trailer) {
+    SHA1_Update(&ctx, iovec.out, iovec.len);
+  }
 
-  // Hash the remaining data without leaking |data_size|.
+  // Hash the remaining data without leaking |data_in_trailer_size|.
   uint8_t mac_out[SHA_DIGEST_LENGTH];
-  if (!EVP_sha1_final_with_secret_suffix(
-          &ctx, mac_out, data + min_data_size, data_size - min_data_size,
-          data_plus_mac_plus_padding_size - min_data_size)) {
+  if (!EVP_sha1_final_with_secret_suffix(&ctx, mac_out, trailer.data(),
+                                         data_in_trailer_size,
+                                         trailer.size())) {
     return 0;
   }
 
@@ -393,12 +392,12 @@ static int tls_cbc_digest_record_sha1(uint8_t *md_out, size_t *md_out_size,
   return 1;
 }
 
-static int tls_cbc_digest_record_sha256(uint8_t *md_out, size_t *md_out_size,
-                                        const uint8_t header[13],
-                                        const uint8_t *data, size_t data_size,
-                                        size_t data_plus_mac_plus_padding_size,
-                                        const uint8_t *mac_secret,
-                                        unsigned mac_secret_length) {
+static int tls_cbc_digest_record_sha256(
+    uint8_t *md_out, size_t *md_out_size, const uint8_t len_header[2],
+    bssl::Span<const CRYPTO_IVEC> aadvecs,
+    bssl::Span<const CRYPTO_IOVEC> iovecs_without_trailer,
+    bssl::Span<const uint8_t> trailer, size_t data_in_trailer_size,
+    const uint8_t *mac_secret, unsigned mac_secret_length) {
   if (mac_secret_length > SHA256_CBLOCK) {
     // HMAC pads small keys with zeros and hashes large keys down. This function
     // should never reach the large key case.
@@ -417,25 +416,22 @@ static int tls_cbc_digest_record_sha256(uint8_t *md_out, size_t *md_out_size,
   SHA256_CTX ctx;
   SHA256_Init(&ctx);
   SHA256_Update(&ctx, hmac_pad, SHA256_CBLOCK);
-  SHA256_Update(&ctx, header, 13);
-
-  // There are at most 256 bytes of padding, so we can compute the public
-  // minimum length for |data_size|.
-  size_t min_data_size = 0;
-  if (data_plus_mac_plus_padding_size > SHA256_DIGEST_LENGTH + 256) {
-    min_data_size =
-        data_plus_mac_plus_padding_size - SHA256_DIGEST_LENGTH - 256;
+  for (const CRYPTO_IVEC &aadvec : aadvecs) {
+    SHA256_Update(&ctx, aadvec.in, aadvec.len);
   }
+  SHA256_Update(&ctx, len_header, 2);
 
   // Hash the public minimum length directly. This reduces the number of blocks
   // that must be computed in constant-time.
-  SHA256_Update(&ctx, data, min_data_size);
+  for (const CRYPTO_IOVEC &iovec : iovecs_without_trailer) {
+    SHA256_Update(&ctx, iovec.out, iovec.len);
+  }
 
-  // Hash the remaining data without leaking |data_size|.
+  // Hash the remaining data without leaking |data_in_trailer_size|.
   uint8_t mac_out[SHA256_DIGEST_LENGTH];
-  if (!EVP_sha256_final_with_secret_suffix(
-          &ctx, mac_out, data + min_data_size, data_size - min_data_size,
-          data_plus_mac_plus_padding_size - min_data_size)) {
+  if (!EVP_sha256_final_with_secret_suffix(&ctx, mac_out, trailer.data(),
+                                           data_in_trailer_size,
+                                           trailer.size())) {
     return 0;
   }
 
@@ -452,22 +448,22 @@ static int tls_cbc_digest_record_sha256(uint8_t *md_out, size_t *md_out_size,
   return 1;
 }
 
-int EVP_tls_cbc_digest_record(const EVP_MD *md, uint8_t *md_out,
-                              size_t *md_out_size, const uint8_t header[13],
-                              const uint8_t *data, size_t data_size,
-                              size_t data_plus_mac_plus_padding_size,
-                              const uint8_t *mac_secret,
-                              unsigned mac_secret_length) {
+int EVP_tls_cbc_digest_record(
+    const EVP_MD *md, uint8_t *md_out, size_t *md_out_size,
+    const uint8_t len_header[2], bssl::Span<const CRYPTO_IVEC> aadvecs,
+    bssl::Span<const CRYPTO_IOVEC> iovecs_without_trailer,
+    bssl::Span<const uint8_t> trailer, size_t data_in_trailer_size,
+    const uint8_t *mac_secret, unsigned mac_secret_length) {
   switch (EVP_MD_type(md)) {
     case NID_sha1:
-      return tls_cbc_digest_record_sha1(
-          md_out, md_out_size, header, data, data_size,
-          data_plus_mac_plus_padding_size, mac_secret, mac_secret_length);
+      return tls_cbc_digest_record_sha1(  //
+          md_out, md_out_size, len_header, aadvecs, iovecs_without_trailer,
+          trailer, data_in_trailer_size, mac_secret, mac_secret_length);
 
     case NID_sha256:
-      return tls_cbc_digest_record_sha256(
-          md_out, md_out_size, header, data, data_size,
-          data_plus_mac_plus_padding_size, mac_secret, mac_secret_length);
+      return tls_cbc_digest_record_sha256(  //
+          md_out, md_out_size, len_header, aadvecs, iovecs_without_trailer,
+          trailer, data_in_trailer_size, mac_secret, mac_secret_length);
 
     default:
       // EVP_tls_cbc_record_digest_supported should have been called first to

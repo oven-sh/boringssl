@@ -614,6 +614,7 @@ void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
         }
         SCOPED_TRACE(FormatSplits(splits));
 
+        ctx.Reset();
         ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
             ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
             evp_aead_seal));
