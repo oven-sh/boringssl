@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <assert.h>
@@ -328,8 +329,87 @@ static bool TimeFunctionParallel(TimeResults *results,
 }
 #endif
 
+static bool MatchesSelection(std::string_view pattern, std::string_view text) {
+  // Comparison rules:
+  // - Case insensitive.
+  // - Spaces/dashes don't matter.
+  // - Wildcards at start/end only.
+
+  if (pattern.empty()) {
+    return text.empty();
+  }
+
+  std::string pattern_str(pattern);
+  pattern_str.erase(std::remove_if(pattern_str.begin(), pattern_str.end(),
+                                   [](char c) { return c == ' ' || c == '-'; }),
+                    pattern_str.end());
+  std::transform(pattern_str.begin(), pattern_str.end(), pattern_str.begin(),
+                 OPENSSL_tolower);
+
+  std::string text_str(text);
+  text_str.erase(std::remove_if(text_str.begin(), text_str.end(),
+                                [](char c) { return c == ' ' || c == '-'; }),
+                 text_str.end());
+  std::transform(text_str.begin(), text_str.end(), text_str.begin(),
+                 OPENSSL_tolower);
+
+  if (pattern_str.size() > 1 && pattern_str.front() == '*') {
+    if (pattern_str.back() == '*') {
+      // Match anywhere.
+      return text_str.find(pattern_str.substr(1, pattern_str.size() - 2)) !=
+             std::string::npos;
+    } else {
+      // Match at end.
+      return text_str.size() >= pattern_str.size() - 1 &&
+             text_str.substr(text_str.size() - (pattern_str.size() - 1)) ==
+                 pattern_str.substr(1);
+    }
+  } else if (pattern_str.back() == '*') {
+    // Match at start. This is also hit for the "*" pattern and then matches
+    // all.
+    return text_str.size() >= pattern_str.size() - 1 &&
+           text_str.substr(0, pattern_str.size() - 1) ==
+               pattern_str.substr(0, pattern_str.size() - 1);
+  } else {
+    // Exact.
+    return text_str == pattern_str;
+  }
+}
+
+static bool IsSelected(std::string_view filter, std::string_view test,
+                       std::string_view category = "", bool defaulted = true) {
+  if (filter.empty()) {
+    return defaulted;
+  }
+  do {
+    size_t comma = filter.find(',');
+    std::string_view item;
+    if (comma == std::string::npos) {
+      item = filter;
+      filter = "";
+    } else {
+      item = filter.substr(0, comma);
+      filter = filter.substr(comma + 1);
+    }
+    // Support e.g. "AEAD".
+    if (!category.empty() && MatchesSelection(item, category)) {
+      return true;
+    }
+    // Support e.g. "AEAD AES-*".
+    if (!category.empty() &&
+        MatchesSelection(item, std::string(category) + std::string(test))) {
+      return true;
+    }
+    // Support e.g. "AES-128-GCM".
+    if (MatchesSelection(item, test)) {
+      return true;
+    }
+  } while (!filter.empty());
+  return false;
+}
+
 static bool SpeedRSA(const std::string &selected) {
-  if (!selected.empty() && selected.find("RSA") == std::string::npos) {
+  if (!IsSelected(selected, "RSA")) {
     return true;
   }
 
@@ -431,11 +511,6 @@ static bool SpeedRSA(const std::string &selected) {
 }
 
 static bool SpeedRSAKeyGen(const std::string &selected) {
-  // Don't run this by default because it's so slow.
-  if (selected != "RSAKeyGen") {
-    return true;
-  }
-
   bssl::UniquePtr<BIGNUM> e(BN_new());
   if (!BN_set_word(e.get(), 65537)) {
     return false;
@@ -443,6 +518,14 @@ static bool SpeedRSAKeyGen(const std::string &selected) {
 
   const std::vector<int> kSizes = {2048, 3072, 4096};
   for (int size : kSizes) {
+    char size_str[15];
+    snprintf(size_str, sizeof(size_str), "RSAKeyGen-%d", size);
+    // Don't run this by default because it's so slow.
+    if (!IsSelected(selected, size_str, "RSAKeyGen",
+                    /*defaulted=*/false)) {
+      continue;
+    }
+
     const uint64_t start = time_now();
     uint64_t num_calls = 0;
     uint64_t us;
@@ -601,7 +684,7 @@ static bool SpeedAEADChunk(const EVP_AEAD *aead, std::string name,
 
 static bool SpeedAEAD(const EVP_AEAD *aead, const std::string &name,
                       size_t ad_len, const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
+  if (!IsSelected(selected, name, "AEAD")) {
     return true;
   }
 
@@ -622,7 +705,7 @@ static bool SpeedAEAD(const EVP_AEAD *aead, const std::string &name,
 
 static bool SpeedAESBlock(const std::string &name, unsigned bits,
                           const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
+  if (!IsSelected(selected, name, "Block")) {
     return true;
   }
 
@@ -719,7 +802,7 @@ static bool SpeedHashChunk(const EVP_MD *md, std::string name,
 
 static bool SpeedHash(const EVP_MD *md, const std::string &name,
                       const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
+  if (!IsSelected(selected, name, "Hash")) {
     return true;
   }
 
@@ -753,7 +836,7 @@ static bool SpeedRandomChunk(std::string name, size_t chunk_len) {
 }
 
 static bool SpeedRandom(const std::string &selected) {
-  if (!selected.empty() && selected != "RNG") {
+  if (!IsSelected(selected, "RNG")) {
     return true;
   }
 
@@ -768,7 +851,7 @@ static bool SpeedRandom(const std::string &selected) {
 
 static bool SpeedECDHCurve(const std::string &name, const EC_GROUP *group,
                            const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
+  if (!IsSelected(selected, name, "ECDH")) {
     return true;
   }
 
@@ -819,13 +902,13 @@ static bool SpeedECDHCurve(const std::string &name, const EC_GROUP *group,
     return false;
   }
 
-  results.Print(name);
+  results.Print("ECDH " + name);
   return true;
 }
 
 static bool SpeedECDSACurve(const std::string &name, const EC_GROUP *group,
                             const std::string &selected) {
-  if (!selected.empty() && name.find(selected) == std::string::npos) {
+  if (!IsSelected(selected, name, "ECDSA")) {
     return true;
   }
 
@@ -852,7 +935,7 @@ static bool SpeedECDSACurve(const std::string &name, const EC_GROUP *group,
     return false;
   }
 
-  results.Print(name + " signing");
+  results.Print("ECDSA " + name + " signing");
 
   uint8_t signature[kMaxSignature];
   unsigned sig_len;
@@ -868,27 +951,27 @@ static bool SpeedECDSACurve(const std::string &name, const EC_GROUP *group,
     return false;
   }
 
-  results.Print(name + " verify");
+  results.Print("ECDSA " + name + " verify");
 
   return true;
 }
 
 static bool SpeedECDH(const std::string &selected) {
-  return SpeedECDHCurve("ECDH P-224", EC_group_p224(), selected) &&
-         SpeedECDHCurve("ECDH P-256", EC_group_p256(), selected) &&
-         SpeedECDHCurve("ECDH P-384", EC_group_p384(), selected) &&
-         SpeedECDHCurve("ECDH P-521", EC_group_p521(), selected);
+  return SpeedECDHCurve("P-224", EC_group_p224(), selected) &&
+         SpeedECDHCurve("P-256", EC_group_p256(), selected) &&
+         SpeedECDHCurve("P-384", EC_group_p384(), selected) &&
+         SpeedECDHCurve("P-521", EC_group_p521(), selected);
 }
 
 static bool SpeedECDSA(const std::string &selected) {
-  return SpeedECDSACurve("ECDSA P-224", EC_group_p224(), selected) &&
-         SpeedECDSACurve("ECDSA P-256", EC_group_p256(), selected) &&
-         SpeedECDSACurve("ECDSA P-384", EC_group_p384(), selected) &&
-         SpeedECDSACurve("ECDSA P-521", EC_group_p521(), selected);
+  return SpeedECDSACurve("P-224", EC_group_p224(), selected) &&
+         SpeedECDSACurve("P-256", EC_group_p256(), selected) &&
+         SpeedECDSACurve("P-384", EC_group_p384(), selected) &&
+         SpeedECDSACurve("P-521", EC_group_p521(), selected);
 }
 
 static bool Speed25519(const std::string &selected) {
-  if (!selected.empty() && selected.find("25519") == std::string::npos) {
+  if (!IsSelected(selected, "25519")) {
     return true;
   }
 
@@ -961,7 +1044,7 @@ static bool Speed25519(const std::string &selected) {
 }
 
 static bool SpeedSPAKE2(const std::string &selected) {
-  if (!selected.empty() && selected.find("SPAKE2") == std::string::npos) {
+  if (!IsSelected(selected, "SPAKE2")) {
     return true;
   }
 
@@ -1007,7 +1090,7 @@ static bool SpeedSPAKE2(const std::string &selected) {
 }
 
 static bool SpeedScrypt(const std::string &selected) {
-  if (!selected.empty() && selected.find("scrypt") == std::string::npos) {
+  if (!IsSelected(selected, "scrypt")) {
     return true;
   }
 
@@ -1042,7 +1125,7 @@ static bool SpeedScrypt(const std::string &selected) {
 }
 
 static bool SpeedHRSS(const std::string &selected) {
-  if (!selected.empty() && selected != "HRSS") {
+  if (!IsSelected(selected, "HRSS")) {
     return true;
   }
 
@@ -1103,7 +1186,7 @@ static bool SpeedHRSS(const std::string &selected) {
 }
 
 static bool SpeedMLDSA(const std::string &selected) {
-  if (!selected.empty() && selected != "ML-DSA") {
+  if (!IsSelected(selected, "ML-DSA")) {
     return true;
   }
 
@@ -1196,7 +1279,7 @@ static bool SpeedMLDSA(const std::string &selected) {
 }
 
 static bool SpeedMLKEM(const std::string &selected) {
-  if (!selected.empty() && selected != "ML-KEM-768") {
+  if (!IsSelected(selected, "ML-KEM-768", "ML-KEM")) {
     return true;
   }
 
@@ -1245,7 +1328,7 @@ static bool SpeedMLKEM(const std::string &selected) {
 }
 
 static bool SpeedMLKEM1024(const std::string &selected) {
-  if (!selected.empty() && selected != "ML-KEM-1024") {
+  if (!IsSelected(selected, "ML-KEM-1024", "ML-KEM")) {
     return true;
   }
 
@@ -1299,7 +1382,11 @@ template <size_t PublicKeySize, size_t PrivateKeySize, size_t SignatureSize,
                    const uint8_t *, size_t),
           int Verify(const uint8_t *, size_t, const uint8_t *, const uint8_t *,
                      size_t, const uint8_t *, size_t)>
-static bool RunSLHDSA(std::string name) {
+static bool RunSLHDSA(std::string selected, std::string name) {
+  if (!IsSelected(selected, name, "SLH-DSA")) {
+    return true;
+  }
+
   TimeResults results;
   if (!TimeFunctionParallel(&results, []() -> bool {
         std::vector<uint8_t> public_key(PublicKeySize);
@@ -1347,24 +1434,20 @@ static bool RunSLHDSA(std::string name) {
 }
 
 static bool SpeedSLHDSA(const std::string &selected) {
-  if (!selected.empty() && selected.find("SLH-DSA") == std::string::npos) {
-    return true;
-  }
-
   return RunSLHDSA<SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES,
                    SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES,
                    SLHDSA_SHA2_128S_SIGNATURE_BYTES,
                    SLHDSA_SHA2_128S_generate_key, SLHDSA_SHA2_128S_sign,
-                   SLHDSA_SHA2_128S_verify>("SLHDSA-SHA2-128s") &&
+                   SLHDSA_SHA2_128S_verify>(selected, "SHA2-128s") &&
          RunSLHDSA<SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES,
                    SLHDSA_SHAKE_256F_PRIVATE_KEY_BYTES,
                    SLHDSA_SHAKE_256F_SIGNATURE_BYTES,
                    SLHDSA_SHAKE_256F_generate_key, SLHDSA_SHAKE_256F_sign,
-                   SLHDSA_SHAKE_256F_verify>("SLHDSA-SHAKE-256f");
+                   SLHDSA_SHAKE_256F_verify>(selected, "SHAKE-256f");
 }
 
 static bool SpeedHashToCurve(const std::string &selected) {
-  if (!selected.empty() && selected.find("hashtocurve") == std::string::npos) {
+  if (!IsSelected(selected, "hashtocurve")) {
     return true;
   }
 
@@ -1413,7 +1496,7 @@ static bool SpeedHashToCurve(const std::string &selected) {
 }
 
 static bool SpeedBase64(const std::string &selected) {
-  if (!selected.empty() && selected.find("base64") == std::string::npos) {
+  if (!IsSelected(selected, "base64")) {
     return true;
   }
 
@@ -1455,7 +1538,7 @@ static bool SpeedBase64(const std::string &selected) {
 }
 
 static bool SpeedSipHash(const std::string &selected) {
-  if (!selected.empty() && selected.find("siphash") == std::string::npos) {
+  if (!IsSelected(selected, "siphash", "Hash")) {
     return true;
   }
 
@@ -1485,7 +1568,7 @@ static TRUST_TOKEN_PRETOKEN *trust_token_pretoken_dup(
 
 static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
                             size_t batchsize, const std::string &selected) {
-  if (!selected.empty() && selected.find("trusttoken") == std::string::npos) {
+  if (!IsSelected(selected, name, "TrustToken")) {
     return true;
   }
 
@@ -1501,7 +1584,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_generate_key failed.\n");
     return false;
   }
-  results.Print(name + " generate_key");
+  results.Print("TrustToken-" + name + " generate_key");
 
   bssl::UniquePtr<TRUST_TOKEN_CLIENT> client(
       TRUST_TOKEN_CLIENT_new(method, batchsize));
@@ -1557,7 +1640,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_CLIENT_begin_issuance failed.\n");
     return false;
   }
-  results.Print(name + " begin_issuance");
+  results.Print("TrustToken-" + name + " begin_issuance");
 
   uint8_t *issue_msg = NULL;
   size_t msg_len;
@@ -1587,7 +1670,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_ISSUER_issue failed.\n");
     return false;
   }
-  results.Print(name + " issue");
+  results.Print("TrustToken-" + name + " issue");
 
   uint8_t *issue_resp = NULL;
   size_t resp_len, tokens_issued;
@@ -1615,7 +1698,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_CLIENT_finish_issuance failed.\n");
     return false;
   }
-  results.Print(name + " finish_issuance");
+  results.Print("TrustToken-" + name + " finish_issuance");
 
   bssl::UniquePtr<STACK_OF(TRUST_TOKEN)> tokens(
       TRUST_TOKEN_CLIENT_finish_issuance(client.get(), &key_index, issue_resp,
@@ -1642,7 +1725,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_CLIENT_begin_redemption failed.\n");
     return false;
   }
-  results.Print(name + " begin_redemption");
+  results.Print("TrustToken-" + name + " begin_redemption");
 
   uint8_t *redeem_msg = NULL;
   size_t redeem_msg_len;
@@ -1670,7 +1753,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
     fprintf(stderr, "TRUST_TOKEN_ISSUER_redeem failed.\n");
     return false;
   }
-  results.Print(name + " redeem");
+  results.Print("TrustToken-" + name + " redeem");
 
   uint32_t public_value;
   uint8_t private_value;
@@ -1690,7 +1773,7 @@ static bool SpeedTrustToken(std::string name, const TRUST_TOKEN_METHOD *method,
 }
 
 static bool SpeedX509(const std::string &selected) {
-  if (!selected.empty() && selected.find("x509") == std::string::npos) {
+  if (!IsSelected(selected, "x509")) {
     return true;
   }
 
@@ -1738,13 +1821,13 @@ static bool SpeedX509(const std::string &selected) {
 
 #if defined(BORINGSSL_FIPS)
 static bool SpeedSelfTest(const std::string &selected) {
-  if (!selected.empty() && selected.find("self-test") == std::string::npos) {
+  if (!IsSelected(selected, "self-test")) {
     return true;
   }
 
   TimeResults results;
   if (!TimeFunction(&results, []() -> bool { return BORINGSSL_self_test(); })) {
-    fprintf(stderr, "BORINGSSL_self_test faileid.\n");
+    fprintf(stderr, "BORINGSSL_self_test failed.\n");
     ERR_print_errors_fp(stderr);
     return false;
   }
@@ -1758,7 +1841,10 @@ static const struct argument kArguments[] = {
     {
         "-filter",
         kOptionalArgument,
-        "A filter on the speed tests to run",
+        "A comma separated list of patterns to filter the speed tests to run; "
+        "patterns can be string, prefix*, *suffix or *infix*; can match either "
+        "the category, or the test, or both concatenated; case, spaces and "
+        "dashes are ignored",
     },
     {
         "-timeout",
@@ -1930,18 +2016,18 @@ bool Speed(const std::vector<std::string> &args) {
       !SpeedMLKEM1024(selected) ||    //
       !SpeedSLHDSA(selected) ||       //
       !SpeedHashToCurve(selected) ||  //
-      !SpeedTrustToken("TrustToken-Exp1-Batch1", TRUST_TOKEN_experiment_v1(), 1,
+      !SpeedTrustToken("Exp1-Batch1", TRUST_TOKEN_experiment_v1(), 1,
                        selected) ||
-      !SpeedTrustToken("TrustToken-Exp1-Batch10", TRUST_TOKEN_experiment_v1(),
+      !SpeedTrustToken("Exp1-Batch10", TRUST_TOKEN_experiment_v1(), 10,
+                       selected) ||
+      !SpeedTrustToken("Exp2VOPRF-Batch1", TRUST_TOKEN_experiment_v2_voprf(), 1,
+                       selected) ||
+      !SpeedTrustToken("Exp2VOPRF-Batch10", TRUST_TOKEN_experiment_v2_voprf(),
                        10, selected) ||
-      !SpeedTrustToken("TrustToken-Exp2VOPRF-Batch1",
-                       TRUST_TOKEN_experiment_v2_voprf(), 1, selected) ||
-      !SpeedTrustToken("TrustToken-Exp2VOPRF-Batch10",
-                       TRUST_TOKEN_experiment_v2_voprf(), 10, selected) ||
-      !SpeedTrustToken("TrustToken-Exp2PMB-Batch1",
-                       TRUST_TOKEN_experiment_v2_pmb(), 1, selected) ||
-      !SpeedTrustToken("TrustToken-Exp2PMB-Batch10",
-                       TRUST_TOKEN_experiment_v2_pmb(), 10, selected) ||
+      !SpeedTrustToken("Exp2PMB-Batch1", TRUST_TOKEN_experiment_v2_pmb(), 1,
+                       selected) ||
+      !SpeedTrustToken("Exp2PMB-Batch10", TRUST_TOKEN_experiment_v2_pmb(), 10,
+                       selected) ||
       !SpeedBase64(selected) ||   //
       !SpeedSipHash(selected) ||  //
       !SpeedX509(selected)) {
