@@ -346,6 +346,17 @@ SDE_TIMEOUT = 3 * 60 * time.minute
 # properties rather than parsing names. Then we can add new configurations
 # without having to touch multiple repositories.
 
+cq_builder(
+    "presubmit",
+    LINUX_HOST,
+    recipe = "presubmit",
+    # TODO(chlily): Enable when ready.
+    cq_enabled = False,
+    properties = {
+        "repo_name": "boringssl",
+    },
+)
+
 both_builders(
     "android_aarch64",
     WALLEYE_HOST,
