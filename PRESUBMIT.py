@@ -105,7 +105,6 @@ def CheckBuildifier(input_api, output_api):
   Returns:
     List of presubmit errors.
   """
-  del output_api  # Unused.
   file_paths = []
   for affected_file in input_api.AffectedFiles(include_deletes=False):
     affected_file_path = affected_file.LocalPath()
