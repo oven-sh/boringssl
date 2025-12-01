@@ -415,9 +415,10 @@ typedef void *OPENSSL_BLOCK;
 
 #if !defined(BORINGSSL_NO_CXX)
 
-#include <memory>
-
+// Work around consumers including our headers under extern "C".
 extern "C++" {
+
+#include <memory>
 
 // STLPort, used by some Android consumers, not have std::unique_ptr.
 #if defined(_STLPORT_VERSION)
@@ -434,6 +435,7 @@ extern "C++" {
 
 #else
 
+// Work around consumers including our headers under extern "C".
 extern "C++" {
 
 BSSL_NAMESPACE_BEGIN
