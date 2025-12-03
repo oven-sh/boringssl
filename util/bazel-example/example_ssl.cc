@@ -1,4 +1,4 @@
-// Copyright 2024 The BoringSSL Authors
+// Copyright 2025 The BoringSSL Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +14,14 @@
 
 #include <stdio.h>
 
-#include <openssl/crypto.h>
+#include <openssl/ssl.h>
 
 #if !defined(OPENSSL_IS_BORINGSSL)
 #error "Wrong OpenSSL headers"
 #endif
 
 int main() {
-  printf("Linked to %s\n", OpenSSL_version(OPENSSL_VERSION));
+  // Make sure calling into BoringSSL is functional.
+  SSL_CTX_free(SSL_CTX_new(TLS_method()));
   return 0;
 }
