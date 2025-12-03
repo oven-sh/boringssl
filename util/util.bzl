@@ -168,8 +168,7 @@ def bssl_cc_library(
         cc_library(
             name = name,
             hdrs = hdrs,
-            includes = includes,
-            implementation_deps = [":" + name_internal],
+            deps = [":" + name_internal],
             visibility = visibility,
         )
 
