@@ -191,7 +191,7 @@ static uint64_t time_now_cputime() {
 
 uint64_t (*time_now)() = time_now_realtime;
 
-static uint64_t g_timeout_seconds = 1;
+static double g_timeout_seconds = 1;
 static std::vector<size_t> g_chunk_lengths = {16, 256, 1350, 8192, 16384};
 
 // IterationsBetweenTimeChecks returns the number of iterations of |func| to run
@@ -1905,7 +1905,7 @@ bool Speed(const std::vector<std::string> &args) {
   }
 
   if (args_map.count("-timeout") != 0) {
-    g_timeout_seconds = atoi(args_map["-timeout"].c_str());
+    g_timeout_seconds = atof(args_map["-timeout"].c_str());
   }
 
 #if defined(OPENSSL_TIME_NOW_CPUTIME)
