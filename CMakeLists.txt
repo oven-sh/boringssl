@@ -769,7 +769,10 @@ if(BUILD_TESTING)
   # CMake target names can clash when projects are imported with
   # add_subdirectory. Only emit the run_tests target if we're the top-level
   # target. See https://crbug.com/428112180.
-  if(PROJECT_IS_TOP_LEVEL)
+  #
+  # Also disable on Visual Studio for now due to name clash.
+  # See https://crbug.com/465077378.
+  if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_GENERATOR MATCHES "^Visual Studio ")
     if(GO_EXECUTABLE)
       add_custom_target(
           run_tests
