@@ -986,8 +986,12 @@ both_builders(
     short_name = "sm",
     properties = {
         "cmake_args": {
-            "CMAKE_C_FLAGS": "-DOPENSSL_SMALL=1",
-            "CMAKE_CXX_FLAGS": "-DOPENSSL_SMALL=1",
+            # Setting CMAKE_${LANG}_FLAGS this way overrides CMake's default
+            # toolchain-level flags, so we must respecify them.
+            # TODO(davidben): Should we be specify flags differently? C(XX)FLAGS
+            # environment variable or a CMake-level OPENSSL_SMALL toggle?
+            "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS /DOPENSSL_SMALL=1",
+            "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc /DOPENSSL_SMALL=1",
         },
         "msvc_target": "x86",
     },
@@ -1063,8 +1067,12 @@ both_builders(
     short_name = "sm",
     properties = {
         "cmake_args": {
-            "CMAKE_C_FLAGS": "-DOPENSSL_SMALL=1",
-            "CMAKE_CXX_FLAGS": "-DOPENSSL_SMALL=1",
+            # Setting CMAKE_${LANG}_FLAGS this way overrides CMake's default
+            # toolchain-level flags, so we must respecify them.
+            # TODO(davidben): Should we be specify flags differently? C(XX)FLAGS
+            # environment variable or a CMake-level OPENSSL_SMALL toggle?
+            "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS /DOPENSSL_SMALL=1",
+            "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc /DOPENSSL_SMALL=1",
         },
         "msvc_target": "x64",
     },
