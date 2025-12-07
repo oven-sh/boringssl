@@ -119,7 +119,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 if(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
   # Note clang-cl is odd and sets both CLANG and MSVC. We base our configuration
   # primarily on our normal Clang one.
-  set(C_CXX_FLAGS "-Werror -Wformat=2 -Wmissing-field-initializers -Wshadow -Wsign-compare -Wtype-limits -Wvla -Wwrite-strings -fno-strict-aliasing")
+  set(C_CXX_FLAGS "-Werror -Wformat=2 -Wmissing-field-initializers -Wshadow -Wsign-compare -Wtype-limits -Wvla -Wwrite-strings -fno-strict-aliasing -Wimplicit-fallthrough")
   if(MSVC)
     # clang-cl sets different default warnings than clang. It also treats -Wall
     # as -Weverything, to match MSVC. Instead -W3 is the alias for -Wall.
@@ -138,7 +138,17 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
 
   if(CLANG)
     set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wnewline-eof -Wextra-semi -fcolor-diagnostics")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wctad-maybe-unsupported")
+    # In GCC, -Wmissing-declarations is the C++ spelling of -Wmissing-prototypes
+    # and using the wrong one is an error. In Clang, -Wmissing-prototypes is the
+    # spelling for both and -Wmissing-declarations is some other warning.
+    #
+    # https://gcc.gnu.org/onlinedocs/gcc-7.1.0/gcc/Warning-Options.html#Warning-Options
+    # https://clang.llvm.org/docs/DiagnosticsReference.html#wmissing-prototypes
+    # https://clang.llvm.org/docs/DiagnosticsReference.html#wmissing-declarations
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wmissing-prototypes")
   else()
+    set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wformat-signedness")
     # GCC (at least 4.8.4) has a bug where it'll find unreachable free() calls
     # and declare that the code is trying to free a stack pointer.
     set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wno-free-nonheap-object")
@@ -166,35 +176,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
     set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wframe-larger-than=25344")
   endif()
 
-  # -Wctad-maybe-unsupported was added in Clang 10, which is AppleClang 12.0.0.
-  if((CMAKE_C_COMPILER_ID STREQUAL "Clang" AND
-      CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "10.0.0") OR
-     (CMAKE_C_COMPILER_ID STREQUAL "AppleClang" AND
-      CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "12.0.0"))
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wctad-maybe-unsupported")
-  endif()
-
-  if(CLANG OR CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "7.0.0")
-    set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wimplicit-fallthrough")
-  endif()
-
-  if(CMAKE_COMPILER_IS_GNUCXX)
-    set(C_CXX_FLAGS "${C_CXX_FLAGS} -Wformat-signedness")
-  endif()
-
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${C_CXX_FLAGS} -Wmissing-prototypes -Wold-style-definition -Wstrict-prototypes")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_CXX_FLAGS} -Wmissing-declarations -Wnon-virtual-dtor")
-
-  # In GCC, -Wmissing-declarations is the C++ spelling of -Wmissing-prototypes
-  # and using the wrong one is an error. In Clang, -Wmissing-prototypes is the
-  # spelling for both and -Wmissing-declarations is some other warning.
-  #
-  # https://gcc.gnu.org/onlinedocs/gcc-7.1.0/gcc/Warning-Options.html#Warning-Options
-  # https://clang.llvm.org/docs/DiagnosticsReference.html#wmissing-prototypes
-  # https://clang.llvm.org/docs/DiagnosticsReference.html#wmissing-declarations
-  if(CLANG)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wmissing-prototypes")
-  endif()
 elseif(MSVC)
   set(MSVC_DISABLED_WARNINGS_LIST
       "C4100" # 'exarg' : unreferenced formal parameter
