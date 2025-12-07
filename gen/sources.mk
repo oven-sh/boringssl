@@ -85,7 +85,6 @@ boringssl_bcm_internal_headers := \
   crypto/fipsmodule/mlkem/mlkem.cc.inc \
   crypto/fipsmodule/rand/ctrdrbg.cc.inc \
   crypto/fipsmodule/rand/rand.cc.inc \
-  crypto/fipsmodule/rsa/blinding.cc.inc \
   crypto/fipsmodule/rsa/padding.cc.inc \
   crypto/fipsmodule/rsa/rsa.cc.inc \
   crypto/fipsmodule/rsa/rsa_impl.cc.inc \

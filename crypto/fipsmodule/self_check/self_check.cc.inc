@@ -292,9 +292,6 @@ static int boringssl_self_test_rsa(void) {
     fprintf(CRYPTO_get_stderr(), "RSA key construction failed\n");
     goto err;
   }
-  // Disable blinding for the power-on tests because it's not needed and
-  // triggers an entropy draw.
-  rsa_key->flags |= RSA_FLAG_NO_BLINDING;
 
   // RSA Sign KAT
 
