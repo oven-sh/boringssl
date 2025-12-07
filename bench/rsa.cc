@@ -480,6 +480,15 @@ const uint8_t kDERRSAPrivate4096[] = {
 
 constexpr size_t kMaxSignature = 512;
 
+// |RSA| objects cache some state on them, so we benchmark both repeat
+// operations on long-lived RSA keys, and newly-imported RSA keys.
+//
+// In typical applications, RSA signing is done on a long-lived |RSA| object
+// (e.g. one's TLS key) that takes advantage of the cache, while RSA
+// verification is done on a newly-imported RSA keys (e.g. parsing a TLS server
+// key out of a newly-received end-entity certificate). However, other
+// applications may care about the converse.
+
 void BM_SpeedRSASign(benchmark::State &state, bssl::Span<const uint8_t> der) {
   bssl::UniquePtr<RSA> key(RSA_private_key_from_bytes(der.data(), der.size()));
   if (!key || RSA_size(key.get()) > kMaxSignature) {
@@ -490,6 +499,26 @@ void BM_SpeedRSASign(benchmark::State &state, bssl::Span<const uint8_t> der) {
   for (auto _ : state) {
     uint8_t out[kMaxSignature];
     unsigned out_len;
+    if (!RSA_sign(NID_sha256, fake_sha256_hash, sizeof(fake_sha256_hash), out,
+                  &out_len, key.get())) {
+      state.SkipWithError("RSA_sign failed.");
+      return;
+    }
+  }
+}
+
+void BM_SpeedRSAImportKeyAndSign(benchmark::State &state,
+                                 bssl::Span<const uint8_t> der) {
+  const uint8_t fake_sha256_hash[32] = {0};
+  for (auto _ : state) {
+    uint8_t out[kMaxSignature];
+    unsigned out_len;
+    bssl::UniquePtr<RSA> key(
+        RSA_private_key_from_bytes(der.data(), der.size()));
+    if (!key || RSA_size(key.get()) > kMaxSignature) {
+      state.SkipWithError("Failed to parse key.");
+      return;
+    }
     if (!RSA_sign(NID_sha256, fake_sha256_hash, sizeof(fake_sha256_hash), out,
                   &out_len, key.get())) {
       state.SkipWithError("RSA_sign failed.");
@@ -537,11 +566,6 @@ void BM_SpeedRSAImportKeyAndVerify(benchmark::State &state,
     return;
   }
   for (auto _ : state) {
-    // Usually during RSA verification we have to parse an RSA key from a
-    // certificate or similar, in which case we'd need to construct a new RSA
-    // key, with a new |BN_MONT_CTX| for the public modulus.
-    // If we were to use |key| directly instead, then these costs wouldn't be
-    // accounted for.
     bssl::UniquePtr<RSA> verify_key(
         RSA_new_public_key(RSA_get0_n(key.get()), RSA_get0_e(key.get())));
     if (!RSA_verify(NID_sha256, fake_sha256_hash, sizeof(fake_sha256_hash), sig,
@@ -568,6 +592,8 @@ void BM_SpeedRSAParsePrivateKey(benchmark::State &state,
   BENCHMARK_CAPTURE(BM_SpeedRSAParsePrivateKey, size, key)    \
       ->Apply(bssl::bench::SetThreads);                       \
   BENCHMARK_CAPTURE(BM_SpeedRSASign, size, key)               \
+      ->Apply(bssl::bench::SetThreads);                       \
+  BENCHMARK_CAPTURE(BM_SpeedRSAImportKeyAndSign, size, key)   \
       ->Apply(bssl::bench::SetThreads);                       \
   BENCHMARK_CAPTURE(BM_SpeedRSAVerify, size, key)             \
       ->Apply(bssl::bench::SetThreads);                       \
