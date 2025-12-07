@@ -316,6 +316,8 @@ if(OPENSSL_NO_SSE2_FOR_TESTING)
   add_definitions(-DOPENSSL_NO_SSE2_FOR_TESTING)
 endif()
 
+# Build a custom libc++. This must be the first target, so that it is linked to
+# every subsequent target.
 if(USE_CUSTOM_LIBCXX)
   if(NOT CLANG)
     message(FATAL_ERROR "USE_CUSTOM_LIBCXX only supported with Clang")
@@ -386,6 +388,15 @@ if(USE_CUSTOM_LIBCXX)
   # libc++abi depends on libc++ internal headers.
   set_property(TARGET libcxx libcxxabi APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/util/bot/libcxx/src")
   target_link_libraries(libcxx libcxxabi)
+
+  # Link all subsequent libraries to the custom libc++.
+  link_libraries(libcxx)
+
+  # Third-party CMake files that export targets will this target itself be
+  # exported. This is not meant to be imported, as USE_CUSTOM_LIBCXX is a
+  # test-only configuration.
+  export(TARGETS libcxx libcxxabi NAMESPACE bssl_test_only
+         FILE ${PROJECT_BINARY_DIR}/bssl_test_only.cmake)
 endif()
 
 if(BUILD_TESTING)
@@ -396,9 +407,6 @@ if(BUILD_TESTING)
     third_party/googletest/googlemock/src/gmock-all.cc
     third_party/googletest/googletest/src/gtest-all.cc
   )
-  if(USE_CUSTOM_LIBCXX)
-    target_link_libraries(boringssl_gtest libcxx)
-  endif()
   target_include_directories(
       boringssl_gtest
       PUBLIC
@@ -657,12 +665,6 @@ endif()
 if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Generic|Android)$")
   find_package(Threads REQUIRED)
   target_link_libraries(crypto Threads::Threads)
-endif()
-
-# Every target depends on crypto, so we add libcxx as a dependency here to
-# simplify injecting it everywhere.
-if(USE_CUSTOM_LIBCXX)
-  target_link_libraries(crypto libcxx)
 endif()
 
 add_library(ssl ${SSL_SOURCES})
