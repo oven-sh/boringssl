@@ -701,13 +701,6 @@ void RunOpenvDetachedTests(const KnownAEAD &aead_config, bool in_place) {
           continue;
         }
 
-        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-          ERR_clear_error();
-          t->SkipCurrent();
-          return;
-        }
-
         ASSERT_TRUE(ret) << "Failed to decrypt: "
                          << ERR_reason_error_string(ERR_get_error());
         EXPECT_EQ(Bytes(in), Bytes(iovecs.Output()));
@@ -825,13 +818,6 @@ void RunOpenvTests(const KnownAEAD &aead_config, bool in_place) {
           ASSERT_FALSE(ret) << "Decrypted bad data";
           ERR_clear_error();
           continue;
-        }
-
-        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-          ERR_clear_error();
-          t->SkipCurrent();
-          return;
         }
 
         ASSERT_TRUE(ret) << "Failed to decrypt: "
