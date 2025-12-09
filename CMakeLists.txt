@@ -425,7 +425,6 @@ if(BUILD_TESTING)
     set(BENCHMARK_ENABLE_TESTING OFF)
     set(BENCHMARK_ENABLE_INSTALL OFF)
     set(BENCHMARK_INSTALL_DOCS OFF)
-    set(CXXFEATURECHECK_DEBUG ON)
     if(USE_CUSTOM_LIBCXX)
       # benchmark's feature testing does not pick up the custom STL.
       set(HAVE_STD_REGEX 1)
