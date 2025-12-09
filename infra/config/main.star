@@ -329,9 +329,6 @@ WIN_HOST = {
         "os": "Windows-10",
         "cpu": "x86-64",
     },
-    "caches": [
-        swarming.cache("win_toolchain", name = "boringssl_win_toolchain"),
-    ],
 }
 
 # The Android tests take longer to run. See https://crbug.com/900953.
