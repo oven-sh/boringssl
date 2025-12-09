@@ -167,6 +167,13 @@ BSSL_BENCH_LAZY_REGISTER() {
                     evp_aead_open, EVP_aead_aes_128_cbc_sha1_tls())
       ->Apply(SetInputLength);
 
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, seal_aes_128_cbc_sha256, kLegacyADLen,
+                    evp_aead_seal, EVP_aead_aes_128_cbc_sha256_tls())
+      ->Apply(SetInputLength);
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, open_aes_128_cbc_sha256, kLegacyADLen,
+                    evp_aead_open, EVP_aead_aes_128_cbc_sha256_tls())
+      ->Apply(SetInputLength);
+
   BENCHMARK_CAPTURE(BM_SpeedAEAD, seal_aes_256_cbc_sha1, kLegacyADLen,
                     evp_aead_seal, EVP_aead_aes_256_cbc_sha1_tls())
       ->Apply(SetInputLength);
@@ -223,10 +230,24 @@ BSSL_BENCH_LAZY_REGISTER() {
                     evp_aead_open, EVP_aead_aes_128_ccm_matter())
       ->Apply(SetInputLength);
 
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, seal_aes_128_ctr_hmac_sha256, kTLSADLen,
+                    evp_aead_seal, EVP_aead_aes_128_ctr_hmac_sha256())
+      ->Apply(SetInputLength);
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, open_aes_128_ctr_hmac_sha256, kTLSADLen,
+                    evp_aead_open, EVP_aead_aes_128_ctr_hmac_sha256())
+      ->Apply(SetInputLength);
+
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, seal_aes_256_ctr_hmac_sha256, kTLSADLen,
+                    evp_aead_seal, EVP_aead_aes_256_ctr_hmac_sha256())
+      ->Apply(SetInputLength);
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, open_aes_256_ctr_hmac_sha256, kTLSADLen,
+                    evp_aead_open, EVP_aead_aes_256_ctr_hmac_sha256())
+      ->Apply(SetInputLength);
+
   BENCHMARK_CAPTURE(BM_SpeedAEAD, seal_des_ede3_cbc_sha1, kLegacyADLen,
                     evp_aead_seal, EVP_aead_des_ede3_cbc_sha1_tls())
       ->Apply(SetInputLength);
-  BENCHMARK_CAPTURE(BM_SpeedAEAD, open_sealdes_ede3_cbc_sha1, kLegacyADLen,
+  BENCHMARK_CAPTURE(BM_SpeedAEAD, open_des_ede3_cbc_sha1, kLegacyADLen,
                     evp_aead_open, EVP_aead_des_ede3_cbc_sha1_tls())
       ->Apply(SetInputLength);
 }
