@@ -25,6 +25,9 @@ module(
 # `bazelisk test ...` to update the hashes in MODULE.bazel.lock.
 #
 # Similarly update the dependencies in util/bazel-example/MODULE.bazel
+#
+# After updating dependencies, run bazelisk mod deps --lockfile_mode=refresh
+# from the root and util/bazel-example
 
 # In principle, googletest is only needed for tests and could be a
 # dev_dependency. But it would then be impossible for downstream modules to run
