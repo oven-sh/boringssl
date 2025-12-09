@@ -143,7 +143,10 @@ def ci_builder(
     """
     dimensions = dict(host["dimensions"])
     dimensions["pool"] = "luci.flex.ci"
-    caches = [swarming.cache("gocache"), swarming.cache("gopath")]
+    caches = [
+        swarming.cache("gocache", name = "boringssl_gocache"),
+        swarming.cache("gopath", name = "boringssl_gopath"),
+    ]
     if "caches" in host:
         caches += host["caches"]
     properties = dict(properties)
@@ -301,7 +304,7 @@ MAC_ARM64_HOST = {
         "os": "Mac",
         "cpu": "arm64",
     },
-    "caches": [swarming.cache("osx_sdk")],
+    "caches": [swarming.cache("osx_sdk", name = "boringssl_osx_sdk")],
     # xcode installation can take a while, particularly when running
     # concurrently on multiple VMs on the same host. See crbug.com/1063870
     # for more context.
@@ -314,7 +317,7 @@ MAC_X86_64_HOST = {
         "os": "Mac-12|Mac-13",
         "cpu": "x86-64",
     },
-    "caches": [swarming.cache("osx_sdk")],
+    "caches": [swarming.cache("osx_sdk", name = "boringssl_osx_sdk")],
     # xcode installation can take a while, particularly when running
     # concurrently on multiple VMs on the same host. See crbug.com/1063870
     # for more context.
@@ -326,7 +329,9 @@ WIN_HOST = {
         "os": "Windows-10",
         "cpu": "x86-64",
     },
-    "caches": [swarming.cache("win_toolchain")],
+    "caches": [
+        swarming.cache("win_toolchain", name = "boringssl_win_toolchain"),
+    ],
 }
 
 # The Android tests take longer to run. See https://crbug.com/900953.
