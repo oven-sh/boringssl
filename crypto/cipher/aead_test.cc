@@ -24,6 +24,7 @@
 #include <openssl/aead.h>
 #include <openssl/cipher.h>
 #include <openssl/err.h>
+#include <openssl/span.h>
 
 #include "../fipsmodule/cipher/internal.h"
 #include "../internal.h"
@@ -1531,5 +1532,73 @@ TEST(AEADTest, WycheproofAESEAX) {
 }
 
 TEST(AEADTest, FreeNull) { EVP_AEAD_CTX_free(nullptr); }
+
+TEST(AEADTest, ForEachBlockRange) {
+  auto ebg13 = [](const uint8_t *in, uint8_t *out, size_t len) {
+    while (len > 0) {
+      if ((*in >= 'A' && *in <= 'M') || (*in >= 'a' && *in <= 'm')) {
+        *out = *in + 13;
+      } else if ((*in >= 'N' && *in <= 'Z') || (*in >= 'n' && *in <= 'z')) {
+        *out = *in - 13;
+      } else {
+        *out = *in;
+      }
+      --len;
+      ++in;
+      ++out;
+    }
+  };
+
+  for (const std::string in_str : {
+           "",
+           "A",
+           "Abcdefghijklmno",
+           "Abcdefghijklmnop",
+           "AbcdefghijklmnopA",
+           "AbcdefghijklmnopAbcdefghijklmnop",
+           "BRLOGENSHFEGLE doesn't lol. The quick brown fox jumped over the "
+           "lazy sleeping dog's back then sat on a brute-force attack.",
+       }) {
+    SCOPED_TRACE(in_str);
+
+    bssl::Span<const uint8_t> in_span = bssl::StringAsBytes(in_str);
+    std::vector<uint8_t> want(in_str.size(), 'X');
+    ebg13(in_span.data(), want.data(), in_span.size());
+    std::string_view want_str = bssl::BytesAsStringView(want);
+
+    for (const auto &splits :
+         InterestingSplitsForLength(in_span.size(), /*block_size=*/16)) {
+      SCOPED_TRACE(FormatSplits(splits));
+      TestIOVecs iovecs =
+          TestIOVecs::Split(in_span, splits, /*in_place=*/false);
+      int final_calls = 0;
+      size_t bytes_processed = 0;
+      bssl::iovec::ForEachBlockRange<16, /*WriteOut=*/true>(
+          iovecs.iovecs(),
+          [&](const uint8_t *in, uint8_t *out, size_t len) {
+            EXPECT_GE(len, size_t{1});
+            EXPECT_EQ(len % size_t{16}, size_t{0});
+            ebg13(in, out, len);
+            bytes_processed += len;
+            return true;
+          },
+          [&](const uint8_t *in, uint8_t *out, size_t len) {
+            if (in_span.size() != 0) {
+              EXPECT_GE(len, size_t{1});
+            }
+            ebg13(in, out, len);
+            ++final_calls;
+            bytes_processed += len;
+            return true;
+          });
+      EXPECT_EQ(final_calls, 1);
+      EXPECT_EQ(bytes_processed, in_str.size());
+      auto output = iovecs.Output();
+      std::string output_str(reinterpret_cast<char *>(output.data()),
+                             output.size());
+      EXPECT_EQ(output_str, want_str);
+    }
+  }
+}
 
 }  // namespace
