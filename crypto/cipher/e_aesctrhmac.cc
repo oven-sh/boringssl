@@ -246,14 +246,10 @@ static const EVP_AEAD aead_aes_128_ctr_hmac_sha256 = {
     12,                                    // nonce length
     EVP_AEAD_AES_CTR_HMAC_SHA256_TAG_LEN,  // overhead
     EVP_AEAD_AES_CTR_HMAC_SHA256_TAG_LEN,  // max tag length
-    0,                                     // seal_scatter_supports_extra_in
 
     aead_aes_ctr_hmac_sha256_init,
     nullptr /* init_with_direction */,
     aead_aes_ctr_hmac_sha256_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_ctr_hmac_sha256_sealv,
     aead_aes_ctr_hmac_sha256_openv_detached,
@@ -266,14 +262,10 @@ static const EVP_AEAD aead_aes_256_ctr_hmac_sha256 = {
     12,                                    // nonce length
     EVP_AEAD_AES_CTR_HMAC_SHA256_TAG_LEN,  // overhead
     EVP_AEAD_AES_CTR_HMAC_SHA256_TAG_LEN,  // max tag length
-    0,                                     // seal_scatter_supports_extra_in
 
     aead_aes_ctr_hmac_sha256_init,
     nullptr /* init_with_direction */,
     aead_aes_ctr_hmac_sha256_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_ctr_hmac_sha256_sealv,
     aead_aes_ctr_hmac_sha256_openv_detached,

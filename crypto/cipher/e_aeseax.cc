@@ -319,14 +319,10 @@ static const EVP_AEAD aead_aes_128_eax = {
     16,                        // nonce length
     EVP_AEAD_AES_EAX_TAG_LEN,  // overhead
     EVP_AEAD_AES_EAX_TAG_LEN,  // max tag length
-    0,                         // seal_scatter_supports_extra_in
 
     aead_aes_eax_init,
     nullptr,  // init_with_direction
     aead_aes_eax_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter
-    nullptr,  // open_gather
     nullptr,  // openv
     aead_aes_eax_sealv,
     aead_aes_eax_openv_detached,
@@ -339,14 +335,10 @@ static const EVP_AEAD aead_aes_256_eax = {
     16,                        // nonce length
     EVP_AEAD_AES_EAX_TAG_LEN,  // overhead
     EVP_AEAD_AES_EAX_TAG_LEN,  // max tag length
-    0,                         // seal_scatter_supports_extra_in
 
     aead_aes_eax_init,
     nullptr,  // init_with_direction
     aead_aes_eax_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter
-    nullptr,  // open_gather
     nullptr,  // openv
     aead_aes_eax_sealv,
     aead_aes_eax_openv_detached,

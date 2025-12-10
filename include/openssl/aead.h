@@ -615,6 +615,14 @@ OPENSSL_EXPORT int EVP_AEAD_CTX_get_iv(const EVP_AEAD_CTX *ctx,
 // |EVP_AEAD_CTX_seal_scatter| and writes it to |*out_tag_len|. It returns one
 // on success or zero on error. |in_len| and |extra_in_len| must equal the
 // arguments of the same names passed to |EVP_AEAD_CTX_seal_scatter|.
+//
+// To compute the exact byte length of the output written by
+// |EVP_AEAD_CTX_seal|, set |extra_in_len| to zero and add |in_len| to the
+// result.
+//
+// To compute the exact byte length of the tag written by |EVP_AEAD_CTX_sealv|,
+// set |in_len| to the sum of |len| over the entire |iovec|, and set
+// |extra_in_len| to zero.
 OPENSSL_EXPORT int EVP_AEAD_CTX_tag_len(const EVP_AEAD_CTX *ctx,
                                         size_t *out_tag_len,
                                         const size_t in_len,

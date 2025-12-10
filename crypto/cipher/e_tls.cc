@@ -100,9 +100,7 @@ static int aead_tls_init(EVP_AEAD_CTX *ctx, const uint8_t *key, size_t key_len,
   return 1;
 }
 
-static size_t aead_tls_tag_len(const EVP_AEAD_CTX *ctx, const size_t in_len,
-                               const size_t extra_in_len) {
-  assert(extra_in_len == 0);
+static size_t aead_tls_tag_len(const EVP_AEAD_CTX *ctx, const size_t in_len) {
   const AEAD_TLS_CTX *tls_ctx = (AEAD_TLS_CTX *)&ctx->state;
   assert(EVP_CIPHER_CTX_mode(&tls_ctx->cipher_ctx) == EVP_CIPH_CBC_MODE);
 
@@ -130,7 +128,7 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
   }
 
   size_t in_len = bssl::iovec::TotalLength(iovecs);
-  if (max_out_tag_len < aead_tls_tag_len(ctx, in_len, 0)) {
+  if (max_out_tag_len < aead_tls_tag_len(ctx, in_len)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
@@ -259,7 +257,7 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
     return 0;
   }
   assert(len == 0);  // Padding is explicit.
-  assert(tag_len == aead_tls_tag_len(ctx, in_len, 0));
+  assert(tag_len == aead_tls_tag_len(ctx, in_len));
 
   *out_tag_len = tag_len;
   return 1;
@@ -479,14 +477,10 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls = {
     16,                      // nonce len (IV)
     16 + SHA_DIGEST_LENGTH,  // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,       // max tag length
-    0,                       // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_aes_128_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,  // openv_detached
@@ -499,14 +493,10 @@ static const EVP_AEAD aead_aes_128_cbc_sha1_tls_implicit_iv = {
     0,                            // nonce len
     16 + SHA_DIGEST_LENGTH,       // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,            // max tag length
-    0,                            // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_aes_128_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,          // openv_detached
@@ -519,14 +509,10 @@ static const EVP_AEAD aead_aes_128_cbc_sha256_tls = {
     16,                         // nonce len (IV)
     16 + SHA256_DIGEST_LENGTH,  // overhead (padding + SHA256)
     SHA256_DIGEST_LENGTH,       // max tag length
-    0,                          // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_aes_128_cbc_sha256_tls_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,  // openv_detached
@@ -539,14 +525,10 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls = {
     16,                      // nonce len (IV)
     16 + SHA_DIGEST_LENGTH,  // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,       // max tag length
-    0,                       // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_aes_256_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,  // openv_detached
@@ -559,14 +541,10 @@ static const EVP_AEAD aead_aes_256_cbc_sha1_tls_implicit_iv = {
     0,                            // nonce len
     16 + SHA_DIGEST_LENGTH,       // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,            // max tag length
-    0,                            // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_aes_256_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,          // openv_detached
@@ -579,14 +557,10 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls = {
     8,                       // nonce len (IV)
     8 + SHA_DIGEST_LENGTH,   // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,       // max tag length
-    0,                       // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_des_ede3_cbc_sha1_tls_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,  // openv_detached
@@ -599,14 +573,10 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls_implicit_iv = {
     0,                           // nonce len
     8 + SHA_DIGEST_LENGTH,       // overhead (padding + SHA1)
     SHA_DIGEST_LENGTH,           // max tag length
-    0,                           // seal_scatter_supports_extra_in
 
     nullptr,  // init
     aead_des_ede3_cbc_sha1_tls_implicit_iv_init,
     aead_tls_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter,
-    nullptr,  // open_gather
     aead_tls_openv,
     aead_tls_sealv,
     nullptr,          // openv_detached

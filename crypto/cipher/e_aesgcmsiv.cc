@@ -622,14 +622,10 @@ const EVP_AEAD aead_aes_128_gcm_siv_asm = {
     EVP_AEAD_AES_GCM_SIV_NONCE_LEN,  // nonce length
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // overhead
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // max tag length
-    0,                               // seal_scatter_supports_extra_in
 
     aead_aes_gcm_siv_asm_init,
     nullptr /* init_with_direction */,
     aead_aes_gcm_siv_asm_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_gcm_siv_asm_sealv,
     aead_aes_gcm_siv_asm_openv_detached,
@@ -642,14 +638,10 @@ const EVP_AEAD aead_aes_256_gcm_siv_asm = {
     EVP_AEAD_AES_GCM_SIV_NONCE_LEN,  // nonce length
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // overhead
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // max tag length
-    0,                               // seal_scatter_supports_extra_in
 
     aead_aes_gcm_siv_asm_init,
     nullptr /* init_with_direction */,
     aead_aes_gcm_siv_asm_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_gcm_siv_asm_sealv,
     aead_aes_gcm_siv_asm_openv_detached,
@@ -1017,14 +1009,10 @@ const EVP_AEAD aead_aes_128_gcm_siv = {
     EVP_AEAD_AES_GCM_SIV_NONCE_LEN,  // nonce length
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // overhead
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // max tag length
-    0,                               // seal_scatter_supports_extra_in
 
     aead_aes_gcm_siv_init,
     nullptr /* init_with_direction */,
     aead_aes_gcm_siv_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_gcm_siv_sealv,
     aead_aes_gcm_siv_openv_detached,
@@ -1037,14 +1025,10 @@ const EVP_AEAD aead_aes_256_gcm_siv = {
     EVP_AEAD_AES_GCM_SIV_NONCE_LEN,  // nonce length
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // overhead
     EVP_AEAD_AES_GCM_SIV_TAG_LEN,    // max tag length
-    0,                               // seal_scatter_supports_extra_in
 
     aead_aes_gcm_siv_init,
     nullptr /* init_with_direction */,
     aead_aes_gcm_siv_cleanup,
-    nullptr /* open */,
-    nullptr /* seal_scatter */,
-    nullptr /* open_gather */,
     nullptr /* openv */,
     aead_aes_gcm_siv_sealv,
     aead_aes_gcm_siv_openv_detached,

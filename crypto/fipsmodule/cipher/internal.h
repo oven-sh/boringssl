@@ -42,7 +42,6 @@ struct evp_aead_st {
   uint8_t nonce_len;
   uint8_t overhead;
   uint8_t max_tag_len;
-  int seal_scatter_supports_extra_in;
 
   // init initialises an |EVP_AEAD_CTX|. If this call returns zero then
   // |cleanup| will not be called for that context.
@@ -56,24 +55,6 @@ struct evp_aead_st {
   //
   // - openv + sealv: variable tag lenght AEAD.
   // - openv_detached + sealv: fixed tag length AEAD.
-  // - open + seal_scatter: legacy variable tag length AEAD.
-  // - open_gather + seal_scatter: legacy fixed tag length AEAD.
-
-  int (*open)(const EVP_AEAD_CTX *ctx, uint8_t *out, size_t *out_len,
-              size_t max_out_len, const uint8_t *nonce, size_t nonce_len,
-              const uint8_t *in, size_t in_len, const uint8_t *ad,
-              size_t ad_len);
-
-  int (*seal_scatter)(const EVP_AEAD_CTX *ctx, uint8_t *out, uint8_t *out_tag,
-                      size_t *out_tag_len, size_t max_out_tag_len,
-                      const uint8_t *nonce, size_t nonce_len, const uint8_t *in,
-                      size_t in_len, const uint8_t *extra_in,
-                      size_t extra_in_len, const uint8_t *ad, size_t ad_len);
-
-  int (*open_gather)(const EVP_AEAD_CTX *ctx, uint8_t *out,
-                     const uint8_t *nonce, size_t nonce_len, const uint8_t *in,
-                     size_t in_len, const uint8_t *in_tag, size_t in_tag_len,
-                     const uint8_t *ad, size_t ad_len);
 
   int (*openv)(const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
                size_t *out_total_bytes, const uint8_t *nonce, size_t nonce_len,
@@ -93,8 +74,7 @@ struct evp_aead_st {
   int (*get_iv)(const EVP_AEAD_CTX *ctx, const uint8_t **out_iv,
                 size_t *out_len);
 
-  size_t (*tag_len)(const EVP_AEAD_CTX *ctx, size_t in_len,
-                    size_t extra_in_len);
+  size_t (*tag_len)(const EVP_AEAD_CTX *ctx, size_t in_len);
 };
 
 struct evp_cipher_st {

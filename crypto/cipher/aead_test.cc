@@ -276,10 +276,6 @@ TEST_P(PerAEADTest, TestVector) {
 
 TEST_P(PerAEADTest, TestExtraInput) {
   const KnownAEAD &aead_config = GetParam();
-  if (!aead()->seal_scatter_supports_extra_in) {
-    return;
-  }
-
   FileTestGTest(GetParam().TestVectorPath().c_str(), [&](FileTest *t) {
     if (t->HasAttribute("NO_SEAL") ||  //
         t->HasAttribute("FAILS") ||    //
@@ -296,15 +292,26 @@ TEST_P(PerAEADTest, TestExtraInput) {
     ASSERT_TRUE(t->GetBytes(&ct, "CT"));
     ASSERT_TRUE(t->GetBytes(&tag, "TAG"));
 
-    bssl::ScopedEVP_AEAD_CTX ctx;
-    ASSERT_TRUE(EVP_AEAD_CTX_init(ctx.get(), aead(), key.data(), key.size(),
-                                  tag.size(), nullptr));
+    size_t tag_len = tag.size();
+    if (t->HasAttribute("TAG_LEN")) {
+      // Legacy AEADs are MAC-then-encrypt and may include padding in the TAG
+      // field. TAG_LEN contains the actual size of the digest in that case.
+      std::string tag_len_str;
+      ASSERT_TRUE(t->GetAttribute(&tag_len_str, "TAG_LEN"));
+      tag_len = strtoul(tag_len_str.c_str(), nullptr, 10);
+      ASSERT_TRUE(tag_len);
+    }
+
     std::vector<uint8_t> out_tag(EVP_AEAD_max_overhead(aead()) + in.size());
     std::vector<uint8_t> out(in.size());
 
     for (size_t extra_in_size = 0; extra_in_size < in.size(); extra_in_size++) {
-      size_t tag_bytes_written;
       SCOPED_TRACE(extra_in_size);
+
+      bssl::ScopedEVP_AEAD_CTX ctx;
+      ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+          ctx.get(), aead(), key.data(), key.size(), tag_len, evp_aead_seal));
+      size_t tag_bytes_written;
       ASSERT_TRUE(EVP_AEAD_CTX_seal_scatter(
           ctx.get(), out.data(), out_tag.data(), &tag_bytes_written,
           out_tag.size(), nonce.data(), nonce.size(), in.data(),

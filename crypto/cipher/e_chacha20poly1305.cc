@@ -366,14 +366,10 @@ static const EVP_AEAD aead_chacha20_poly1305 = {
     12,                // nonce len
     POLY1305_TAG_LEN,  // overhead
     POLY1305_TAG_LEN,  // max tag length
-    1,                 // seal_scatter_supports_extra_in
 
     aead_chacha20_poly1305_init,
     nullptr,  // init_with_direction
     aead_chacha20_poly1305_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter
-    nullptr,  // open_gather
     nullptr,  // openv
     aead_chacha20_poly1305_sealv,
     aead_chacha20_poly1305_openv_detached,
@@ -386,14 +382,10 @@ static const EVP_AEAD aead_xchacha20_poly1305 = {
     24,                // nonce len
     POLY1305_TAG_LEN,  // overhead
     POLY1305_TAG_LEN,  // max tag length
-    1,                 // seal_scatter_supports_extra_in
 
     aead_chacha20_poly1305_init,
     nullptr,  // init_with_direction
     aead_chacha20_poly1305_cleanup,
-    nullptr,  // open
-    nullptr,  // seal_scatter
-    nullptr,  // open_gather
     nullptr,  // openv
     aead_xchacha20_poly1305_sealv,
     aead_xchacha20_poly1305_openv_detached,
