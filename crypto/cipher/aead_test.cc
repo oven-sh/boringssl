@@ -47,9 +47,12 @@ constexpr uint32_t kVariableNonce = 1 << 2;
 // kNondeterministic indicates that the AEAD performs randomised encryption thus
 // one cannot assume that encrypting the same data will result in the same
 // ciphertext.
-constexpr uint32_t kNondeterministic = 1 << 7;
+constexpr uint32_t kNondeterministic = 1 << 3;
 // kVariableTag indicates that the AEAD outputs a variable length tag.
-constexpr uint32_t kVariableTag = 1 << 8;
+constexpr uint32_t kVariableTag = 1 << 4;
+// kSkipIOVec indicates that the test vectors should be skipped when running
+// iovec tests.
+constexpr uint32_t kSkipIOVec = 1 << 5;
 
 // RequiresADLength encodes an AD length requirement into flags.
 constexpr uint32_t RequiresADLength(size_t length) {
@@ -81,17 +84,22 @@ static const struct KnownAEAD kAEADs[] = {
     {"AES_128_GCM", EVP_aead_aes_128_gcm, "aes_128_gcm_tests.txt",
      kCanTruncateTags | kVariableNonce},
 
-    {"AES_128_GCM_NIST", EVP_aead_aes_128_gcm, "nist_cavp/aes_128_gcm.txt",
-     kCanTruncateTags | kVariableNonce},
-
     {"AES_192_GCM", EVP_aead_aes_192_gcm, "aes_192_gcm_tests.txt",
      kCanTruncateTags | kVariableNonce},
 
     {"AES_256_GCM", EVP_aead_aes_256_gcm, "aes_256_gcm_tests.txt",
      kCanTruncateTags | kVariableNonce},
 
+    // A set of 31,000 test vectors imported from NIST. We skip iovec tests
+    // because multiplicatively testing these vectors against different iovec
+    // splits takes a very long time and is of low value. Instead, we assume
+    // that our normal test vectors provide sufficient iovec coverage, and just
+    // run them through the non-iovec APIs to ensure the overall AEAD
+    // implementation matches.
+    {"AES_128_GCM_NIST", EVP_aead_aes_128_gcm, "nist_cavp/aes_128_gcm.txt",
+     kCanTruncateTags | kVariableNonce | kSkipIOVec},
     {"AES_256_GCM_NIST", EVP_aead_aes_256_gcm, "nist_cavp/aes_256_gcm.txt",
-     kCanTruncateTags | kVariableNonce},
+     kCanTruncateTags | kVariableNonce | kSkipIOVec},
 
     {"AES_128_GCM_SIV", EVP_aead_aes_128_gcm_siv, "aes_128_gcm_siv_tests.txt",
      0},
@@ -580,6 +588,10 @@ std::string FormatSplits(const std::vector<size_t> &splits) {
 }
 
 void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
+  if (aead_config.flags & kSkipIOVec) {
+    return;
+  }
+
   std::string test_vectors = "crypto/cipher/test/";
   test_vectors += aead_config.test_vectors;
   FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
@@ -648,7 +660,7 @@ void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
 }
 
 void RunOpenvDetachedTests(const KnownAEAD &aead_config, bool in_place) {
-  if (aead_config.flags & kVariableTag) {
+  if (aead_config.flags & (kVariableTag | kSkipIOVec)) {
     // openv_detached is not supported for variable-length AEADs.
     return;
   }
@@ -773,6 +785,10 @@ void RunOpenvDetachedTests(const KnownAEAD &aead_config, bool in_place) {
 }
 
 void RunOpenvTests(const KnownAEAD &aead_config, bool in_place) {
+  if (aead_config.flags & kSkipIOVec) {
+    return;
+  }
+
   std::string test_vectors = "crypto/cipher/test/";
   test_vectors += aead_config.test_vectors;
   FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
