@@ -78,6 +78,10 @@ struct KnownAEAD {
   const EVP_AEAD *(*func)(void);
   const char *test_vectors;
   uint32_t flags;
+
+  std::string TestVectorPath() const {
+    return std::string("crypto/cipher/test/") + test_vectors;
+  }
 };
 
 static const struct KnownAEAD kAEADs[] = {
@@ -189,9 +193,7 @@ INSTANTIATE_TEST_SUITE_P(All, PerAEADTest, testing::ValuesIn(kAEADs),
 //   CT: 5294265a60
 //   TAG: 1d45758621762e061368e68868e2f929
 TEST_P(PerAEADTest, TestVector) {
-  std::string test_vectors = "crypto/cipher/test/";
-  test_vectors += GetParam().test_vectors;
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(GetParam().TestVectorPath().c_str(), [&](FileTest *t) {
     std::vector<uint8_t> key, nonce, in, ad, ct, tag;
     ASSERT_TRUE(t->GetBytes(&key, "KEY"));
     ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
@@ -291,9 +293,7 @@ TEST_P(PerAEADTest, TestExtraInput) {
     return;
   }
 
-  const std::string test_vectors =
-      "crypto/cipher/test/" + std::string(aead_config.test_vectors);
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(GetParam().TestVectorPath().c_str(), [&](FileTest *t) {
     if (t->HasAttribute("NO_SEAL") ||  //
         t->HasAttribute("FAILS") ||    //
         (aead_config.flags & kNondeterministic)) {
@@ -337,10 +337,8 @@ TEST_P(PerAEADTest, TestExtraInput) {
 }
 
 TEST_P(PerAEADTest, TestVectorScatterGather) {
-  std::string test_vectors = "crypto/cipher/test/";
   const KnownAEAD &aead_config = GetParam();
-  test_vectors += aead_config.test_vectors;
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(aead_config.TestVectorPath().c_str(), [&](FileTest *t) {
     std::vector<uint8_t> key, nonce, in, ad, ct, tag;
     ASSERT_TRUE(t->GetBytes(&key, "KEY"));
     ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
@@ -592,9 +590,7 @@ void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
     return;
   }
 
-  std::string test_vectors = "crypto/cipher/test/";
-  test_vectors += aead_config.test_vectors;
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(aead_config.TestVectorPath().c_str(), [&](FileTest *t) {
     std::vector<uint8_t> key, nonce, in, ad, ct, tag;
     ASSERT_TRUE(t->GetBytes(&key, "KEY"));
     ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
@@ -665,9 +661,7 @@ void RunOpenvDetachedTests(const KnownAEAD &aead_config, bool in_place) {
     return;
   }
 
-  std::string test_vectors = "crypto/cipher/test/";
-  test_vectors += aead_config.test_vectors;
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(aead_config.TestVectorPath().c_str(), [&](FileTest *t) {
     std::vector<uint8_t> key, nonce, in, ad, ct, tag;
     ASSERT_TRUE(t->GetBytes(&key, "KEY"));
     ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
@@ -789,9 +783,7 @@ void RunOpenvTests(const KnownAEAD &aead_config, bool in_place) {
     return;
   }
 
-  std::string test_vectors = "crypto/cipher/test/";
-  test_vectors += aead_config.test_vectors;
-  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+  FileTestGTest(aead_config.TestVectorPath().c_str(), [&](FileTest *t) {
     std::vector<uint8_t> key, nonce, in, ad, ct, tag;
     ASSERT_TRUE(t->GetBytes(&key, "KEY"));
     ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
