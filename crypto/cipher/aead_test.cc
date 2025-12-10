@@ -528,7 +528,7 @@ std::vector<std::vector<size_t>> InterestingSplitsForLength(size_t length,
   const size_t last_block_start = (length - 1) / block_size * block_size;
 
   // 1 chunk.
-  ideas.insert({});
+  ideas.insert(std::set<size_t>{});
 
   // 2 chunks.
   ideas.insert({0});
@@ -613,6 +613,12 @@ void RunIOVecTests(const KnownAEAD &aead_config, bool in_place, bool detached) {
           !(aead_config.flags & kNondeterministic)) {
         for (const auto &splits :
              InterestingSplitsForLength(in.size(), /*block_size=*/16)) {
+          if (!adsplits.empty() && !splits.empty()) {
+            // No need to test both with split AAD and split iovec. Each split
+            // on its own should already hit everything interesting.
+            continue;
+          }
+
           SCOPED_TRACE(FormatSplits(splits));
           TestIOVecs iovecs = TestIOVecs::Split(in, splits, in_place);
 
@@ -660,6 +666,12 @@ void RunIOVecTests(const KnownAEAD &aead_config, bool in_place, bool detached) {
         // Test the openv_detached API.
         for (const auto &splits :
              InterestingSplitsForLength(out.size(), /*block_size=*/16)) {
+          if (!adsplits.empty() && !splits.empty()) {
+            // No need to test both with split AAD and split iovec. Each split
+            // on its own should already hit everything interesting.
+            continue;
+          }
+
           SCOPED_TRACE(FormatSplits(splits));
           TestIOVecs iovecs = TestIOVecs::Split(out, splits, in_place);
 
@@ -748,6 +760,12 @@ void RunIOVecTests(const KnownAEAD &aead_config, bool in_place, bool detached) {
         combined.insert(combined.end(), out_tag.begin(), out_tag.end());
         for (const auto &splits :
              InterestingSplitsForLength(combined.size(), /*block_size=*/16)) {
+          if (!adsplits.empty() && !splits.empty()) {
+            // No need to test both with split AAD and split iovec. Each split
+            // on its own should already hit everything interesting.
+            continue;
+          }
+
           SCOPED_TRACE(FormatSplits(splits));
           TestIOVecs iovecs = TestIOVecs::Split(combined, splits, in_place);
 
