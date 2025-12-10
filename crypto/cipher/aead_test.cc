@@ -579,7 +579,7 @@ std::string FormatSplits(const std::vector<size_t> &splits) {
   return tracebuf.str();
 }
 
-void RunIOVecTests(const KnownAEAD &aead_config, bool in_place, bool detached) {
+void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
   std::string test_vectors = "crypto/cipher/test/";
   test_vectors += aead_config.test_vectors;
   FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
@@ -600,287 +600,334 @@ void RunIOVecTests(const KnownAEAD &aead_config, bool in_place, bool detached) {
       ASSERT_TRUE(tag_len);
     }
 
+    if (t->HasAttribute("NO_SEAL") || (aead_config.flags & kNondeterministic)) {
+      t->SkipCurrent();
+      return;
+    }
+
     for (const auto &adsplits :
          InterestingSplitsForLength(ad.size(), /*block_size=*/16)) {
       SCOPED_TRACE(FormatSplits(adsplits));
-      TestIOVecs advecs = TestIOVecs::Split(ad, {adsplits}, in_place);
-
+      TestIOVecs advecs = TestIOVecs::Split(ad, adsplits, in_place);
       bssl::ScopedEVP_AEAD_CTX ctx;
-
-      std::vector<uint8_t> out;
-      std::vector<uint8_t> out_tag(EVP_AEAD_max_overhead(aead_config.func()));
-      if (!t->HasAttribute("NO_SEAL") &&
-          !(aead_config.flags & kNondeterministic)) {
-        for (const auto &splits :
-             InterestingSplitsForLength(in.size(), /*block_size=*/16)) {
-          if (!adsplits.empty() && !splits.empty()) {
-            // No need to test both with split AAD and split iovec. Each split
-            // on its own should already hit everything interesting.
-            continue;
-          }
-
-          SCOPED_TRACE(FormatSplits(splits));
-          TestIOVecs iovecs = TestIOVecs::Split(in, splits, in_place);
-
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_seal));
-
-          size_t out_tag_len;
-          out_tag.resize(tag.size());
-          int ret = EVP_AEAD_CTX_sealv(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              out_tag.data(), &out_tag_len, out_tag.size(), nonce.data(),
-              nonce.size(), advecs.ivecs().data(), advecs.ivecs().size());
-
-          // Skip encryption for AEADs that don't implement sealv().
-          // TODO(crbug.com/383343306): Remove this check once all AEADs do.
-          if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                                 CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-            t->SkipCurrent();
-            return;
-          }
-
-          ASSERT_TRUE(ret);
-
-          out_tag.resize(out_tag_len);
-
-          out = iovecs.Output();
-          EXPECT_EQ(Bytes(ct), Bytes(out.data(), out.size()));
-          EXPECT_EQ(Bytes(tag), Bytes(out_tag.data(), out_tag.size()));
+      for (const auto &splits :
+           InterestingSplitsForLength(in.size(), /*block_size=*/16)) {
+        if (!adsplits.empty() && !splits.empty()) {
+          // No need to test both with split AAD and split iovec. Each split
+          // on its own should already hit everything interesting.
+          continue;
         }
-      } else {
-        out.resize(ct.size());
-        out_tag.resize(tag.size());
-        OPENSSL_memcpy(out.data(), ct.data(), ct.size());
-        OPENSSL_memcpy(out_tag.data(), tag.data(), tag.size());
-      }
+        SCOPED_TRACE(FormatSplits(splits));
 
-      if (detached) {
-        if (aead_config.flags & kVariableTag) {
-          // API not supported, thus nothing to test.
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_seal));
+        TestIOVecs iovecs = TestIOVecs::Split(in, splits, in_place);
+        std::vector<uint8_t> out_tag(EVP_AEAD_max_overhead(aead_config.func()));
+        size_t out_tag_len;
+        int ret = EVP_AEAD_CTX_sealv(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            out_tag.data(), &out_tag_len, out_tag.size(), nonce.data(),
+            nonce.size(), advecs.ivecs().data(), advecs.ivecs().size());
+
+        // Skip encryption for AEADs that don't implement sealv().
+        // TODO(crbug.com/383343306): Remove this check once all AEADs do.
+        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
+                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
           t->SkipCurrent();
           return;
         }
 
-        // Test the openv_detached API.
-        for (const auto &splits :
-             InterestingSplitsForLength(out.size(), /*block_size=*/16)) {
-          if (!adsplits.empty() && !splits.empty()) {
-            // No need to test both with split AAD and split iovec. Each split
-            // on its own should already hit everything interesting.
-            continue;
-          }
-
-          SCOPED_TRACE(FormatSplits(splits));
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          TestIOVecs iovecs = TestIOVecs::Split(out, splits, in_place);
-          int ret = EVP_AEAD_CTX_openv_detached(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              nonce.data(), nonce.size(), out_tag.data(), out_tag.size(),
-              advecs.ivecs().data(), advecs.ivecs().size());
-
-          if (t->HasAttribute("FAILS")) {
-            ASSERT_FALSE(ret) << "Decrypted bad data";
-            ERR_clear_error();
-            continue;
-          }
-
-          if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                                 CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-            ERR_clear_error();
-            t->SkipCurrent();
-            return;
-          }
-
-          ASSERT_TRUE(ret) << "Failed to decrypt: "
-                           << ERR_reason_error_string(ERR_get_error());
-          std::vector<uint8_t> out2 = iovecs.Output();
-          EXPECT_EQ(Bytes(in), Bytes(out2));
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Garbage at the end isn't ignored.
-          out_tag.push_back(0);
-          ASSERT_EQ(out2.size(), out.size());
-          iovecs = TestIOVecs::Split(out, splits, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              nonce.data(), nonce.size(), out_tag.data(), out_tag.size(),
-              advecs.ivecs().data(), advecs.ivecs().size()))
-              << "Decrypted bad data with trailing garbage.";
-          ERR_clear_error();
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Verify integrity is checked.
-          out_tag[0] ^= 0x80;
-          out_tag.resize(out_tag.size() - 1);
-          ASSERT_EQ(out2.size(), out.size());
-          iovecs = TestIOVecs::Split(out, splits, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              nonce.data(), nonce.size(), out_tag.data(), out_tag.size(),
-              advecs.ivecs().data(), advecs.ivecs().size()))
-              << "Decrypted bad data with corrupted byte.";
-          ERR_clear_error();
-          out_tag[0] ^= 0x80;
-
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Check edge case for tag length.
-          iovecs = TestIOVecs::Split(out, splits, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              nonce.data(), nonce.size(), out_tag.data(), 0,
-              advecs.ivecs().data(), advecs.ivecs().size()))
-              << "Decrypted bad data with corrupted byte.";
-          ERR_clear_error();
-        }
-      } else {
-        // Test the openv API. Make sure even the tag can be split.
-        std::vector<uint8_t> combined(out);
-        combined.insert(combined.end(), out_tag.begin(), out_tag.end());
-        for (const auto &splits :
-             InterestingSplitsForLength(combined.size(), /*block_size=*/16)) {
-          if (!adsplits.empty() && !splits.empty()) {
-            // No need to test both with split AAD and split iovec. Each split
-            // on its own should already hit everything interesting.
-            continue;
-          }
-
-          SCOPED_TRACE(FormatSplits(splits));
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          size_t plaintext_len;
-          TestIOVecs iovecs = TestIOVecs::Split(combined, splits, in_place);
-          int ret = EVP_AEAD_CTX_openv(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
-              advecs.ivecs().size());
-
-          if (t->HasAttribute("FAILS")) {
-            ASSERT_FALSE(ret) << "Decrypted bad data";
-            ERR_clear_error();
-            continue;
-          }
-
-          if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                                 CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-            ERR_clear_error();
-            t->SkipCurrent();
-            return;
-          }
-
-          ASSERT_TRUE(ret) << "Failed to decrypt: "
-                           << ERR_reason_error_string(ERR_get_error());
-          std::vector<uint8_t> out2 = iovecs.Output();
-          out2.resize(plaintext_len);
-          EXPECT_EQ(Bytes(in), Bytes(out2));
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Garbage at the end isn't ignored.
-          std::vector<uint8_t> combined_wrecked(combined);
-          combined_wrecked.push_back(0);
-          iovecs = TestIOVecs::Split(combined_wrecked, splits, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
-              advecs.ivecs().size()))
-              << "Decrypted bad data with trailing garbage.";
-          ERR_clear_error();
-
-          // The "stateful" AEADs for implementing pre-AEAD cipher suites need
-          // to be reset after each operation.
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Verify integrity is checked by changing the last byte.
-          combined_wrecked = combined;
-          combined_wrecked.back() ^= 0x80;
-          iovecs = TestIOVecs::Split(combined_wrecked, splits, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
-              advecs.ivecs().size()))
-              << "Decrypted bad data with corrupted byte.";
-          ERR_clear_error();
-
-          ctx.Reset();
-          ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
-              ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
-              evp_aead_open));
-
-          // Check edge case for tag length.
-          combined_wrecked = combined;
-          combined_wrecked.pop_back();
-          std::vector<size_t> splits_wrecked = splits;
-          for (size_t &split : splits_wrecked) {
-            split = std::min(split, combined_wrecked.size());
-          }
-          iovecs =
-              TestIOVecs::Split(combined_wrecked, splits_wrecked, in_place);
-          EXPECT_FALSE(EVP_AEAD_CTX_openv(
-              ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
-              &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
-              advecs.ivecs().size()))
-              << "Decrypted bad data with corrupted byte.";
-          ERR_clear_error();
-        }
+        ASSERT_TRUE(ret);
+        out_tag.resize(out_tag_len);
+        EXPECT_EQ(Bytes(ct), Bytes(iovecs.Output()));
+        EXPECT_EQ(Bytes(tag), Bytes(out_tag));
       }
     }
   });
 }
 
-TEST_P(PerAEADTest, TestVectorIOVecOpenV) {
-  RunIOVecTests(GetParam(), /*in_place=*/false, /*detached=*/false);
+void RunOpenvDetachedTests(const KnownAEAD &aead_config, bool in_place) {
+  if (aead_config.flags & kVariableTag) {
+    // openv_detached is not supported for variable-length AEADs.
+    return;
+  }
+
+  std::string test_vectors = "crypto/cipher/test/";
+  test_vectors += aead_config.test_vectors;
+  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+    std::vector<uint8_t> key, nonce, in, ad, ct, tag;
+    ASSERT_TRUE(t->GetBytes(&key, "KEY"));
+    ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
+    ASSERT_TRUE(t->GetBytes(&in, "IN"));
+    ASSERT_TRUE(t->GetBytes(&ad, "AD"));
+    ASSERT_TRUE(t->GetBytes(&ct, "CT"));
+    ASSERT_TRUE(t->GetBytes(&tag, "TAG"));
+    size_t tag_len = tag.size();
+    if (t->HasAttribute("TAG_LEN")) {
+      // Legacy AEADs are MAC-then-encrypt and may include padding in the TAG
+      // field. TAG_LEN contains the actual size of the digest in that case.
+      std::string tag_len_str;
+      ASSERT_TRUE(t->GetAttribute(&tag_len_str, "TAG_LEN"));
+      tag_len = strtoul(tag_len_str.c_str(), nullptr, 10);
+      ASSERT_TRUE(tag_len);
+    }
+    t->IgnoreAttribute("NO_SEAL");
+
+    for (const auto &adsplits :
+         InterestingSplitsForLength(ad.size(), /*block_size=*/16)) {
+      SCOPED_TRACE(FormatSplits(adsplits));
+      TestIOVecs advecs = TestIOVecs::Split(ad, adsplits, in_place);
+      bssl::ScopedEVP_AEAD_CTX ctx;
+      for (const auto &splits :
+           InterestingSplitsForLength(ct.size(), /*block_size=*/16)) {
+        if (!adsplits.empty() && !splits.empty()) {
+          // No need to test both with split AAD and split iovec. Each split
+          // on its own should already hit everything interesting.
+          continue;
+        }
+        SCOPED_TRACE(FormatSplits(splits));
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        TestIOVecs iovecs = TestIOVecs::Split(ct, splits, in_place);
+        int ret = EVP_AEAD_CTX_openv_detached(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            nonce.data(), nonce.size(), tag.data(), tag.size(),
+            advecs.ivecs().data(), advecs.ivecs().size());
+
+        if (t->HasAttribute("FAILS")) {
+          ASSERT_FALSE(ret) << "Decrypted bad data";
+          ERR_clear_error();
+          continue;
+        }
+
+        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
+                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
+          ERR_clear_error();
+          t->SkipCurrent();
+          return;
+        }
+
+        ASSERT_TRUE(ret) << "Failed to decrypt: "
+                         << ERR_reason_error_string(ERR_get_error());
+        EXPECT_EQ(Bytes(in), Bytes(iovecs.Output()));
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Garbage at the end isn't ignored.
+        std::vector<uint8_t> bad_tag = tag;
+        bad_tag.push_back(0);
+        iovecs = TestIOVecs::Split(ct, splits, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            nonce.data(), nonce.size(), bad_tag.data(), bad_tag.size(),
+            advecs.ivecs().data(), advecs.ivecs().size()))
+            << "Decrypted bad data with trailing garbage.";
+        ERR_clear_error();
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Verify integrity is checked.
+        bad_tag = tag;
+        bad_tag[0] ^= 0x80;
+        iovecs = TestIOVecs::Split(ct, splits, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            nonce.data(), nonce.size(), bad_tag.data(), bad_tag.size(),
+            advecs.ivecs().data(), advecs.ivecs().size()))
+            << "Decrypted bad data with corrupted byte.";
+        ERR_clear_error();
+
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Check a zero-length tag is rejected.
+        iovecs = TestIOVecs::Split(ct, splits, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv_detached(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            nonce.data(), nonce.size(), nullptr, 0, advecs.ivecs().data(),
+            advecs.ivecs().size()))
+            << "Decrypted bad data with zero-length tag.";
+        ERR_clear_error();
+      }
+    }
+  });
 }
 
-TEST_P(PerAEADTest, TestVectorIOVecOpenVDetached) {
-  RunIOVecTests(GetParam(), /*in_place=*/false, /*detached=*/true);
+void RunOpenvTests(const KnownAEAD &aead_config, bool in_place) {
+  std::string test_vectors = "crypto/cipher/test/";
+  test_vectors += aead_config.test_vectors;
+  FileTestGTest(test_vectors.c_str(), [&](FileTest *t) {
+    std::vector<uint8_t> key, nonce, in, ad, ct, tag;
+    ASSERT_TRUE(t->GetBytes(&key, "KEY"));
+    ASSERT_TRUE(t->GetBytes(&nonce, "NONCE"));
+    ASSERT_TRUE(t->GetBytes(&in, "IN"));
+    ASSERT_TRUE(t->GetBytes(&ad, "AD"));
+    ASSERT_TRUE(t->GetBytes(&ct, "CT"));
+    ASSERT_TRUE(t->GetBytes(&tag, "TAG"));
+    size_t tag_len = tag.size();
+    if (t->HasAttribute("TAG_LEN")) {
+      // Legacy AEADs are MAC-then-encrypt and may include padding in the TAG
+      // field. TAG_LEN contains the actual size of the digest in that case.
+      std::string tag_len_str;
+      ASSERT_TRUE(t->GetAttribute(&tag_len_str, "TAG_LEN"));
+      tag_len = strtoul(tag_len_str.c_str(), nullptr, 10);
+      ASSERT_TRUE(tag_len);
+    }
+    t->IgnoreAttribute("NO_SEAL");
+
+    std::vector<uint8_t> combined = ct;
+    combined.insert(combined.end(), tag.begin(), tag.end());
+
+    for (const auto &adsplits :
+         InterestingSplitsForLength(ad.size(), /*block_size=*/16)) {
+      SCOPED_TRACE(FormatSplits(adsplits));
+      TestIOVecs advecs = TestIOVecs::Split(ad, adsplits, in_place);
+      bssl::ScopedEVP_AEAD_CTX ctx;
+      for (const auto &splits :
+           InterestingSplitsForLength(combined.size(), /*block_size=*/16)) {
+        if (!adsplits.empty() && !splits.empty()) {
+          // No need to test both with split AAD and split iovec. Each split
+          // on its own should already hit everything interesting.
+          continue;
+        }
+        SCOPED_TRACE(FormatSplits(splits));
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        size_t plaintext_len;
+        TestIOVecs iovecs = TestIOVecs::Split(combined, splits, in_place);
+        int ret = EVP_AEAD_CTX_openv(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
+            advecs.ivecs().size());
+
+        if (t->HasAttribute("FAILS")) {
+          ASSERT_FALSE(ret) << "Decrypted bad data";
+          ERR_clear_error();
+          continue;
+        }
+
+        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
+                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
+          ERR_clear_error();
+          t->SkipCurrent();
+          return;
+        }
+
+        ASSERT_TRUE(ret) << "Failed to decrypt: "
+                         << ERR_reason_error_string(ERR_get_error());
+        std::vector<uint8_t> out = iovecs.Output();
+        out.resize(plaintext_len);
+        EXPECT_EQ(Bytes(in), Bytes(out));
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Garbage at the end isn't ignored.
+        std::vector<uint8_t> combined_wrecked(combined);
+        combined_wrecked.push_back(0);
+        iovecs = TestIOVecs::Split(combined_wrecked, splits, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
+            advecs.ivecs().size()))
+            << "Decrypted bad data with trailing garbage.";
+        ERR_clear_error();
+
+        // The "stateful" AEADs for implementing pre-AEAD cipher suites need
+        // to be reset after each operation.
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Verify integrity is checked by changing the last byte.
+        combined_wrecked = combined;
+        combined_wrecked.back() ^= 0x80;
+        iovecs = TestIOVecs::Split(combined_wrecked, splits, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
+            advecs.ivecs().size()))
+            << "Decrypted bad data with corrupted byte.";
+        ERR_clear_error();
+
+        ctx.Reset();
+        ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(
+            ctx.get(), aead_config.func(), key.data(), key.size(), tag_len,
+            evp_aead_open));
+
+        // Check edge case for tag length.
+        combined_wrecked = combined;
+        combined_wrecked.pop_back();
+        std::vector<size_t> splits_wrecked = splits;
+        for (size_t &split : splits_wrecked) {
+          split = std::min(split, combined_wrecked.size());
+        }
+        iovecs = TestIOVecs::Split(combined_wrecked, splits_wrecked, in_place);
+        EXPECT_FALSE(EVP_AEAD_CTX_openv(
+            ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
+            &plaintext_len, nonce.data(), nonce.size(), advecs.ivecs().data(),
+            advecs.ivecs().size()))
+            << "Decrypted bad data with corrupted byte.";
+        ERR_clear_error();
+      }
+    }
+  });
 }
 
-TEST_P(PerAEADTest, TestVectorIOVecOpenVInPlace) {
-  RunIOVecTests(GetParam(), /*in_place=*/true, /*detached=*/false);
+TEST_P(PerAEADTest, TestSealv) {
+  RunSealvTests(GetParam(), /*in_place=*/false);
 }
 
-TEST_P(PerAEADTest, TestVectorIOVecOpenVDetachedInPlace) {
-  RunIOVecTests(GetParam(), /*in_place=*/true, /*detached=*/true);
+TEST_P(PerAEADTest, TestOpenv) {
+  RunOpenvTests(GetParam(), /*in_place=*/false);
 }
+
+TEST_P(PerAEADTest, TestOpenvDetached) {
+  RunOpenvDetachedTests(GetParam(), /*in_place=*/false);
+}
+
+TEST_P(PerAEADTest, TestSealvInPlace) {
+  RunSealvTests(GetParam(), /*in_place=*/true);
+}
+
+TEST_P(PerAEADTest, TestOpenvInPlace) {
+  RunOpenvTests(GetParam(), /*in_place=*/true);
+}
+
+TEST_P(PerAEADTest, TestOpenvDetachedInPlace) {
+  RunOpenvDetachedTests(GetParam(), /*in_place=*/true);
+}
+
 
 TEST_P(PerAEADTest, CleanupAfterInitFailure) {
   uint8_t key[EVP_AEAD_MAX_KEY_LENGTH];
