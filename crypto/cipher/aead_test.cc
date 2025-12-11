@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <optional>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -54,30 +55,15 @@ constexpr uint32_t kVariableTag = 1 << 4;
 // iovec tests.
 constexpr uint32_t kSkipIOVec = 1 << 5;
 
-// RequiresADLength encodes an AD length requirement into flags.
-constexpr uint32_t RequiresADLength(size_t length) {
-  assert(length < 16);
-  return static_cast<uint32_t>((length & 0xf) << 3);
-}
-
-// RequiredADLength returns the AD length requirement encoded in |flags|, or
-// zero if there isn't one.
-constexpr size_t RequiredADLength(uint32_t flags) { return (flags >> 3) & 0xf; }
-
-constexpr uint32_t RequiresMinimumTagLength(size_t length) {
-  assert(length < 16);
-  return static_cast<uint32_t>((length & 0xf) << 8);
-}
-
-constexpr size_t MinimumTagLength(uint32_t flags) {
-  return ((flags >> 8) & 0xf) == 0 ? 1 : ((flags >> 8) & 0xf);
-}
-
 struct KnownAEAD {
   const char name[40];
   const EVP_AEAD *(*func)(void);
   const char *test_vectors;
   uint32_t flags;
+
+  // Optional settings - leave out if not needed.
+  std::optional<size_t> required_ad_length = std::nullopt;
+  std::optional<size_t> minimum_tag_length = std::nullopt;
 
   std::string TestVectorPath() const {
     return std::string("crypto/cipher/test/") + test_vectors;
@@ -112,12 +98,12 @@ static const struct KnownAEAD kAEADs[] = {
      0},
 
     {"AES_128_GCM_RandomNonce", EVP_aead_aes_128_gcm_randnonce,
-     "aes_128_gcm_randnonce_tests.txt",
-     kNondeterministic | kCanTruncateTags | RequiresMinimumTagLength(13)},
+     "aes_128_gcm_randnonce_tests.txt", kNondeterministic | kCanTruncateTags,
+     /*required_ad_length=*/std::nullopt, /*minimum_tag_length=*/13},
 
     {"AES_256_GCM_RandomNonce", EVP_aead_aes_256_gcm_randnonce,
-     "aes_256_gcm_randnonce_tests.txt",
-     kNondeterministic | kCanTruncateTags | RequiresMinimumTagLength(13)},
+     "aes_256_gcm_randnonce_tests.txt", kNondeterministic | kCanTruncateTags,
+     /*required_ad_length=*/std::nullopt, /*minimum_tag_length=*/13},
 
     {"ChaCha20Poly1305", EVP_aead_chacha20_poly1305,
      "chacha20_poly1305_tests.txt", kCanTruncateTags},
@@ -126,31 +112,31 @@ static const struct KnownAEAD kAEADs[] = {
      "xchacha20_poly1305_tests.txt", kCanTruncateTags},
 
     {"AES_128_CBC_SHA1_TLS", EVP_aead_aes_128_cbc_sha1_tls,
-     "aes_128_cbc_sha1_tls_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     "aes_128_cbc_sha1_tls_tests.txt", kLimitedImplementation | kVariableTag,
+     /*required_ad_length=*/11},
 
     {"AES_128_CBC_SHA1_TLSImplicitIV",
      EVP_aead_aes_128_cbc_sha1_tls_implicit_iv,
      "aes_128_cbc_sha1_tls_implicit_iv_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     kLimitedImplementation | kVariableTag, /*required_ad_length=*/11},
 
     {"AES_256_CBC_SHA1_TLS", EVP_aead_aes_256_cbc_sha1_tls,
-     "aes_256_cbc_sha1_tls_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     "aes_256_cbc_sha1_tls_tests.txt", kLimitedImplementation | kVariableTag,
+     /*required_ad_length=*/11},
 
     {"AES_256_CBC_SHA1_TLSImplicitIV",
      EVP_aead_aes_256_cbc_sha1_tls_implicit_iv,
      "aes_256_cbc_sha1_tls_implicit_iv_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     kLimitedImplementation | kVariableTag, /*required_ad_length=*/11},
 
     {"DES_EDE3_CBC_SHA1_TLS", EVP_aead_des_ede3_cbc_sha1_tls,
-     "des_ede3_cbc_sha1_tls_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     "des_ede3_cbc_sha1_tls_tests.txt", kLimitedImplementation | kVariableTag,
+     /*required_ad_length=*/11},
 
     {"DES_EDE3_CBC_SHA1_TLSImplicitIV",
      EVP_aead_des_ede3_cbc_sha1_tls_implicit_iv,
      "des_ede3_cbc_sha1_tls_implicit_iv_tests.txt",
-     kLimitedImplementation | RequiresADLength(11) | kVariableTag},
+     kLimitedImplementation | kVariableTag, /*required_ad_length=*/11},
 
     {"AES_128_CTR_HMAC_SHA256", EVP_aead_aes_128_ctr_hmac_sha256,
      "aes_128_ctr_hmac_sha256.txt", kCanTruncateTags},
@@ -975,7 +961,7 @@ TEST_P(PerAEADTest, TruncatedTags) {
   const size_t nonce_len = EVP_AEAD_nonce_length(aead());
   ASSERT_GE(sizeof(nonce), nonce_len);
 
-  const size_t tag_len = MinimumTagLength(GetParam().flags);
+  const size_t tag_len = GetParam().minimum_tag_length.value_or(1);
   bssl::ScopedEVP_AEAD_CTX ctx;
   ASSERT_TRUE(EVP_AEAD_CTX_init(ctx.get(), aead(), key, key_len, tag_len,
                                 nullptr /* ENGINE */));
@@ -1111,9 +1097,7 @@ TEST_P(PerAEADTest, UnalignedInput) {
   ASSERT_GE(sizeof(key) - 1, key_len);
   const size_t nonce_len = EVP_AEAD_nonce_length(aead());
   ASSERT_GE(sizeof(nonce) - 1, nonce_len);
-  const size_t ad_len = RequiredADLength(GetParam().flags) != 0
-                            ? RequiredADLength(GetParam().flags)
-                            : sizeof(ad) - 1;
+  const size_t ad_len = GetParam().required_ad_length.value_or(sizeof(ad) - 1);
   ASSERT_GE(sizeof(ad) - 1, ad_len);
 
   // Encrypt some input.
@@ -1184,9 +1168,7 @@ TEST_P(PerAEADTest, InvalidNonceLength) {
   }
 
   static const uint8_t kZeros[EVP_AEAD_MAX_KEY_LENGTH] = {0};
-  const size_t ad_len = RequiredADLength(GetParam().flags) != 0
-                            ? RequiredADLength(GetParam().flags)
-                            : 16;
+  const size_t ad_len = GetParam().required_ad_length.value_or(16);
   ASSERT_LE(ad_len, sizeof(kZeros));
 
   for (size_t nonce_len : nonce_lens) {
@@ -1282,10 +1264,9 @@ TEST_P(PerAEADTest, ABI) {
   alignas(2) uint8_t ad_buf[512];
   OPENSSL_memset(ad_buf, 'A', sizeof(ad_buf));
   const uint8_t *const ad = ad_buf + 1;
-  ASSERT_LE(RequiredADLength(GetParam().flags), sizeof(ad_buf) - 1);
-  const size_t ad_len = RequiredADLength(GetParam().flags) != 0
-                            ? RequiredADLength(GetParam().flags)
-                            : sizeof(ad_buf) - 1;
+  const size_t ad_len =
+      GetParam().required_ad_length.value_or(sizeof(ad_buf) - 1);
+  ASSERT_LE(ad_len, sizeof(ad_buf) - 1);
 
   uint8_t nonce[EVP_AEAD_MAX_NONCE_LENGTH];
   OPENSSL_memset(nonce, 'N', sizeof(nonce));
