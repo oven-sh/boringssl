@@ -16,12 +16,12 @@ BoringCrypto has undergone the following validations:
 1. 2021-04-29: certificate [#4407](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4407).
 1. 2022-06-13: certificate [#4735](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4735).
 1. 2023-04-28: certificate [#4953](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4953).
+1. 2024-04-07: certificate [#5104](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5104).
 
 The following validations are active:
 
 | Version | Status | CAVP |
 | ------- | ------ | ---- |
-| 2024-04-07 | Review Pending at NIST    | [A5370](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/details?product=18027) |
 | 2024-08-05 | Review Pending at NIST    | [A6134](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/details?product=9831) |
 | 2025-01-07 | Review Pending at NIST    | [A6838](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/details?product=19570) |
 | 2025-07-28 | Review Pending at NIST    | [A7303](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/details?validation=39913) |
