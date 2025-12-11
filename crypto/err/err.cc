@@ -65,9 +65,13 @@ typedef struct err_state_st {
 } ERR_STATE;
 }  // namespace
 
+BSSL_NAMESPACE_BEGIN
+
 extern const uint32_t kOpenSSLReasonValues[];
 extern const size_t kOpenSSLReasonValuesLen;
 extern const char kOpenSSLReasonStringData[];
+
+BSSL_NAMESPACE_END
 
 static char *strdup_libc_malloc(const char *str) {
   // |strdup| is not in C until C23, so MSVC triggers deprecation warnings, and
@@ -445,8 +449,9 @@ static const char *err_reason_error_string(uint32_t packed_error, int symbol) {
 
   // Unlike OpenSSL, BoringSSL's reason strings already match symbol name, so we
   // do not need to check |symbol|.
-  return err_string_lookup(lib, reason, kOpenSSLReasonValues,
-                           kOpenSSLReasonValuesLen, kOpenSSLReasonStringData);
+  return err_string_lookup(lib, reason, bssl::kOpenSSLReasonValues,
+                           bssl::kOpenSSLReasonValuesLen,
+                           bssl::kOpenSSLReasonStringData);
 }
 
 const char *ERR_reason_error_string(uint32_t packed_error) {
