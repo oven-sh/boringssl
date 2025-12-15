@@ -169,10 +169,7 @@ int EVP_sha1_final_with_secret_suffix(SHA_CTX *ctx,
   // The bounds above imply |total_bits| fits in four bytes.
   size_t total_bits = ctx->Nl + (len << 3);
   uint8_t length_bytes[4];
-  length_bytes[0] = (uint8_t)(total_bits >> 24);
-  length_bytes[1] = (uint8_t)(total_bits >> 16);
-  length_bytes[2] = (uint8_t)(total_bits >> 8);
-  length_bytes[3] = (uint8_t)total_bits;
+  CRYPTO_store_u32_be(length_bytes, total_bits);
 
   // We now construct and process each expected block in constant-time.
   uint8_t block[SHA_CBLOCK] = {0};
@@ -264,10 +261,7 @@ int EVP_sha256_final_with_secret_suffix(SHA256_CTX *ctx,
   // The bounds above imply |total_bits| fits in four bytes.
   size_t total_bits = ctx->Nl + (len << 3);
   uint8_t length_bytes[4];
-  length_bytes[0] = (uint8_t)(total_bits >> 24);
-  length_bytes[1] = (uint8_t)(total_bits >> 16);
-  length_bytes[2] = (uint8_t)(total_bits >> 8);
-  length_bytes[3] = (uint8_t)total_bits;
+  CRYPTO_store_u32_be(length_bytes, total_bits);
 
   // We now construct and process each expected block in constant-time.
   uint8_t block[SHA256_CBLOCK] = {0};
