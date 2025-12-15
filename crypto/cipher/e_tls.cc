@@ -391,9 +391,10 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
   // Perform the MAC check and the padding check in constant-time. It should be
   // safe to simply perform the padding check first, but it would not be under a
   // different choice of MAC location on padding failure. See
-  // EVP_tls_cbc_remove_padding.
-  crypto_word_t good =
-      constant_time_eq_int(CRYPTO_memcmp(record_mac, mac, mac_len), 0);
+  // EVP_tls_cbc_remove_padding. The value barrier seems to be necessary to
+  // prevent a branch in Clang.
+  crypto_word_t good = value_barrier_w(
+      constant_time_eq_int(CRYPTO_memcmp(record_mac, mac, mac_len), 0));
   good &= padding_ok;
   if (!constant_time_declassify_w(good)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
