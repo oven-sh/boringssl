@@ -37,8 +37,8 @@ extern "C" {
 // with the padding removed or |in_len| if invalid.
 //
 // If the function returns one, it runs in time independent of the contents of
-// |in|. It is also guaranteed that |*out_len| >= |mac_size|, satisfying
-// |EVP_tls_cbc_copy_mac|'s precondition.
+// |in|. It is also guaranteed that, independent of |*out_padding_ok|, |mac_len|
+// <= |*out_len| <= |in_len|, satisfying |EVP_tls_cbc_copy_mac|'s precondition.
 int EVP_tls_cbc_remove_padding(crypto_word_t *out_padding_ok, size_t *out_len,
                                const uint8_t *in, size_t in_len,
                                size_t block_size, size_t mac_size);
@@ -89,7 +89,8 @@ OPENSSL_EXPORT int EVP_sha256_final_with_secret_suffix(
 //   iovecs_without_trailer: the section of the plaintext that does not include
 //     the trailer whose length is secret (typically the entire plaintext with
 //     an upper bound of padding and MAC size removed)
-//   trailer: the remaining portion of plaintext, MAC and padding
+//   trailer: a buffer, of public length, containing the remainder of the
+//     plaintext as a prefix.
 //   data_in_trailer_size: the secret, reported length of the data portion in
 //     |trailer| once the padding and MAC have been removed.
 //

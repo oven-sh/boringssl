@@ -149,8 +149,7 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
   // To allow for CBC mode which changes cipher length, |ad| doesn't include the
   // length for legacy ciphers.
   uint8_t ad_extra[2];
-  ad_extra[0] = (uint8_t)(in_len >> 8);
-  ad_extra[1] = (uint8_t)(in_len & 0xff);
+  CRYPTO_store_u16_be(ad_extra, static_cast<uint16_t>(in_len));
 
   // Compute the MAC. This must be first in case the operation is being done
   // in-place.
@@ -345,48 +344,47 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
   BSSL_CHECK(trailer.has_value());
 
   // Remove CBC padding. Code from here on is timing-sensitive with respect to
-  // |padding_ok| and |data_plus_mac_len| for CBC ciphers.
+  // |padding_ok|, |trailer_minus_padding|, and derived values.
   crypto_word_t padding_ok;
-  size_t reduced_trailer;
-  if (!EVP_tls_cbc_remove_padding(&padding_ok, &reduced_trailer,
+  size_t trailer_minus_padding;
+  if (!EVP_tls_cbc_remove_padding(&padding_ok, &trailer_minus_padding,
                                   trailer->data(), trailer->size(), block_size,
                                   mac_len)) {
     // Publicly invalid. This can be rejected in non-constant time.
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
-  declassify_assert(reduced_trailer >= mac_len);
-  size_t data_plus_mac_len = total + reduced_trailer - trailer->size();
-  size_t data_len = data_plus_mac_len - mac_len;
-  size_t data_in_trailer_len = reduced_trailer - mac_len;
 
-  // At this point, if the padding is valid, |trailer->first(reduced_trailer)|
-  // is the last bytes of plaintext and the MAC. Otherwise, it is still large
-  // enough to extract a MAC, but it will be irrelevant. Note that
-  // |reduced_trailer| is secret.
+  // If the padding is valid, |trailer->first(trailer_minus_padding)| is the
+  // last bytes of plaintext and the MAC. Otherwise, it is still large enough to
+  // extract a MAC, but it will be irrelevant. Note that |trailer_minus_padding|
+  // is secret.
+  declassify_assert(trailer_minus_padding >= mac_len);
+  size_t data_in_trailer_len = trailer_minus_padding - mac_len;
+  size_t max_data_in_trailer_len = trailer->size() - mac_len;
+  size_t data_len = total - trailer->size() + data_in_trailer_len;
 
   // To allow for CBC mode which changes cipher length, |ad_len| doesn't
   // include the length for legacy ciphers.
   uint8_t ad_extra[2];
-  ad_extra[0] = (uint8_t)(data_len >> 8);
-  ad_extra[1] = (uint8_t)(data_len & 0xff);
+  CRYPTO_store_u16_be(ad_extra, static_cast<uint16_t>(data_len));
 
   // Compute the MAC and extract the one in the record.
   uint8_t mac[EVP_MAX_MD_SIZE];
   size_t got_mac_len;
   assert(EVP_tls_cbc_record_digest_supported(tls_ctx->hmac_ctx->md));
-  if (!EVP_tls_cbc_digest_record(tls_ctx->hmac_ctx->md, mac, &got_mac_len,
-                                 ad_extra, aadvecs, iovecs_without_trailer,
-                                 *trailer, data_in_trailer_len,
-                                 tls_ctx->mac_key, tls_ctx->mac_key_len)) {
+  if (!EVP_tls_cbc_digest_record(
+          tls_ctx->hmac_ctx->md, mac, &got_mac_len, ad_extra, aadvecs,
+          iovecs_without_trailer, trailer->first(max_data_in_trailer_len),
+          data_in_trailer_len, tls_ctx->mac_key, tls_ctx->mac_key_len)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
   assert(got_mac_len == mac_len);
 
   uint8_t record_mac[EVP_MAX_MD_SIZE];
-  EVP_tls_cbc_copy_mac(record_mac, mac_len, trailer->data(), reduced_trailer,
-                       trailer->size());
+  EVP_tls_cbc_copy_mac(record_mac, mac_len, trailer->data(),
+                       trailer_minus_padding, trailer->size());
 
   // Perform the MAC check and the padding check in constant-time. It should be
   // safe to simply perform the padding check first, but it would not be under a
