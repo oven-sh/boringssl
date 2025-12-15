@@ -329,10 +329,6 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
   }
   assert(total == in_len);
 
-  for (const CRYPTO_IOVEC &iovec : iovecs) {
-    CONSTTIME_SECRET(iovec.out, iovec.len);
-  }
-
   const size_t mac_len = HMAC_size(tls_ctx->hmac_ctx);
 
   // Split the decrypted record into |iovecs_without_trailer| and |trailer|,
@@ -359,7 +355,7 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
-  assert(reduced_trailer >= mac_len);
+  declassify_assert(reduced_trailer >= mac_len);
   size_t data_plus_mac_len = total + reduced_trailer - trailer->size();
   size_t data_len = data_plus_mac_len - mac_len;
   size_t data_in_trailer_len = reduced_trailer - mac_len;
@@ -399,18 +395,16 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
   crypto_word_t good =
       constant_time_eq_int(CRYPTO_memcmp(record_mac, mac, mac_len), 0);
   good &= padding_ok;
-  CONSTTIME_DECLASSIFY(&good, sizeof(good));
-  if (!good) {
+  if (!constant_time_declassify_w(good)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
+  // End of timing-sensitive code.
   CONSTTIME_DECLASSIFY(&data_len, sizeof(data_len));
   for (const CRYPTO_IOVEC &iovec : iovecs) {
-    CONSTTIME_SECRET(iovec.out, iovec.len);
+    CONSTTIME_DECLASSIFY(iovec.out, iovec.len);
   }
-
-  // End of timing-sensitive code.
 
   *out_total_bytes = data_len;
   return 1;
