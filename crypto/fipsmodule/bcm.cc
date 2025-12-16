@@ -27,6 +27,7 @@
 #include <openssl/digest.h>
 #include <openssl/hmac.h>
 #include <openssl/sha2.h>
+#include <openssl/tls_prf.h>
 
 #include "../bcm_support.h"
 #include "../internal.h"
@@ -181,8 +182,8 @@ static void BORINGSSL_maybe_set_module_text_permissions(int permission) {}
 
 #endif  // !ASAN
 
-static void __attribute__((constructor)) BORINGSSL_bcm_power_on_self_test(
-    void) {
+static void
+    __attribute__((constructor)) BORINGSSL_bcm_power_on_self_test(void) {
 #if !defined(OPENSSL_ASAN)
   // Integrity tests cannot run under ASAN because it involves reading the full
   // .text section, which triggers the global-buffer overflow detection.

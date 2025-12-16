@@ -32,6 +32,7 @@
 #include <openssl/nid.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#include <openssl/tls_prf.h>
 
 #include "../../crypto/fipsmodule/bcm_interface.h"
 #include "../../crypto/fipsmodule/rand/internal.h"

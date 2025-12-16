@@ -45,6 +45,7 @@
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 #include <openssl/span.h>
+#include <openssl/tls_prf.h>
 
 #include "../../../../crypto/fipsmodule/bcm_interface.h"
 #include "../../../../crypto/fipsmodule/ec/internal.h"
@@ -2312,8 +2313,8 @@ static bool SLHDSASigGen(const Span<const uint8_t> args[],
   }
 
   std::vector<uint8_t> signature(SignatureBytes);
-  SignInternal(signature.data(), private_key.data(), nullptr, nullptr, 0, msg.data(),
-               msg.size(), entropy);
+  SignInternal(signature.data(), private_key.data(), nullptr, nullptr, 0,
+               msg.data(), msg.size(), entropy);
 
   return write_reply({Span<const uint8_t>(signature)});
 }

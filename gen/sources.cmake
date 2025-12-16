@@ -634,6 +634,7 @@ set(
   include/openssl/target.h
   include/openssl/thread.h
   include/openssl/time.h
+  include/openssl/tls_prf.h
   include/openssl/trust_token.h
   include/openssl/type_check.h
   include/openssl/x509.h

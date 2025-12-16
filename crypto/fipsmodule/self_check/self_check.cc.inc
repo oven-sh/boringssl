@@ -33,6 +33,7 @@
 #include <openssl/nid.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#include <openssl/tls_prf.h>
 
 #include "../../bcm_support.h"
 #include "../../internal.h"
