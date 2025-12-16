@@ -33,6 +33,8 @@
 #include "./internal.h"
 
 
+using namespace bssl;
+
 namespace {
 struct err_error_st {
   // file contains the filename where the error occurred.
@@ -449,9 +451,8 @@ static const char *err_reason_error_string(uint32_t packed_error, int symbol) {
 
   // Unlike OpenSSL, BoringSSL's reason strings already match symbol name, so we
   // do not need to check |symbol|.
-  return err_string_lookup(lib, reason, bssl::kOpenSSLReasonValues,
-                           bssl::kOpenSSLReasonValuesLen,
-                           bssl::kOpenSSLReasonStringData);
+  return err_string_lookup(lib, reason, kOpenSSLReasonValues,
+                           kOpenSSLReasonValuesLen, kOpenSSLReasonStringData);
 }
 
 const char *ERR_reason_error_string(uint32_t packed_error) {
@@ -746,12 +747,12 @@ void ERR_load_ERR_strings(void) {}
 
 void ERR_load_RAND_strings(void) {}
 
-struct err_save_state_st {
+struct bssl::err_save_state_st {
   struct err_error_st *errors;
   size_t num_errors;
 };
 
-void ERR_SAVE_STATE_free(ERR_SAVE_STATE *state) {
+void bssl::ERR_SAVE_STATE_free(ERR_SAVE_STATE *state) {
   if (state == nullptr) {
     return;
   }
@@ -762,7 +763,7 @@ void ERR_SAVE_STATE_free(ERR_SAVE_STATE *state) {
   free(state);
 }
 
-ERR_SAVE_STATE *ERR_save_state(void) {
+ERR_SAVE_STATE *bssl::ERR_save_state(void) {
   ERR_STATE *const state = err_get_state();
   if (state == nullptr || state->top == state->bottom) {
     return nullptr;
@@ -795,7 +796,7 @@ ERR_SAVE_STATE *ERR_save_state(void) {
   return ret;
 }
 
-void ERR_restore_state(const ERR_SAVE_STATE *state) {
+void bssl::ERR_restore_state(const ERR_SAVE_STATE *state) {
   if (state == nullptr || state->num_errors == 0) {
     ERR_clear_error();
     return;
