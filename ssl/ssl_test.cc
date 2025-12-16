@@ -8574,9 +8574,11 @@ TEST_F(QUICMethodTest, QuicCodePointDefault) {
   ASSERT_TRUE(CompleteHandshakesForQUIC());
 }
 
-extern "C" {
-int BORINGSSL_enum_c_type_test(void);
-}
+}  // namespace
+
+extern "C" int BORINGSSL_enum_c_type_test(void);
+
+namespace {
 
 TEST(SSLTest, EnumTypes) {
   EXPECT_EQ(sizeof(int), sizeof(ssl_private_key_result_t));
