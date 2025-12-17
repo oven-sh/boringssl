@@ -19,6 +19,7 @@
 
 #include <array>
 #include <optional>
+#include <tuple>
 
 #include <openssl/sha2.h>
 #include <openssl/span.h>
