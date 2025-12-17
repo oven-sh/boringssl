@@ -1,4 +1,5 @@
 .text
+.p2align 12
 .file 1 "inserted_by_delocate.c"
 .loc 1 1 0
 .globl BORINGSSL_bcm_text_start
@@ -41,29 +42,34 @@ foo:
 
 	// GOT load of synthesized symbol.
 // WAS adrp x0, :got:BORINGSSL_bcm_text_start
-	adr x0, .LBORINGSSL_bcm_text_start_local_target
+	adrp x0, .LBORINGSSL_bcm_text_start_local_target
+	add x0, x0, :lo12:.LBORINGSSL_bcm_text_start_local_target
 // WAS ldr x0, [x0, :got_lo12:BORINGSSL_bcm_text_start]
 
 	// Address load
 // WAS adrp x0, .Llocal_data
-	adr x0, .Llocal_data
+	adrp x0, .Llocal_data
+	add x0, x0, :lo12:.Llocal_data
 // WAS add x1, x0, :lo12:.Llocal_data
 	add	x1, x0, #0
 
 	// Address of local symbol with offset
 // WAS adrp x10, .Llocal_data2+16
-	adr x10, .Llocal_data2+16
+	adrp x10, .Llocal_data2+16
+	add x10, x10, :lo12:.Llocal_data2+16
 // WAS add x11, x10, :lo12:.Llocal_data2+16
 	add	x11, x10, #0
 
 	// Address load with no-op add instruction
 // WAS adrp x0, .Llocal_data
-	adr x0, .Llocal_data
+	adrp x0, .Llocal_data
+	add x0, x0, :lo12:.Llocal_data
 // WAS add x0, x0, :lo12:.Llocal_data
 
 	// Load from local symbol
 // WAS adrp x10, .Llocal_data2
-	adr x10, .Llocal_data2
+	adrp x10, .Llocal_data2
+	add x10, x10, :lo12:.Llocal_data2
 // WAS ldr q0, [x10, :lo12:.Llocal_data2]
 	ldr	q0, [x10]
 // WAS ldr x0, [x10, :lo12:.Llocal_data2]
@@ -83,7 +89,8 @@ foo:
 
 	// Load from local symbol with offset
 // WAS adrp x10, .Llocal_data2+16
-	adr x10, .Llocal_data2+16
+	adrp x10, .Llocal_data2+16
+	add x10, x10, :lo12:.Llocal_data2+16
 // WAS ldr q0, [x10, :lo12:.Llocal_data2+16]
 	ldr	q0, [x10]
 // WAS ldr x0, [x10, :lo12:.Llocal_data2+16]
