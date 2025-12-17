@@ -150,7 +150,7 @@ The script performs a number of other transformations which are worth noting but
 
 In order to actually implement the integrity test, a constructor function within the module calculates an HMAC from `module_start` to `module_end` using a fixed, all-zero key. It compares the result with the known-good value added (by the script) to the unhashed portion of the text segment. If they don't match, it calls `exit` in an infinite loop.
 
-Initially the known-good value will be incorrect. Another script (`inject_hash.go`) calculates the correct value from the assembled object and injects it back into the object.
+Initially the known-good value will be incorrect. Another script (`inject_hash.go`) calculates the correct value from the assembled object and injects it back into the object. When we calculate the correct value, we link `bcm.o` into a sample shared library to evaluate relocations first. Although the above process ensures that the module's text segment is the same every time it is linked, there may be some unevaluated relocations in `bcm.o`. The relocations will just be independent of anything else we link `bcm.o` into with.
 
 ![build process](./intcheck2.png)
 
