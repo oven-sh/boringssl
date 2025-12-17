@@ -19,6 +19,10 @@
 
 #include <openssl/base.h>
 #include <openssl/bytestring.h>
+#include <openssl/mem.h>
+#include <openssl/sha2.h>
+#include <openssl/span.h>
+
 #include "cert_error_params.h"
 #include "cert_errors.h"
 #include "common_cert_errors.h"
@@ -26,9 +30,6 @@
 #include "input.h"
 #include "merkle_tree.h"
 #include "name_constraints.h"
-#include "openssl/mem.h"
-#include "openssl/sha2.h"
-#include "openssl/span.h"
 #include "parse_certificate.h"
 #include "parse_values.h"
 #include "signature_algorithm.h"

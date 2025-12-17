@@ -23,11 +23,11 @@
 #include <gtest/gtest.h>
 #include <openssl/pki/verify.h>
 #include <openssl/pki/verify_error.h>
+#include <openssl/pool.h>
 #include <openssl/sha2.h>
 
 #include "encode_values.h"
 #include "merkle_tree.h"
-#include "openssl/pool.h"
 #include "parse_certificate.h"
 #include "parsed_certificate.h"
 #include "string_util.h"

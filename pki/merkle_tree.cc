@@ -19,7 +19,7 @@
 
 #include <openssl/mem.h>
 #include <openssl/span.h>
-#include "openssl/sha2.h"
+#include <openssl/sha2.h>
 
 BSSL_NAMESPACE_BEGIN
 

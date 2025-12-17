@@ -12,17 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "trust_store.h"
+
 #include <cassert>
 #include <cstring>
 #include <optional>
 
-#include "trust_store.h"
+#include <openssl/base.h>
+#include <openssl/bytestring.h>
+#include <openssl/mem.h>
+#include <openssl/pool.h>
 
 #include "merkle_tree.h"
-#include "openssl/base.h"
-#include "openssl/bytestring.h"
-#include "openssl/mem.h"
-#include "openssl/pool.h"
 #include "parse_certificate.h"
 #include "parsed_certificate.h"
 #include "string_util.h"

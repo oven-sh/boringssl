@@ -13,7 +13,8 @@
 // limitations under the License.
 
 #include "trust_store_in_memory.h"
-#include "openssl/span.h"
+
+#include <openssl/span.h>
 
 BSSL_NAMESPACE_BEGIN
 

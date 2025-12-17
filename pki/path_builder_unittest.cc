@@ -17,6 +17,12 @@
 #include <algorithm>
 #include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <openssl/pool.h>
+#include <openssl/pki/verify.h>
+
 #include "cert_error_params.h"
 #include "cert_issuer_source.h"
 #include "cert_issuer_source_static.h"
@@ -24,7 +30,6 @@
 #include "common_cert_errors.h"
 #include "input.h"
 #include "mock_signature_verify_cache.h"
-#include "openssl/pki/verify.h"
 #include "parsed_certificate.h"
 #include "simple_path_builder_delegate.h"
 #include "string_util.h"
@@ -33,10 +38,6 @@
 #include "trust_store_collection.h"
 #include "trust_store_in_memory.h"
 #include "verify_certificate_chain.h"
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include <openssl/pool.h>
 
 BSSL_NAMESPACE_BEGIN
 

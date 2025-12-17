@@ -23,11 +23,11 @@
 #include <openssl/base.h>
 #include <openssl/pki/verify_error.h>
 #include <openssl/sha2.h>
+#include <openssl/span.h>
 
 #include "cert_issuer_source.h"
 #include "certificate_policies.h"
 #include "common_cert_errors.h"
-#include "openssl/span.h"
 #include "parse_certificate.h"
 #include "parse_name.h"  // For CertDebugString.
 #include "parsed_certificate.h"

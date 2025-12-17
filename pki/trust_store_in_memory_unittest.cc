@@ -14,11 +14,14 @@
 
 #include "trust_store_in_memory.h"
 
-#include <gtest/gtest.h>
 #include <memory>
 #include <vector>
+
+#include <gtest/gtest.h>
+
+#include <openssl/span.h>
+
 #include "merkle_tree.h"
-#include "openssl/span.h"
 #include "test_helpers.h"
 #include "trust_store.h"
 

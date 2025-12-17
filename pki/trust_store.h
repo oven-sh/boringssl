@@ -20,10 +20,10 @@
 #include <optional>
 
 #include <openssl/base.h>
+#include <openssl/sha2.h>
 
 #include "cert_issuer_source.h"
 #include "merkle_tree.h"
-#include "openssl/sha2.h"
 #include "parsed_certificate.h"
 
 BSSL_NAMESPACE_BEGIN
