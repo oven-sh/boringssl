@@ -34,7 +34,7 @@ import (
 	"boringssl.googlesource.com/boringssl.git/util/fipstools/fipscommon"
 )
 
-func do(outPath, oInput string, arInput string) error {
+func do(outPath, oInput, arInput, hashInput string) error {
 	var objectBytes []byte
 	var isStatic bool
 	var perm os.FileMode
@@ -85,7 +85,18 @@ func do(outPath, oInput string, arInput string) error {
 		return fmt.Errorf("exactly one of -in-archive or -in-object is required")
 	}
 
-	object, err := elf.NewFile(bytes.NewReader(objectBytes))
+	// Hash a different object if specified.
+	var err error
+	hashBytes := objectBytes
+	if len(hashInput) > 0 {
+		hashBytes, err = os.ReadFile(hashInput)
+		if err != nil {
+			return err
+		}
+		isStatic = strings.HasSuffix(hashInput, ".o")
+	}
+
+	object, err := elf.NewFile(bytes.NewReader(hashBytes))
 	if err != nil {
 		return errors.New("failed to parse object: " + err.Error())
 	}
@@ -171,10 +182,6 @@ func do(outPath, oInput string, arInput string) error {
 		return errors.New("could not find .text module boundaries in object")
 	}
 
-	if (rodataStart == nil) != (rodataSection == nil) {
-		return errors.New("rodata start marker inconsistent with rodata section presence")
-	}
-
 	if (rodataStart != nil) != (rodataEnd != nil) {
 		return errors.New("rodata marker presence inconsistent")
 	}
@@ -183,7 +190,10 @@ func do(outPath, oInput string, arInput string) error {
 		return fmt.Errorf("invalid module .text boundaries: start: %x, end: %x, max: %x", *textStart, *textEnd, max)
 	}
 
-	if rodataSection != nil {
+	if rodataStart != nil {
+		if rodataSection == nil {
+			return errors.New("rodata start marker inconsistent with rodata section presence")
+		}
 		if max := rodataSection.Size; *rodataStart > max || *rodataStart > *rodataEnd || *rodataEnd > max {
 			return fmt.Errorf("invalid module .rodata boundaries: start: %x, end: %x, max: %x", *rodataStart, *rodataEnd, max)
 		}
@@ -202,7 +212,7 @@ func do(outPath, oInput string, arInput string) error {
 
 	// Maybe extract the module's read-only data too
 	var moduleROData []byte
-	if rodataSection != nil {
+	if rodataStart != nil {
 		rodata := rodataSection.Open()
 		if _, err := rodata.Seek(int64(*rodataStart), 0); err != nil {
 			return errors.New("failed to seek to module start in .rodata: " + err.Error())
@@ -253,11 +263,12 @@ func do(outPath, oInput string, arInput string) error {
 func main() {
 	arInput := flag.String("in-archive", "", "Path to a .a file")
 	oInput := flag.String("in-object", "", "Path to a .o file")
+	hashInput := flag.String("in-hash", "", "Path to an input object file to hash instead")
 	outPath := flag.String("o", "", "Path to output object")
 
 	flag.Parse()
 
-	if err := do(*outPath, *oInput, *arInput); err != nil {
+	if err := do(*outPath, *oInput, *arInput, *hashInput); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
