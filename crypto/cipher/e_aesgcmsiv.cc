@@ -342,9 +342,8 @@ void aead_aes_gcm_siv_kdf(int is_128_bit,
 
 int aead_aes_gcm_siv_asm_sealv(const EVP_AEAD_CTX *ctx,
                                bssl::Span<const CRYPTO_IOVEC> iovecs,
-                               uint8_t *out_tag, size_t *out_tag_len,
-                               size_t max_out_tag_len, const uint8_t *nonce,
-                               size_t nonce_len,
+                               bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+                               bssl::Span<const uint8_t> nonce,
                                bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_gcm_siv_asm_ctx *gcm_siv_ctx = asm_ctx_from_ctx(ctx);
   const size_t in_len = bssl::iovec::TotalLength(iovecs);
@@ -357,12 +356,12 @@ int aead_aes_gcm_siv_asm_sealv(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (max_out_tag_len < EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
+  if (out_tag.size() < EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -370,11 +369,11 @@ int aead_aes_gcm_siv_asm_sealv(const EVP_AEAD_CTX *ctx,
   alignas(16) uint64_t record_auth_key[2];
   alignas(16) uint64_t record_enc_key[4];
   aead_aes_gcm_siv_kdf(gcm_siv_ctx->is_128_bit, gcm_siv_ctx, record_auth_key,
-                       record_enc_key, nonce);
+                       record_enc_key, nonce.data());
 
   alignas(16) uint8_t tag[16] = {0};
   gcm_siv_asm_polyval(tag, iovecs, aadvecs, (const uint8_t *)record_auth_key,
-                      nonce);
+                      nonce.data());
 
   struct aead_aes_gcm_siv_asm_ctx enc_key_expanded;
 
@@ -458,7 +457,7 @@ int aead_aes_gcm_siv_asm_sealv(const EVP_AEAD_CTX *ctx,
         });
   }
 
-  OPENSSL_memcpy(out_tag, tag, sizeof(tag));
+  CopyToPrefix(tag, out_tag);
   *out_tag_len = EVP_AEAD_AES_GCM_SIV_TAG_LEN;
 
   return 1;
@@ -466,9 +465,8 @@ int aead_aes_gcm_siv_asm_sealv(const EVP_AEAD_CTX *ctx,
 
 int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
                                         bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                        const uint8_t *nonce, size_t nonce_len,
-                                        const uint8_t *in_tag,
-                                        size_t in_tag_len,
+                                        bssl::Span<const uint8_t> nonce,
+                                        bssl::Span<const uint8_t> in_tag,
                                         bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const size_t ad_len = bssl::iovec::TotalLength(aadvecs);
   const uint64_t ad_len_64 = ad_len;
@@ -480,12 +478,12 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
   const size_t in_len = bssl::iovec::TotalLength(iovecs);
   const uint64_t in_len_64 = in_len;
   if (in_len_64 > UINT64_C(1) << 36 ||
-      in_tag_len != EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
+      in_tag.size() != EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -495,7 +493,7 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
   alignas(16) uint64_t record_auth_key[2];
   alignas(16) uint64_t record_enc_key[4];
   aead_aes_gcm_siv_kdf(gcm_siv_ctx->is_128_bit, gcm_siv_ctx, record_auth_key,
-                       record_enc_key, nonce);
+                       record_enc_key, nonce.data());
 
   struct aead_aes_gcm_siv_asm_ctx expanded_key;
   if (gcm_siv_ctx->is_128_bit) {
@@ -545,7 +543,7 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
         // aes[128|256]gcmsiv_dec needs access to the claimed tag. So it's put
         // into its scratch space. The function may clobber the claimed tag, so
         // this is copied before each call.
-        OPENSSL_memcpy(calculated_tag + 16, in_tag,
+        OPENSSL_memcpy(calculated_tag + 16, in_tag.data(),
                        EVP_AEAD_AES_GCM_SIV_TAG_LEN);
         inc_counter(calculated_tag + 16, static_cast<uint32_t>(blocks));
         if (gcm_siv_ctx->is_128_bit) {
@@ -562,7 +560,7 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
           // aes[128|256]gcmsiv_dec needs access to the claimed tag. So it's put
           // into its scratch space. The function may clobber the claimed tag,
           // so this is copied before each call.
-          OPENSSL_memcpy(calculated_tag + 16, in_tag,
+          OPENSSL_memcpy(calculated_tag + 16, in_tag.data(),
                          EVP_AEAD_AES_GCM_SIV_TAG_LEN);
           inc_counter(calculated_tag + 16, static_cast<uint32_t>(blocks));
           if (gcm_siv_ctx->is_128_bit) {
@@ -578,8 +576,8 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
         }
         if (len != 0) {
           aead_aes_gcm_siv_asm_crypt_last_block(
-              gcm_siv_ctx->is_128_bit, /*last_block_out=*/out,
-              /*last_block_in=*/in, /*total_in_len=*/in_len, in_tag,
+              gcm_siv_ctx->is_128_bit, /*out_last_block=*/out,
+              /*in_last_block=*/in, /*total_in_len=*/in_len, in_tag.data(),
               &expanded_key);
           uint8_t pad_buf[AES_BLOCK_SIZE];
           OPENSSL_memcpy(pad_buf, out, len);
@@ -608,8 +606,8 @@ int aead_aes_gcm_siv_asm_openv_detached(const EVP_AEAD_CTX *ctx,
     aes256gcmsiv_ecb_enc_block(calculated_tag, calculated_tag, &expanded_key);
   }
 
-  if (CRYPTO_memcmp(calculated_tag, in_tag, EVP_AEAD_AES_GCM_SIV_TAG_LEN) !=
-      0) {
+  if (CRYPTO_memcmp(calculated_tag, in_tag.data(),
+                    EVP_AEAD_AES_GCM_SIV_TAG_LEN) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
@@ -919,9 +917,8 @@ void gcm_siv_keys(const struct aead_aes_gcm_siv_ctx *gcm_siv_ctx,
 
 int aead_aes_gcm_siv_sealv(const EVP_AEAD_CTX *ctx,
                            bssl::Span<const CRYPTO_IOVEC> iovecs,
-                           uint8_t *out_tag, size_t *out_tag_len,
-                           size_t max_out_tag_len, const uint8_t *nonce,
-                           size_t nonce_len,
+                           bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+                           bssl::Span<const uint8_t> nonce,
                            bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_gcm_siv_ctx *gcm_siv_ctx =
       (struct aead_aes_gcm_siv_ctx *)&ctx->state;
@@ -936,26 +933,26 @@ int aead_aes_gcm_siv_sealv(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (max_out_tag_len < EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
+  if (out_tag.size() < EVP_AEAD_AES_GCM_SIV_TAG_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
   struct gcm_siv_record_keys keys;
-  gcm_siv_keys(gcm_siv_ctx, &keys, nonce);
+  gcm_siv_keys(gcm_siv_ctx, &keys, nonce.data());
 
-  uint8_t tag[16];
-  gcm_siv_polyval(tag, iovecs, true, aadvecs, keys.auth_key, nonce);
+  uint8_t tag[EVP_AEAD_AES_GCM_SIV_TAG_LEN];
+  gcm_siv_polyval(tag, iovecs, true, aadvecs, keys.auth_key, nonce.data());
   keys.enc_block(tag, tag, &keys.enc_key.ks);
 
   gcm_siv_crypt(iovecs, tag, keys.enc_block, &keys.enc_key.ks);
 
-  OPENSSL_memcpy(out_tag, tag, EVP_AEAD_AES_GCM_SIV_TAG_LEN);
+  CopyToPrefix(tag, out_tag);
   *out_tag_len = EVP_AEAD_AES_GCM_SIV_TAG_LEN;
 
   return 1;
@@ -963,8 +960,8 @@ int aead_aes_gcm_siv_sealv(const EVP_AEAD_CTX *ctx,
 
 int aead_aes_gcm_siv_openv_detached(const EVP_AEAD_CTX *ctx,
                                     bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                    const uint8_t *nonce, size_t nonce_len,
-                                    const uint8_t *in_tag, size_t in_tag_len,
+                                    bssl::Span<const uint8_t> nonce,
+                                    bssl::Span<const uint8_t> in_tag,
                                     bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const uint64_t ad_len_64 = bssl::iovec::TotalLength(aadvecs);
   if (ad_len_64 >= (UINT64_C(1) << 61)) {
@@ -973,13 +970,13 @@ int aead_aes_gcm_siv_openv_detached(const EVP_AEAD_CTX *ctx,
   }
 
   const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
-  if (in_tag_len != EVP_AEAD_AES_GCM_SIV_TAG_LEN ||
+  if (in_tag.size() != EVP_AEAD_AES_GCM_SIV_TAG_LEN ||
       in_len_64 > (UINT64_C(1) << 36) + AES_BLOCK_SIZE) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_GCM_SIV_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -988,15 +985,16 @@ int aead_aes_gcm_siv_openv_detached(const EVP_AEAD_CTX *ctx,
       (struct aead_aes_gcm_siv_ctx *)&ctx->state;
 
   struct gcm_siv_record_keys keys;
-  gcm_siv_keys(gcm_siv_ctx, &keys, nonce);
+  gcm_siv_keys(gcm_siv_ctx, &keys, nonce.data());
 
-  gcm_siv_crypt(iovecs, in_tag, keys.enc_block, &keys.enc_key.ks);
+  gcm_siv_crypt(iovecs, in_tag.data(), keys.enc_block, &keys.enc_key.ks);
 
   uint8_t expected_tag[EVP_AEAD_AES_GCM_SIV_TAG_LEN];
-  gcm_siv_polyval(expected_tag, iovecs, false, aadvecs, keys.auth_key, nonce);
+  gcm_siv_polyval(expected_tag, iovecs, false, aadvecs, keys.auth_key,
+                  nonce.data());
   keys.enc_block(expected_tag, expected_tag, &keys.enc_key.ks);
 
-  if (CRYPTO_memcmp(expected_tag, in_tag, sizeof(expected_tag)) != 0) {
+  if (CRYPTO_memcmp(expected_tag, in_tag.data(), sizeof(expected_tag)) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }

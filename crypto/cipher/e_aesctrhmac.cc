@@ -175,9 +175,8 @@ static void aead_aes_ctr_hmac_sha256_crypt(
 
 static int aead_aes_ctr_hmac_sha256_sealv(
     const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    uint8_t *out_tag, size_t *out_tag_len, size_t max_out_tag_len,
-    const uint8_t *nonce, size_t nonce_len,
-    bssl::Span<const CRYPTO_IVEC> aadvecs) {
+    bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+    bssl::Span<const uint8_t> nonce, bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_ctr_hmac_sha256_ctx *aes_ctx =
       (struct aead_aes_ctr_hmac_sha256_ctx *)&ctx->state;
   const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
@@ -188,23 +187,23 @@ static int aead_aes_ctr_hmac_sha256_sealv(
     return 0;
   }
 
-  if (max_out_tag_len < ctx->tag_len) {
+  if (out_tag.size() < ctx->tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_CTR_HMAC_SHA256_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_CTR_HMAC_SHA256_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
-  aead_aes_ctr_hmac_sha256_crypt(aes_ctx, iovecs, nonce);
+  aead_aes_ctr_hmac_sha256_crypt(aes_ctx, iovecs, nonce.data());
 
   uint8_t hmac_result[SHA256_DIGEST_LENGTH];
   hmac_calculate(hmac_result, &aes_ctx->inner_init_state,
-                 &aes_ctx->outer_init_state, aadvecs, nonce, iovecs,
+                 &aes_ctx->outer_init_state, aadvecs, nonce.data(), iovecs,
                  /*encrypt=*/true);
-  OPENSSL_memcpy(out_tag, hmac_result, ctx->tag_len);
+  CopyToPrefix(bssl::Span(hmac_result).first(ctx->tag_len), out_tag);
   *out_tag_len = ctx->tag_len;
 
   return 1;
@@ -212,31 +211,31 @@ static int aead_aes_ctr_hmac_sha256_sealv(
 
 static int aead_aes_ctr_hmac_sha256_openv_detached(
     const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    const uint8_t *nonce, size_t nonce_len, const uint8_t *in_tag,
-    size_t in_tag_len, bssl::Span<const CRYPTO_IVEC> aadvecs) {
+    bssl::Span<const uint8_t> nonce, bssl::Span<const uint8_t> in_tag,
+    bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_ctr_hmac_sha256_ctx *aes_ctx =
       (struct aead_aes_ctr_hmac_sha256_ctx *)&ctx->state;
 
-  if (in_tag_len != ctx->tag_len) {
+  if (in_tag.size() != ctx->tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_AES_CTR_HMAC_SHA256_NONCE_LEN) {
+  if (nonce.size() != EVP_AEAD_AES_CTR_HMAC_SHA256_NONCE_LEN) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
   uint8_t hmac_result[SHA256_DIGEST_LENGTH];
   hmac_calculate(hmac_result, &aes_ctx->inner_init_state,
-                 &aes_ctx->outer_init_state, aadvecs, nonce, iovecs,
+                 &aes_ctx->outer_init_state, aadvecs, nonce.data(), iovecs,
                  /*encrypt=*/false);
-  if (CRYPTO_memcmp(hmac_result, in_tag, ctx->tag_len) != 0) {
+  if (CRYPTO_memcmp(hmac_result, in_tag.data(), ctx->tag_len) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
-  aead_aes_ctr_hmac_sha256_crypt(aes_ctx, iovecs, nonce);
+  aead_aes_ctr_hmac_sha256_crypt(aes_ctx, iovecs, nonce.data());
 
   return 1;
 }

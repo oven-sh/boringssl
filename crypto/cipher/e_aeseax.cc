@@ -217,19 +217,18 @@ static void aes_ctr(const struct aead_aes_eax_ctx *aes_ctx,
 
 static int aead_aes_eax_sealv(const EVP_AEAD_CTX *ctx,
                               bssl::Span<const CRYPTO_IOVEC> iovecs,
-                              uint8_t *out_tag, size_t *out_tag_len,
-                              size_t max_out_tag_len, const uint8_t *nonce,
-                              size_t nonce_len,
+                              bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+                              bssl::Span<const uint8_t> nonce,
                               bssl::Span<const CRYPTO_IVEC> aadvecs) {
   // We use the full 128 bits of the nonce as counter, so no need to check the
   // plaintext size.
 
-  if (max_out_tag_len < ctx->tag_len) {
+  if (out_tag.size() < ctx->tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != 12 && nonce_len != 16) {
+  if (nonce.size() != 12 && nonce.size() != 16) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -240,8 +239,8 @@ static int aead_aes_eax_sealv(const EVP_AEAD_CTX *ctx,
   // N <- OMAC(0 || nonce)
   uint8_t n[AES_BLOCK_SIZE];
   CRYPTO_IVEC noncevec[1];
-  noncevec[0].in = nonce;
-  noncevec[0].len = nonce_len;
+  noncevec[0].in = nonce.data();
+  noncevec[0].len = nonce.size();
   omac_with_tag(aes_ctx, n, bssl::Span<const CRYPTO_IVEC>(noncevec), /*tag=*/0);
   // H <- OMAC(1 || ad)
   uint8_t h[AES_BLOCK_SIZE];
@@ -251,10 +250,10 @@ static int aead_aes_eax_sealv(const EVP_AEAD_CTX *ctx,
   aes_ctr(aes_ctx, iovecs, n);
 
   // MAC <- OMAC(2 || C)
-  omac_with_tag_iovec_out(aes_ctx, out_tag, iovecs, /*tag=*/2);
+  omac_with_tag_iovec_out(aes_ctx, out_tag.data(), iovecs, /*tag=*/2);
   // MAC <- N ^ C ^ H
-  CRYPTO_xor16(out_tag, n, out_tag);
-  CRYPTO_xor16(out_tag, h, out_tag);
+  CRYPTO_xor16(out_tag.data(), n, out_tag.data());
+  CRYPTO_xor16(out_tag.data(), h, out_tag.data());
 
   *out_tag_len = ctx->tag_len;
   return 1;
@@ -262,8 +261,8 @@ static int aead_aes_eax_sealv(const EVP_AEAD_CTX *ctx,
 
 static int aead_aes_eax_openv_detached(const EVP_AEAD_CTX *ctx,
                                        bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                       const uint8_t *nonce, size_t nonce_len,
-                                       const uint8_t *in_tag, size_t in_tag_len,
+                                       bssl::Span<const uint8_t> nonce,
+                                       bssl::Span<const uint8_t> in_tag,
                                        bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const uint64_t ad_len_64 = bssl::iovec::TotalLength(aadvecs);
   if (ad_len_64 >= (UINT64_C(1) << 61)) {
@@ -272,13 +271,13 @@ static int aead_aes_eax_openv_detached(const EVP_AEAD_CTX *ctx,
   }
 
   const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
-  if (in_tag_len != EVP_AEAD_AES_EAX_TAG_LEN ||
+  if (in_tag.size() != EVP_AEAD_AES_EAX_TAG_LEN ||
       in_len_64 > (UINT64_C(1) << 36) + AES_BLOCK_SIZE) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
-  if (nonce_len != 12 && nonce_len != 16) {
+  if (nonce.size() != 12 && nonce.size() != 16) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -289,8 +288,8 @@ static int aead_aes_eax_openv_detached(const EVP_AEAD_CTX *ctx,
   // N <- OMAC(0 || nonce)
   uint8_t n[AES_BLOCK_SIZE];
   CRYPTO_IVEC noncevec[1];
-  noncevec[0].in = nonce;
-  noncevec[0].len = nonce_len;
+  noncevec[0].in = nonce.data();
+  noncevec[0].len = nonce.size();
   omac_with_tag(aes_ctx, n, bssl::Span<const CRYPTO_IVEC>(noncevec),
                 /*tag=*/0);
   // H <- OMAC(1 || ad)
@@ -304,7 +303,7 @@ static int aead_aes_eax_openv_detached(const EVP_AEAD_CTX *ctx,
   CRYPTO_xor16(mac, n, mac);
   CRYPTO_xor16(mac, h, mac);
 
-  if (CRYPTO_memcmp(mac, in_tag, in_tag_len) != 0) {
+  if (CRYPTO_memcmp(mac, in_tag.data(), in_tag.size()) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }

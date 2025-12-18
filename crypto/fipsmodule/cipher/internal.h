@@ -57,18 +57,18 @@ struct evp_aead_st {
   // - openv_detached + sealv: fixed tag length AEAD.
 
   int (*openv)(const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-               size_t *out_total_bytes, const uint8_t *nonce, size_t nonce_len,
+               size_t *out_total_bytes, bssl::Span<const uint8_t> nonce,
                bssl::Span<const CRYPTO_IVEC> aadvecs);
 
   int (*sealv)(const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-               uint8_t *out_tag, size_t *out_tag_len, size_t max_out_tag_len,
-               const uint8_t *nonce, size_t nonce_len,
+               bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+               bssl::Span<const uint8_t> nonce,
                bssl::Span<const CRYPTO_IVEC> aadvecs);
 
   int (*openv_detached)(const EVP_AEAD_CTX *ctx,
                         bssl::Span<const CRYPTO_IOVEC> iovecs,
-                        const uint8_t *nonce, size_t nonce_len,
-                        const uint8_t *in_tag, size_t in_tag_len,
+                        bssl::Span<const uint8_t> nonce,
+                        bssl::Span<const uint8_t> in_tag,
                         bssl::Span<const CRYPTO_IVEC> aadvecs);
 
   int (*get_iv)(const EVP_AEAD_CTX *ctx, const uint8_t **out_iv,

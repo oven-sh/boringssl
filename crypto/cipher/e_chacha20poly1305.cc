@@ -112,15 +112,18 @@ static void calc_tag_post(poly1305_state *ctx, uint8_t tag[POLY1305_TAG_LEN],
   CRYPTO_poly1305_finish(ctx, tag);
 }
 
-static int chacha20_poly1305_sealv(
-    const uint8_t *key, bssl::Span<const CRYPTO_IOVEC> iovecs, uint8_t *out_tag,
-    size_t *out_tag_len, size_t max_out_tag_len, const uint8_t *nonce,
-    size_t nonce_len, bssl::Span<const CRYPTO_IVEC> aadvecs, size_t tag_len) {
-  if (max_out_tag_len < tag_len) {
+static int chacha20_poly1305_sealv(const uint8_t *key,
+                                   bssl::Span<const CRYPTO_IOVEC> iovecs,
+                                   bssl::Span<uint8_t> out_tag,
+                                   size_t *out_tag_len,
+                                   bssl::Span<const uint8_t> nonce,
+                                   bssl::Span<const CRYPTO_IVEC> aadvecs,
+                                   size_t tag_len) {
+  if (out_tag.size() < tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
-  if (nonce_len != 12) {
+  if (nonce.size() != 12) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
@@ -142,7 +145,7 @@ static int chacha20_poly1305_sealv(
       aadvecs.size() <= 1) {
     OPENSSL_memcpy(data.in.key, key, 32);
     data.in.counter = 0;
-    OPENSSL_memcpy(data.in.nonce, nonce, 12);
+    CopySpan(nonce, data.in.nonce);
     if (iovecs.size() >= 2) {
       // |chacha20_poly1305_seal| only supports one extra input and expects it
       // to have been encrypted ahead of time. (Historically it was only used
@@ -155,7 +158,7 @@ static int chacha20_poly1305_sealv(
       if (offset != 0) {
         uint8_t block[kChaChaBlockSize];
         memset(block, 0, sizeof(block));
-        CRYPTO_chacha_20(block, block, sizeof(block), key, nonce,
+        CRYPTO_chacha_20(block, block, sizeof(block), key, nonce.data(),
                          block_counter);
         for (size_t i = offset; i < sizeof(block) && done < iovecs[1].len;
              i++, done++) {
@@ -165,7 +168,8 @@ static int chacha20_poly1305_sealv(
       }
       if (done < iovecs[1].len) {
         CRYPTO_chacha_20(iovecs[1].out + done, iovecs[1].in + done,
-                         iovecs[1].len - done, key, nonce, block_counter);
+                         iovecs[1].len - done, key, nonce.data(),
+                         block_counter);
       }
       // TODO(crbug.com/383343306): Support more than 1 extra ciphertext.
       data.in.extra_ciphertext = iovecs[1].out;
@@ -181,7 +185,7 @@ static int chacha20_poly1305_sealv(
                            aadvecs.size() >= 1 ? aadvecs[0].len : 0, &data);
   } else {
     poly1305_state ctx;
-    size_t ad_len = calc_tag_pre(&ctx, key, nonce, aadvecs);
+    size_t ad_len = calc_tag_pre(&ctx, key, nonce.data(), aadvecs);
 
     size_t ciphertext_total = 0;
     size_t block = 1;
@@ -190,7 +194,7 @@ static int chacha20_poly1305_sealv(
         [&](const uint8_t *in, uint8_t *out, size_t len) {
           // TODO(crbug.com/383343306): Maybe just provide asm version of this?
           // Here, len is always a multiple of 64.
-          CRYPTO_chacha_20(out, in, len, key, nonce, block);
+          CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);
           CRYPTO_poly1305_update(&ctx, out, len);
           ciphertext_total += len;
           block += len / 64;
@@ -199,7 +203,7 @@ static int chacha20_poly1305_sealv(
         [&](const uint8_t *in, uint8_t *out, size_t len) {
           // Here, len may be anything. If an asm version can't handle that,
           // it will be worth splitting off multiples of 64 here.
-          CRYPTO_chacha_20(out, in, len, key, nonce, block);
+          CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);
           CRYPTO_poly1305_update(&ctx, out, len);
           ciphertext_total += len;
           return true;
@@ -208,59 +212,56 @@ static int chacha20_poly1305_sealv(
     calc_tag_post(&ctx, data.out.tag, ciphertext_total, ad_len);
   }
 
-  OPENSSL_memcpy(out_tag, data.out.tag, tag_len);
+  CopyToPrefix(bssl::Span(data.out.tag).first(tag_len), out_tag);
   *out_tag_len = tag_len;
   return 1;
 }
 
 static int aead_chacha20_poly1305_sealv(const EVP_AEAD_CTX *ctx,
                                         bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                        uint8_t *out_tag, size_t *out_tag_len,
-                                        size_t max_out_tag_len,
-                                        const uint8_t *nonce, size_t nonce_len,
+                                        bssl::Span<uint8_t> out_tag,
+                                        size_t *out_tag_len,
+                                        bssl::Span<const uint8_t> nonce,
                                         bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_chacha20_poly1305_ctx *c20_ctx =
       (struct aead_chacha20_poly1305_ctx *)&ctx->state;
 
   return chacha20_poly1305_sealv(c20_ctx->key, iovecs, out_tag, out_tag_len,
-                                 max_out_tag_len, nonce, nonce_len, aadvecs,
-                                 ctx->tag_len);
+                                 nonce, aadvecs, ctx->tag_len);
 }
 
 static int aead_xchacha20_poly1305_sealv(
     const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    uint8_t *out_tag, size_t *out_tag_len, size_t max_out_tag_len,
-    const uint8_t *nonce, size_t nonce_len,
-    bssl::Span<const CRYPTO_IVEC> aadvecs) {
+    bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+    bssl::Span<const uint8_t> nonce, bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_chacha20_poly1305_ctx *c20_ctx =
       (struct aead_chacha20_poly1305_ctx *)&ctx->state;
 
-  if (nonce_len != 24) {
+  if (nonce.size() != 24) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
   alignas(4) uint8_t derived_key[32];
   alignas(4) uint8_t derived_nonce[12];
-  CRYPTO_hchacha20(derived_key, c20_ctx->key, nonce);
+  CRYPTO_hchacha20(derived_key, c20_ctx->key, nonce.data());
   OPENSSL_memset(derived_nonce, 0, 4);
   OPENSSL_memcpy(&derived_nonce[4], &nonce[16], 8);
 
   return chacha20_poly1305_sealv(derived_key, iovecs, out_tag, out_tag_len,
-                                 max_out_tag_len, derived_nonce,
-                                 sizeof(derived_nonce), aadvecs, ctx->tag_len);
+                                 derived_nonce, aadvecs, ctx->tag_len);
 }
 
 static int chacha20_poly1305_openv_detached(
     const uint8_t *key, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    const uint8_t *nonce, size_t nonce_len, const uint8_t *in_tag,
-    size_t in_tag_len, bssl::Span<const CRYPTO_IVEC> aadvecs, size_t tag_len) {
-  if (nonce_len != 12) {
+    bssl::Span<const uint8_t> nonce, bssl::Span<const uint8_t> in_tag,
+    bssl::Span<const CRYPTO_IVEC> aadvecs, size_t tag_len) {
+  if (nonce.size() != 12) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
-  if (in_tag_len != tag_len) {
+  if (in_tag.size() != tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
@@ -283,7 +284,7 @@ static int chacha20_poly1305_openv_detached(
     // TODO(crbug.com/383343306): Support more than 1 ciphertext segment.
     OPENSSL_memcpy(data.in.key, key, 32);
     data.in.counter = 0;
-    OPENSSL_memcpy(data.in.nonce, nonce, 12);
+    CopySpan(nonce, data.in.nonce);
     chacha20_poly1305_open(iovecs.size() >= 1 ? iovecs[0].out : nullptr,
                            iovecs.size() >= 1 ? iovecs[0].in : nullptr,
                            iovecs.size() >= 1 ? iovecs[0].len : 0,
@@ -291,7 +292,7 @@ static int chacha20_poly1305_openv_detached(
                            aadvecs.size() >= 1 ? aadvecs[0].len : 0, &data);
   } else {
     poly1305_state ctx;
-    size_t ad_len = calc_tag_pre(&ctx, key, nonce, aadvecs);
+    size_t ad_len = calc_tag_pre(&ctx, key, nonce.data(), aadvecs);
 
     size_t ciphertext_total = 0;
     size_t block = 1;
@@ -301,7 +302,7 @@ static int chacha20_poly1305_openv_detached(
           // TODO(crbug.com/383343306): Maybe just provide asm version of this?
           // Here, len is always a multiple of 64.
           CRYPTO_poly1305_update(&ctx, in, len);
-          CRYPTO_chacha_20(out, in, len, key, nonce, block);
+          CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);
           ciphertext_total += len;
           block += len / 64;
           return true;
@@ -310,7 +311,7 @@ static int chacha20_poly1305_openv_detached(
           // Here, len may be anything. If an asm version can't handle that,
           // it will be worth splitting off multiples of 64 here.
           CRYPTO_poly1305_update(&ctx, in, len);
-          CRYPTO_chacha_20(out, in, len, key, nonce, block);
+          CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);
           ciphertext_total += len;
           return true;
         });
@@ -318,7 +319,7 @@ static int chacha20_poly1305_openv_detached(
     calc_tag_post(&ctx, data.out.tag, ciphertext_total, ad_len);
   }
 
-  if (CRYPTO_memcmp(data.out.tag, in_tag, tag_len) != 0) {
+  if (CRYPTO_memcmp(data.out.tag, in_tag.data(), tag_len) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
@@ -328,37 +329,35 @@ static int chacha20_poly1305_openv_detached(
 
 static int aead_chacha20_poly1305_openv_detached(
     const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    const uint8_t *nonce, size_t nonce_len, const uint8_t *in_tag,
-    size_t in_tag_len, bssl::Span<const CRYPTO_IVEC> aadvecs) {
+    bssl::Span<const uint8_t> nonce, bssl::Span<const uint8_t> in_tag,
+    bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_chacha20_poly1305_ctx *c20_ctx =
       (struct aead_chacha20_poly1305_ctx *)&ctx->state;
 
-  return chacha20_poly1305_openv_detached(c20_ctx->key, iovecs, nonce,
-                                          nonce_len, in_tag, in_tag_len,
+  return chacha20_poly1305_openv_detached(c20_ctx->key, iovecs, nonce, in_tag,
                                           aadvecs, ctx->tag_len);
 }
 
 static int aead_xchacha20_poly1305_openv_detached(
     const EVP_AEAD_CTX *ctx, bssl::Span<const CRYPTO_IOVEC> iovecs,
-    const uint8_t *nonce, size_t nonce_len, const uint8_t *in_tag,
-    size_t in_tag_len, bssl::Span<const CRYPTO_IVEC> aadvecs) {
+    bssl::Span<const uint8_t> nonce, bssl::Span<const uint8_t> in_tag,
+    bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_chacha20_poly1305_ctx *c20_ctx =
       (struct aead_chacha20_poly1305_ctx *)&ctx->state;
 
-  if (nonce_len != 24) {
+  if (nonce.size() != 24) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_UNSUPPORTED_NONCE_SIZE);
     return 0;
   }
 
   alignas(4) uint8_t derived_key[32];
   alignas(4) uint8_t derived_nonce[12];
-  CRYPTO_hchacha20(derived_key, c20_ctx->key, nonce);
+  CRYPTO_hchacha20(derived_key, c20_ctx->key, nonce.data());
   OPENSSL_memset(derived_nonce, 0, 4);
   OPENSSL_memcpy(&derived_nonce[4], &nonce[16], 8);
 
   return chacha20_poly1305_openv_detached(derived_key, iovecs, derived_nonce,
-                                          sizeof(derived_nonce), in_tag,
-                                          in_tag_len, aadvecs, ctx->tag_len);
+                                          in_tag, aadvecs, ctx->tag_len);
 }
 
 static const EVP_AEAD aead_chacha20_poly1305 = {

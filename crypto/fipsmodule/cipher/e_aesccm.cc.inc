@@ -58,7 +58,7 @@ static size_t CRYPTO_ccm128_max_input(const struct ccm128_context *ctx) {
 
 static int ccm128_init_state(const struct ccm128_context *ctx,
                              struct ccm128_state *state, const AES_KEY *key,
-                             const uint8_t *nonce, size_t nonce_len,
+                             bssl::Span<const uint8_t> nonce,
                              bssl::Span<const CRYPTO_IVEC> aadvecs,
                              size_t plaintext_len) {
   const block128_f block = ctx->block;
@@ -66,8 +66,12 @@ static int ccm128_init_state(const struct ccm128_context *ctx,
   const unsigned L = ctx->L;
 
   // |L| determines the expected |nonce_len| and the limit for |plaintext_len|.
-  if (plaintext_len > CRYPTO_ccm128_max_input(ctx)  //
-      || nonce_len != 15 - L) {
+  if (plaintext_len > CRYPTO_ccm128_max_input(ctx)) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
+    return 0;
+  }
+  if (nonce.size() != 15 - L) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
   }
 
@@ -78,7 +82,7 @@ static int ccm128_init_state(const struct ccm128_context *ctx,
   if (aad_len != 0) {
     state->nonce[0] |= 0x40;  // Set AAD Flag
   }
-  OPENSSL_memcpy(&state->nonce[1], nonce, nonce_len);
+  OPENSSL_memcpy(&state->nonce[1], nonce.data(), nonce.size());
   for (unsigned i = 0; i < L; i++) {
     state->nonce[15 - i] = (uint8_t)(plaintext_len >> (8 * i));
   }
@@ -145,6 +149,7 @@ static int ccm128_init_state(const struct ccm128_context *ctx,
   if (plaintext_len + 15 < plaintext_len ||
       remaining_blocks + blocks < blocks ||
       (uint64_t)remaining_blocks + blocks > UINT64_C(1) << 61) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
     return 0;
   }
 
@@ -175,11 +180,12 @@ static int ccm128_encrypt(const struct ccm128_context *ctx,
 
 static int ccm128_compute_mac(const struct ccm128_context *ctx,
                               struct ccm128_state *state, const AES_KEY *key,
-                              uint8_t *out_tag, size_t tag_len,
+                              bssl::Span<uint8_t> out_tag,
                               bssl::Span<const CRYPTO_IOVEC> iovecs,
                               bool encrypt) {
   block128_f block = ctx->block;
-  if (tag_len != ctx->M) {
+  if (out_tag.size() != ctx->M) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TAG_TOO_LARGE);
     return 0;
   }
 
@@ -214,20 +220,20 @@ static int ccm128_compute_mac(const struct ccm128_context *ctx,
   (*block)(state->nonce, tmp, key);
   CRYPTO_xor16(state->cmac, state->cmac, tmp);
 
-  OPENSSL_memcpy(out_tag, state->cmac, tag_len);
+  CopySpan(bssl::Span(state->cmac).first(out_tag.size()), out_tag);
   return 1;
 }
 
 static int CRYPTO_ccm128_encrypt(const struct ccm128_context *ctx,
                                  const AES_KEY *key,
                                  bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                 uint8_t *out_tag, size_t tag_len,
-                                 const uint8_t *nonce, size_t nonce_len,
+                                 bssl::Span<uint8_t> out_tag,
+                                 bssl::Span<const uint8_t> nonce,
                                  bssl::Span<const CRYPTO_IVEC> aadvecs) {
   struct ccm128_state state;
-  return ccm128_init_state(ctx, &state, key, nonce, nonce_len, aadvecs,
+  return ccm128_init_state(ctx, &state, key, nonce, aadvecs,
                            bssl::iovec::TotalLength(iovecs)) &&
-         ccm128_compute_mac(ctx, &state, key, out_tag, tag_len, iovecs,
+         ccm128_compute_mac(ctx, &state, key, out_tag, iovecs,
                             /*encrypt=*/true) &&
          ccm128_encrypt(ctx, &state, key, iovecs);
 }
@@ -235,14 +241,14 @@ static int CRYPTO_ccm128_encrypt(const struct ccm128_context *ctx,
 static int CRYPTO_ccm128_decrypt(const struct ccm128_context *ctx,
                                  const AES_KEY *key,
                                  bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                 uint8_t *out_tag, size_t tag_len,
-                                 const uint8_t *nonce, size_t nonce_len,
+                                 bssl::Span<uint8_t> out_tag,
+                                 bssl::Span<const uint8_t> nonce,
                                  bssl::Span<const CRYPTO_IVEC> aadvecs) {
   struct ccm128_state state;
-  return ccm128_init_state(ctx, &state, key, nonce, nonce_len, aadvecs,
+  return ccm128_init_state(ctx, &state, key, nonce, aadvecs,
                            bssl::iovec::TotalLength(iovecs)) &&
          ccm128_encrypt(ctx, &state, key, iovecs) &&
-         ccm128_compute_mac(ctx, &state, key, out_tag, tag_len, iovecs,
+         ccm128_compute_mac(ctx, &state, key, out_tag, iovecs,
                             /*encrypt=*/false);
 }
 
@@ -304,9 +310,8 @@ static void aead_aes_ccm_cleanup(EVP_AEAD_CTX *ctx) {}
 
 static int aead_aes_ccm_sealv(const EVP_AEAD_CTX *ctx,
                               bssl::Span<const CRYPTO_IOVEC> iovecs,
-                              uint8_t *out_tag, size_t *out_tag_len,
-                              size_t max_out_tag_len, const uint8_t *nonce,
-                              size_t nonce_len,
+                              bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+                              bssl::Span<const uint8_t> nonce,
                               bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_ccm_ctx *ccm_ctx =
       (struct aead_aes_ccm_ctx *)&ctx->state;
@@ -317,19 +322,18 @@ static int aead_aes_ccm_sealv(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (max_out_tag_len < ctx->tag_len) {
+  if (out_tag.size() < ctx->tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_nonce_length(ctx->aead)) {
+  if (nonce.size() != EVP_AEAD_nonce_length(ctx->aead)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
   }
 
-  if (!CRYPTO_ccm128_encrypt(&ccm_ctx->ccm, &ccm_ctx->ks.ks, iovecs, out_tag,
-                             ctx->tag_len, nonce, nonce_len, aadvecs)) {
-    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
+  if (!CRYPTO_ccm128_encrypt(&ccm_ctx->ccm, &ccm_ctx->ks.ks, iovecs,
+                             out_tag.first(ctx->tag_len), nonce, aadvecs)) {
     return 0;
   }
 
@@ -340,8 +344,8 @@ static int aead_aes_ccm_sealv(const EVP_AEAD_CTX *ctx,
 
 static int aead_aes_ccm_openv_detached(const EVP_AEAD_CTX *ctx,
                                        bssl::Span<const CRYPTO_IOVEC> iovecs,
-                                       const uint8_t *nonce, size_t nonce_len,
-                                       const uint8_t *in_tag, size_t in_tag_len,
+                                       bssl::Span<const uint8_t> nonce,
+                                       bssl::Span<const uint8_t> in_tag,
                                        bssl::Span<const CRYPTO_IVEC> aadvecs) {
   const struct aead_aes_ccm_ctx *ccm_ctx =
       (struct aead_aes_ccm_ctx *)&ctx->state;
@@ -352,25 +356,24 @@ static int aead_aes_ccm_openv_detached(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_nonce_length(ctx->aead)) {
+  if (nonce.size() != EVP_AEAD_nonce_length(ctx->aead)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
   }
 
-  if (in_tag_len != ctx->tag_len) {
+  if (in_tag.size() != ctx->tag_len) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
 
   uint8_t tag[EVP_AEAD_AES_CCM_MAX_TAG_LEN];
-  assert(ctx->tag_len <= EVP_AEAD_AES_CCM_MAX_TAG_LEN);
-  if (!CRYPTO_ccm128_decrypt(&ccm_ctx->ccm, &ccm_ctx->ks.ks, iovecs, tag,
-                             ctx->tag_len, nonce, nonce_len, aadvecs)) {
-    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
+  if (!CRYPTO_ccm128_decrypt(&ccm_ctx->ccm, &ccm_ctx->ks.ks, iovecs,
+                             bssl::Span(tag).first(ctx->tag_len), nonce,
+                             aadvecs)) {
     return 0;
   }
 
-  if (CRYPTO_memcmp(tag, in_tag, ctx->tag_len) != 0) {
+  if (CRYPTO_memcmp(tag, in_tag.data(), ctx->tag_len) != 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }

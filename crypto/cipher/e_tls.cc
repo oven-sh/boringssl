@@ -115,9 +115,8 @@ static size_t aead_tls_tag_len(const EVP_AEAD_CTX *ctx, const size_t in_len) {
 
 static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
                           bssl::Span<const CRYPTO_IOVEC> iovecs,
-                          uint8_t *out_tag, size_t *out_tag_len,
-                          const size_t max_out_tag_len, const uint8_t *nonce,
-                          const size_t nonce_len,
+                          bssl::Span<uint8_t> out_tag, size_t *out_tag_len,
+                          bssl::Span<const uint8_t> nonce,
                           bssl::Span<const CRYPTO_IVEC> aadvecs) {
   AEAD_TLS_CTX *tls_ctx = (AEAD_TLS_CTX *)&ctx->state;
 
@@ -128,12 +127,12 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
   }
 
   size_t in_len = bssl::iovec::TotalLength(iovecs);
-  if (max_out_tag_len < aead_tls_tag_len(ctx, in_len)) {
+  if (out_tag.size() < aead_tls_tag_len(ctx, in_len)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_nonce_length(ctx->aead)) {
+  if (nonce.size() != EVP_AEAD_nonce_length(ctx->aead)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
   }
@@ -177,7 +176,7 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
   assert(EVP_CIPHER_CTX_mode(&tls_ctx->cipher_ctx) == EVP_CIPH_CBC_MODE);
   if (!tls_ctx->implicit_iv &&
       !EVP_EncryptInit_ex(&tls_ctx->cipher_ctx, nullptr, nullptr, nullptr,
-                          nonce)) {
+                          nonce.data())) {
     return 0;
   }
 
@@ -228,15 +227,15 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
             }
             assert(buf_len == block_size);
             OPENSSL_memcpy(out + out_len, buf, remaining);
-            OPENSSL_memcpy(out_tag, buf + remaining, early_mac_len);
+            OPENSSL_memcpy(out_tag.data(), buf + remaining, early_mac_len);
             tag_len = early_mac_len;
             return true;
           })) {
     return 0;
   }
 
-  if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out_tag + tag_len, &len,
-                            max_out_tag_len - tag_len, mac + tag_len,
+  if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out_tag.data() + tag_len,
+                            &len, out_tag.size() - tag_len, mac + tag_len,
                             mac_len - tag_len)) {
     return 0;
   }
@@ -246,14 +245,15 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
   uint8_t padding[256];
   unsigned padding_len = block_size - ((in_len + mac_len) & (block_size - 1));
   OPENSSL_memset(padding, padding_len - 1, padding_len);
-  if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out_tag + tag_len, &len,
-                            max_out_tag_len - tag_len, padding, padding_len)) {
+  if (!EVP_EncryptUpdate_ex(&tls_ctx->cipher_ctx, out_tag.data() + tag_len,
+                            &len, out_tag.size() - tag_len, padding,
+                            padding_len)) {
     return 0;
   }
   tag_len += len;
 
-  if (!EVP_EncryptFinal_ex2(&tls_ctx->cipher_ctx, out_tag + tag_len, &len,
-                            max_out_tag_len - tag_len)) {
+  if (!EVP_EncryptFinal_ex2(&tls_ctx->cipher_ctx, out_tag.data() + tag_len,
+                            &len, out_tag.size() - tag_len)) {
     return 0;
   }
   assert(len == 0);  // Padding is explicit.
@@ -265,8 +265,8 @@ static int aead_tls_sealv(const EVP_AEAD_CTX *ctx,
 
 static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
                           bssl::Span<const CRYPTO_IOVEC> iovecs,
-                          size_t *out_total_bytes, const uint8_t *nonce,
-                          size_t nonce_len,
+                          size_t *out_total_bytes,
+                          bssl::Span<const uint8_t> nonce,
                           bssl::Span<const CRYPTO_IVEC> aadvecs) {
   AEAD_TLS_CTX *tls_ctx = (AEAD_TLS_CTX *)&ctx->state;
 
@@ -282,7 +282,7 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (nonce_len != EVP_AEAD_nonce_length(ctx->aead)) {
+  if (nonce.size() != EVP_AEAD_nonce_length(ctx->aead)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
   }
@@ -297,7 +297,7 @@ static int aead_tls_openv(const EVP_AEAD_CTX *ctx,
   assert(EVP_CIPHER_CTX_mode(&tls_ctx->cipher_ctx) == EVP_CIPH_CBC_MODE);
   if (!tls_ctx->implicit_iv &&
       !EVP_DecryptInit_ex(&tls_ctx->cipher_ctx, nullptr, nullptr, nullptr,
-                          nonce)) {
+                          nonce.data())) {
     return 0;
   }
 

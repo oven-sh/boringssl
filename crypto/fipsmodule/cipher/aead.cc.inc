@@ -341,8 +341,8 @@ int EVP_AEAD_CTX_sealv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
     return 0;
   }
 
-  if (ctx->aead->sealv(ctx, iovecs, out_tag, out_tag_len, max_out_tag_len,
-                       nonce, nonce_len, aadvecs)) {
+  if (ctx->aead->sealv(ctx, iovecs, bssl::Span(out_tag, max_out_tag_len),
+                       out_tag_len, bssl::Span(nonce, nonce_len), aadvecs)) {
     ok = true;
     return 1;
   }
@@ -496,8 +496,9 @@ int EVP_AEAD_CTX_openv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
         return 0;
       }
 
-      if (ctx->aead->openv_detached(ctx, detached_iovecs, nonce, nonce_len,
-                                    tag->data(), tag->size(), aadvecs)) {
+      if (ctx->aead->openv_detached(ctx, detached_iovecs,
+                                    bssl::Span(nonce, nonce_len), *tag,
+                                    aadvecs)) {
         ok = true;
         *out_total_bytes =
             bssl::iovec::TotalLength(bssl::Span(detached_iovecs));
@@ -510,8 +511,8 @@ int EVP_AEAD_CTX_openv(const EVP_AEAD_CTX *ctx, const CRYPTO_IOVEC *iovec,
     return 0;
   }
 
-  if (ctx->aead->openv(ctx, iovecs, out_total_bytes, nonce, nonce_len,
-                       aadvecs)) {
+  if (ctx->aead->openv(ctx, iovecs, out_total_bytes,
+                       bssl::Span(nonce, nonce_len), aadvecs)) {
     ok = true;
     return 1;
   }
@@ -565,8 +566,8 @@ int EVP_AEAD_CTX_openv_detached(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  if (ctx->aead->openv_detached(ctx, iovecs, nonce, nonce_len, in_tag,
-                                in_tag_len, aadvecs)) {
+  if (ctx->aead->openv_detached(ctx, iovecs, bssl::Span(nonce, nonce_len),
+                                bssl::Span(in_tag, in_tag_len), aadvecs)) {
     ok = true;
     return 1;
   }
