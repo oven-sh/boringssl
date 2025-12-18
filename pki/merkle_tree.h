@@ -20,6 +20,7 @@
 #include <array>
 #include <optional>
 #include <tuple>
+#include <vector>
 
 #include <openssl/sha2.h>
 #include <openssl/span.h>
@@ -163,12 +164,63 @@ OPENSSL_EXPORT std::optional<TreeHash> EvaluateMerkleSubtreeInclusionProof(
     Span<const uint8_t> inclusion_proof, uint64_t index,
     TreeHashConstSpan entry_hash, const Subtree &subtree);
 
+// Helper function to compute the hash value of a leaf in a Merkle tree, i.e.
+// HASH(0x00 || entry). 32 bytes of output are written to |out|. This function
+// is intended for internal use only and only exists here for the convenience of
+// merkle_tree_unittest.cc.
+OPENSSL_EXPORT void HashLeaf(Span<const uint8_t> entry, TreeHashSpan out);
+
 // Helper function to compute the hash value of an interior node in a Merkle
 // tree, i.e. HASH(0x01 || left || right). 32 bytes of output are written to
 // |out|. This function is intended for internal use only and only exists here
 // for the convenience of merkle_tree_unittest.cc.
 OPENSSL_EXPORT void HashNode(TreeHashConstSpan left, TreeHashConstSpan right,
                              TreeHashSpan out);
+
+// A base class for a Merkle Tree structure. May be useful for generating test
+// data. Implementations of this class are expected to provide access to all
+// full subtrees, but partial subtrees are computed dynamically.
+class OPENSSL_EXPORT MerkleTree {
+ public:
+  virtual ~MerkleTree() = default;
+
+  // Returns the number of leaves in the Merkle Tree.
+  virtual uint64_t Size() const = 0;
+
+  // Returns the node `index` at level `level`, that is the hash of the subtree
+  // {index << level, (index + 1) << level}`. `(index + 1) << level` must be at
+  // most `Size()`.
+  virtual TreeHash GetNode(size_t level, uint64_t index) const = 0;
+
+  // Returns the hash of `subtree` in the Merkle Tree. `subtree` must be valid
+  // and `subtree.end` must be at most size().
+  TreeHash SubtreeHash(const Subtree &subtree) const;
+
+  // Returns an inclusion proof for entry `index` in `subtree`. `subtree` must
+  // be valid and `subtree.end` must be at most size(). `index` must be
+  // contained in the subtree.
+  std::vector<uint8_t> SubtreeInclusionProof(uint64_t index,
+                                             const Subtree &subtree) const;
+};
+
+// A Merkle Tree implementation that maintains nodes in memory. May be useful
+// for generating test data.
+class OPENSSL_EXPORT MerkleTreeInMemory : public MerkleTree {
+ public:
+  MerkleTreeInMemory();
+  explicit MerkleTreeInMemory(Span<const std::vector<uint8_t>> entries);
+
+  uint64_t Size() const override;
+  TreeHash GetNode(size_t level, uint64_t index) const override;
+
+  void Append(Span<const uint8_t> entry);
+
+ private:
+  void UpdateLevels();
+
+  // levels_[i][j] contains MTH(D[2^i * j : 2^i * (j+1)]).
+  std::vector<std::vector<TreeHash>> levels_;
+};
 
 BSSL_NAMESPACE_END
 
