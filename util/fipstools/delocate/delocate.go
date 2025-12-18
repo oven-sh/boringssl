@@ -454,7 +454,7 @@ func (d *delocation) loadAarch64Address(statement *node32, targetReg string, sym
 		return statement, nil
 	}
 
-	if len(offsetStr) != 0 {
+	if offsetStr != "" {
 		panic("non-zero offset for helper-based reference")
 	}
 
@@ -536,7 +536,7 @@ func (d *delocation) processAarch64Instruction(statement, instruction *node32) (
 		case ruleMemoryRef:
 			assertNodeType(argNodes[1].up, ruleSymbolRef)
 			node, empty := d.gatherOffsets(argNodes[1].up.up, "")
-			if len(empty) != 0 {
+			if empty != "" {
 				panic("prefix offsets found for adrp")
 			}
 			symbol = d.contents(node)
@@ -1277,7 +1277,7 @@ Args:
 	if changed {
 		d.writeCommentedNode(statement)
 		replacement := "\t" + instructionName + "\t" + strings.Join(args, ", ") + "\n"
-		if len(prefix) != 0 {
+		if prefix != "" {
 			replacement = "\t" + prefix + replacement
 		}
 		wrappers.do(func() {
