@@ -66,14 +66,13 @@ struct Subtree {
   constexpr Subtree Left() const { return {start, Split()}; }
 
   // Returns the right subtree of this Subtree. If this subtree has fewer than 2
-  // elements, returns an empty subtree.
+  // elements, returns an (invalid) empty subtree.
   constexpr Subtree Right() const { return {Split(), end}; }
 
   // Returns whether [start, end) specifies a valid Subtree.
   constexpr bool IsValid() const {
-    // A Subtree's half-open interval must have start <= end, otherwise the
-    // interval is improperly defined.
-    if (start > end) {
+    // A Subtree must be a valid, non-empty interval.
+    if (start >= end) {
       return false;
     }
     uint64_t n = Size();

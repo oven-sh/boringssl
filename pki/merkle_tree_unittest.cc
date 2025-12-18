@@ -60,11 +60,7 @@ class MerkleTree {
     SHA256_Init(&ctx);
     TreeHash out;
     uint64_t n = subtree.Size();
-    if (n == 0) {
-      // The hash of an empty list is the hash of an empty string.
-      SHA256_Final(out.data(), &ctx);
-      return out;
-    }
+    assert(n >= 1);  // Implied by `subtree.IsValid()`.
     if (n == 1) {
       // One element in the list: return a leaf hash.
       static const uint8_t header = 0x00;
@@ -116,12 +112,6 @@ class MerkleTree {
                                                        bool known_hash) {
     if (!subtree.IsValid() || !tree.IsValid() || !tree.Contains(subtree)) {
       // Invalid inputs
-      return std::nullopt;
-    }
-    uint64_t n = tree.Size();
-    if (n == 0) {
-      // There must be a tree with contents for there to be a proof that
-      // something is in said tree.
       return std::nullopt;
     }
     if (subtree == tree) {
@@ -219,8 +209,8 @@ class ConcatData : public MerkleTree::Data {
 
 
 TEST(MerkleTreeTest, SubtreeIsValid) {
-  // An empty subtree is valid.
-  EXPECT_TRUE((Subtree{0, 0}.IsValid()));
+  // An empty subtree is invalid.
+  EXPECT_FALSE((Subtree{0, 0}.IsValid()));
   // But if the end is before start, it's invalid.
   EXPECT_FALSE((Subtree{1, 0}.IsValid()));
   // A subtree of the maximum expressible size is valid.
