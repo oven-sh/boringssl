@@ -942,10 +942,6 @@ TEST_P(PerAEADTest, CleanupAfterInitFailure) {
 }
 
 TEST_P(PerAEADTest, TruncatedTags) {
-  if (!(GetParam().flags & kCanTruncateTags)) {
-    return;
-  }
-
   uint8_t key[EVP_AEAD_MAX_KEY_LENGTH];
   OPENSSL_memset(key, 0, sizeof(key));
   const size_t key_len = EVP_AEAD_key_length(aead());
@@ -956,10 +952,16 @@ TEST_P(PerAEADTest, TruncatedTags) {
   const size_t nonce_len = EVP_AEAD_nonce_length(aead());
   ASSERT_GE(sizeof(nonce), nonce_len);
 
-  const size_t tag_len = GetParam().minimum_tag_length.value_or(1);
-  bssl::ScopedEVP_AEAD_CTX ctx;
-  ASSERT_TRUE(EVP_AEAD_CTX_init(ctx.get(), aead(), key, key_len, tag_len,
-                                nullptr /* ENGINE */));
+  static const uint8_t ad[32] = {0};
+  const size_t ad_len = GetParam().required_ad_length.value_or(16);
+  ASSERT_LE(ad_len, sizeof(ad));
+
+  size_t tag_len = GetParam().minimum_tag_length.value_or(1);
+  if (!(GetParam().flags & kCanTruncateTags)) {
+    // Can't truncate. Still worth running the tests to ensure memory
+    // correctness.
+    tag_len = EVP_AEAD_max_tag_len(aead());
+  }
 
   const uint8_t plaintext[1] = {'A'};
 
@@ -968,9 +970,41 @@ TEST_P(PerAEADTest, TruncatedTags) {
   constexpr uint8_t kSentinel = 42;
   OPENSSL_memset(ciphertext, kSentinel, sizeof(ciphertext));
 
+  const size_t expected_overhead =
+      tag_len + EVP_AEAD_max_overhead(aead()) - EVP_AEAD_max_tag_len(aead());
+  size_t expected_ciphertext_len = sizeof(plaintext) + expected_overhead;
+
+  bssl::ScopedEVP_AEAD_CTX ctx;
+  ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(ctx.get(), aead(), key, key_len,
+                                               tag_len, evp_aead_seal));
+
+  if (EVP_AEAD_CTX_seal(ctx.get(), ciphertext, &ciphertext_len,
+                        expected_ciphertext_len - 1, nonce, nonce_len,
+                        plaintext, sizeof(plaintext), ad, ad_len)) {
+    // Never write more bytes than the caller said is available.
+    ASSERT_LE(ciphertext_len, expected_ciphertext_len - 1);
+    for (size_t i = ciphertext_len; i < sizeof(ciphertext); i++) {
+      // Sealing must not write past where it said it did.
+      EXPECT_EQ(kSentinel, ciphertext[i])
+          << "Sealing wrote off the end of the buffer.";
+    }
+    ASSERT_TRUE(GetParam().flags & kLimitedImplementation)
+        << "Got a shorter ciphertext with shorter-than-expected AEAD length, "
+           "even though this AEAD is meant to be full featured and should "
+           "respect the tag length initially provided to init perfectly.";
+  }
+
+  OPENSSL_memset(ciphertext, kSentinel, sizeof(ciphertext));
+
+  ctx.Reset();
+  ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(ctx.get(), aead(), key, key_len,
+                                               tag_len, evp_aead_seal));
+
   ASSERT_TRUE(EVP_AEAD_CTX_seal(ctx.get(), ciphertext, &ciphertext_len,
-                                sizeof(ciphertext), nonce, nonce_len, plaintext,
-                                sizeof(plaintext), nullptr /* ad */, 0));
+                                expected_ciphertext_len, nonce, nonce_len,
+                                plaintext, sizeof(plaintext), ad, ad_len));
+  // Never write more bytes than the caller said is available.
+  ASSERT_LE(ciphertext_len, expected_ciphertext_len);
 
   for (size_t i = ciphertext_len; i < sizeof(ciphertext); i++) {
     // Sealing must not write past where it said it did.
@@ -978,22 +1012,32 @@ TEST_P(PerAEADTest, TruncatedTags) {
         << "Sealing wrote off the end of the buffer.";
   }
 
-  const size_t overhead_used = ciphertext_len - sizeof(plaintext);
-  const size_t expected_overhead =
-      tag_len + EVP_AEAD_max_overhead(aead()) - EVP_AEAD_max_tag_len(aead());
-  EXPECT_EQ(overhead_used, expected_overhead)
-      << "AEAD is probably ignoring request to truncate tags.";
+  if (!(GetParam().flags & kLimitedImplementation)) {
+    EXPECT_EQ(ciphertext_len, expected_ciphertext_len)
+        << "AEAD is probably ignoring request to truncate tags.";
+  }
 
-  uint8_t plaintext2[sizeof(plaintext) + 16];
+  uint8_t plaintext2[sizeof(plaintext) + 64];
   OPENSSL_memset(plaintext2, kSentinel, sizeof(plaintext2));
 
+  ctx.Reset();
+  ASSERT_TRUE(EVP_AEAD_CTX_init_with_direction(ctx.get(), aead(), key, key_len,
+                                               tag_len, evp_aead_open));
+
   size_t plaintext2_len;
-  ASSERT_TRUE(EVP_AEAD_CTX_open(
-      ctx.get(), plaintext2, &plaintext2_len, sizeof(plaintext2), nonce,
-      nonce_len, ciphertext, ciphertext_len, nullptr /* ad */, 0))
+  ASSERT_TRUE(EVP_AEAD_CTX_open(ctx.get(), plaintext2, &plaintext2_len,
+                                sizeof(plaintext2), nonce, nonce_len,
+                                ciphertext, ciphertext_len, ad, ad_len))
       << "Opening with truncated tag didn't work.";
 
-  for (size_t i = plaintext2_len; i < sizeof(plaintext2); i++) {
+  size_t max_touched_len = plaintext2_len;
+  if (GetParam().flags & kLimitedImplementation) {
+    // Limited AEADs may use additional buffer space up to the ciphertext
+    // length, provided it fits in the plaintext buffer.
+    max_touched_len = std::max(max_touched_len, ciphertext_len);
+  }
+
+  for (size_t i = max_touched_len; i < sizeof(plaintext2); i++) {
     // Likewise, opening should also stay within bounds.
     EXPECT_EQ(kSentinel, plaintext2[i])
         << "Opening wrote off the end of the buffer.";

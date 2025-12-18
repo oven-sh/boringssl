@@ -764,6 +764,11 @@ static int aead_aes_gcm_sealv_impl(const struct aead_aes_gcm_ctx *gcm_ctx,
                                    size_t nonce_len,
                                    bssl::Span<const CRYPTO_IVEC> aadvecs,
                                    size_t tag_len) {
+  if (max_out_tag_len < tag_len) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BUFFER_TOO_SMALL);
+    return 0;
+  }
+
   if (nonce_len == 0) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INVALID_NONCE_SIZE);
     return 0;
