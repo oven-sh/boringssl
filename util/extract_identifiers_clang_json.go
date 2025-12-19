@@ -53,14 +53,39 @@ type node struct {
 	Inner []*node     `json:",omitempty"`
 
 	// Node fields that may or may not matter depending on `Kind`.
-	CompleteDefinition bool   `json:",omitempty"`
-	Decl               *node  `json:",omitempty"`
-	IsImplicit         bool   `json:",omitempty"`
-	Language           string `json:",omitempty"`
-	Name               string `json:",omitempty"`
-	PreviousDecl       string `json:",omitempty"`
-	StorageClass       string `json:",omitempty"`
-	TagUsed            string `json:",omitempty"`
+	CompleteDefinition bool        `json:",omitempty"`
+	ConstExpr          bool        `json:",omitempty"`
+	Decl               *node       `json:",omitempty"`
+	IsImplicit         bool        `json:",omitempty"`
+	Language           string      `json:",omitempty"`
+	Name               string      `json:",omitempty"`
+	PreviousDecl       string      `json:",omitempty"`
+	StorageClass       string      `json:",omitempty"`
+	TagUsed            string      `json:",omitempty"`
+	Type               *typeStruct `json:",omitempty"`
+}
+
+// typeStruct is the type information from the Clang AST dump.
+type typeStruct struct {
+	QualType          string `json:",omitempty"`
+	DesugaredQualType string `json:",omitempty"`
+}
+
+// desugaredQualType returns the canonical type after expanding typedefs.
+func (t typeStruct) desugaredQualType() string {
+	if t.DesugaredQualType != "" {
+		return t.DesugaredQualType
+	}
+	return t.QualType
+}
+
+// constTypeRE is an approximate regex for types that are const.
+// It errs on the side of returning constants as non-const.
+var constType = regexp.MustCompile(`.*\bconst\b[^\[\]()*&]*$`)
+
+// isConst returns whether the given type is likely a constant.
+func (t typeStruct) isConst() bool {
+	return constType.MatchString(t.desugaredQualType())
 }
 
 // rangeStruct is a location range from the Clang AST dump.
@@ -153,10 +178,16 @@ const (
 )
 
 // storage finds the storage class of the node.
-func (n node) storage() (storage, error) {
+func (n node) storage(language string) (storage, error) {
 	var storage storage
 	switch n.StorageClass {
-	case "", "extern":
+	case "":
+		if n.Kind == "VarDecl" && (n.ConstExpr || (language == "C++" && n.Type.isConst())) {
+			storage = staticStorage
+		} else {
+			storage = externStorage
+		}
+	case "extern":
 		storage = externStorage
 	case "static":
 		storage = staticStorage
@@ -347,7 +378,7 @@ func (w walker) visit(n *node) (err error) {
 		if n.PreviousDecl != "" {
 			return // Definition or redeclaration doesn't need to be looked at again (and may have incomplete qualifiers).
 		}
-		storage, err := n.storage()
+		storage, err := n.storage(w.language)
 		if err != nil {
 			return fmt.Errorf("could not find storage class of function: %w: %s", err, nodeCode)
 		}
@@ -389,7 +420,7 @@ func (w walker) visit(n *node) (err error) {
 		if n.PreviousDecl != "" {
 			return // Definition or redeclaration doesn't need to be looked at again (and may have incomplete qualifiers).
 		}
-		storage, err := n.storage()
+		storage, err := n.storage(w.language)
 		if err != nil {
 			return fmt.Errorf("could not find storage class of variable: %w: %s", err, nodeCode)
 		}
