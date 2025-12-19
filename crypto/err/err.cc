@@ -747,10 +747,14 @@ void ERR_load_ERR_strings(void) {}
 
 void ERR_load_RAND_strings(void) {}
 
-struct bssl::err_save_state_st {
+BSSL_NAMESPACE_BEGIN
+
+struct err_save_state_st {
   struct err_error_st *errors;
   size_t num_errors;
 };
+
+BSSL_NAMESPACE_END
 
 void bssl::ERR_SAVE_STATE_free(ERR_SAVE_STATE *state) {
   if (state == nullptr) {
