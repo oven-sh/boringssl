@@ -39,10 +39,10 @@ func do(outPath, oInput, arInput, hashInput string) error {
 	var isStatic bool
 	var perm os.FileMode
 
-	if len(arInput) > 0 {
+	if arInput != "" {
 		isStatic = true
 
-		if len(oInput) > 0 {
+		if oInput != "" {
 			return fmt.Errorf("-in-archive and -in-object are mutually exclusive")
 		}
 
@@ -70,7 +70,7 @@ func do(outPath, oInput, arInput, hashInput string) error {
 		for _, contents := range ar {
 			objectBytes = contents
 		}
-	} else if len(oInput) > 0 {
+	} else if oInput != "" {
 		fi, err := os.Stat(oInput)
 		if err != nil {
 			return err
@@ -88,7 +88,7 @@ func do(outPath, oInput, arInput, hashInput string) error {
 	// Hash a different object if specified.
 	var err error
 	hashBytes := objectBytes
-	if len(hashInput) > 0 {
+	if hashInput != "" {
 		hashBytes, err = os.ReadFile(hashInput)
 		if err != nil {
 			return err
