@@ -36,6 +36,11 @@ foo:
 	add sp, sp, 128
 // WAS ldr x0, [x0, :got_lo12:stderr]
 
+	// GOT load of synthesized symbol.
+// WAS adrp x0, :got:BORINGSSL_bcm_text_start
+	adr x0, BORINGSSL_bcm_text_start
+// WAS ldr x0, [x0, :got_lo12:BORINGSSL_bcm_text_start]
+
 	// Address load
 // WAS adrp x0, .Llocal_data
 	adr x0, .Llocal_data
