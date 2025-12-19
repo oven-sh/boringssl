@@ -124,7 +124,12 @@ func do(outPath, oInput, arInput, hashInput string) error {
 
 	var textStart, textEnd, rodataStart, rodataEnd *uint64
 
+	// Look for symbols in either .symtab or .dynsym. Some build configurations
+	// strip way .symtab.
 	symbols, err := object.Symbols()
+	if err == elf.ErrNoSymbols {
+		symbols, err = object.DynamicSymbols()
+	}
 	if err != nil {
 		return errors.New("failed to parse symbols: " + err.Error())
 	}

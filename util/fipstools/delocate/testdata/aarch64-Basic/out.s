@@ -1,7 +1,10 @@
 .text
 .file 1 "inserted_by_delocate.c"
 .loc 1 1 0
+.globl BORINGSSL_bcm_text_start
+.hidden BORINGSSL_bcm_text_start
 BORINGSSL_bcm_text_start:
+.LBORINGSSL_bcm_text_start_local_target:
 	.type foo, %function
 	.globl foo
 .Lfoo_local_target:
@@ -38,7 +41,7 @@ foo:
 
 	// GOT load of synthesized symbol.
 // WAS adrp x0, :got:BORINGSSL_bcm_text_start
-	adr x0, BORINGSSL_bcm_text_start
+	adr x0, .LBORINGSSL_bcm_text_start_local_target
 // WAS ldr x0, [x0, :got_lo12:BORINGSSL_bcm_text_start]
 
 	// Address load
@@ -176,7 +179,10 @@ bss_symbol:
 .size bss_symbol, 4
 .text
 .loc 1 2 0
+.globl BORINGSSL_bcm_text_end
+.hidden BORINGSSL_bcm_text_end
 BORINGSSL_bcm_text_end:
+.LBORINGSSL_bcm_text_end_local_target:
 .p2align 2
 .hidden bcm_redirector_p224_point_add
 .type bcm_redirector_p224_point_add, @function

@@ -1447,6 +1447,12 @@ func transform(w stringWriter, inputs []inputFile) error {
 		commentIndicator = "//"
 	}
 
+	// These symbols will be synthesized below as global symbols. Mark them as
+	// known, so we will rewrite them to their local target name and avoid a
+	// relocation.
+	symbols["BORINGSSL_bcm_text_start"] = struct{}{}
+	symbols["BORINGSSL_bcm_text_end"] = struct{}{}
+
 	d := &delocation{
 		symbols:             symbols,
 		processor:           processor,
@@ -1466,7 +1472,13 @@ func transform(w stringWriter, inputs []inputFile) error {
 	}
 	w.WriteString(fmt.Sprintf(".file %d \"inserted_by_delocate.c\"%s\n", maxObservedFileNumber+1, fileTrailing))
 	w.WriteString(fmt.Sprintf(".loc %d 1 0\n", maxObservedFileNumber+1))
+	// Mark BORINGSSL_bcm_text_start as global, so that our tools can more reliably find it,
+	// but hidden so it does not pollute downstream consumers' dynamic symbol tables. This
+	// is primarily a hook for objcopy to upgrade to visible, if needed to sample the hash.
+	w.WriteString(".globl BORINGSSL_bcm_text_start\n")
+	w.WriteString(".hidden BORINGSSL_bcm_text_start\n")
 	w.WriteString("BORINGSSL_bcm_text_start:\n")
+	w.WriteString(localTargetName("BORINGSSL_bcm_text_start") + ":\n")
 
 	for _, input := range inputs {
 		if err := d.processInput(input); err != nil {
@@ -1476,7 +1488,10 @@ func transform(w stringWriter, inputs []inputFile) error {
 
 	w.WriteString(".text\n")
 	w.WriteString(fmt.Sprintf(".loc %d 2 0\n", maxObservedFileNumber+1))
+	w.WriteString(".globl BORINGSSL_bcm_text_end\n")
+	w.WriteString(".hidden BORINGSSL_bcm_text_end\n")
 	w.WriteString("BORINGSSL_bcm_text_end:\n")
+	w.WriteString(localTargetName("BORINGSSL_bcm_text_end") + ":\n")
 
 	// Emit redirector functions. Each is a single jump instruction.
 	var redirectorNames []string
@@ -1819,8 +1834,7 @@ func localTargetName(name string) string {
 }
 
 func isSynthesized(symbol string) bool {
-	return strings.HasSuffix(symbol, "_bss_get") ||
-		strings.HasPrefix(symbol, "BORINGSSL_bcm_text_")
+	return strings.HasSuffix(symbol, "_bss_get")
 }
 
 func redirectorName(symbol string) string {
