@@ -248,7 +248,7 @@ func do(outPath, oInput, arInput, hashInput string) error {
 		return errors.New("did not find uninitialised hash value in object file")
 	}
 
-	if bytes.Index(objectBytes[offset+1:], fipscommon.UninitHashValue[:]) >= 0 {
+	if bytes.Contains(objectBytes[offset+1:], fipscommon.UninitHashValue[:]) {
 		return errors.New("found two occurrences of uninitialised hash value in object file")
 	}
 
