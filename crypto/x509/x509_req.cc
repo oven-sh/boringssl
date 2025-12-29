@@ -26,6 +26,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 long X509_REQ_get_version(const X509_REQ *req) {
   return ASN1_INTEGER_get(req->req_info->version);
 }
