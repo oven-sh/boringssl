@@ -27,6 +27,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 struct conf_section_st {
   char *name;
   // values contains non-owning pointers to the values in the section.

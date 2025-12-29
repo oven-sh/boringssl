@@ -19,15 +19,15 @@
 
 #include "../lhash/internal.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
 
 typedef struct conf_section_st CONF_SECTION;
 
+BSSL_NAMESPACE_BEGIN
+
 DEFINE_LHASH_OF(CONF_SECTION)
 DEFINE_LHASH_OF(CONF_VALUE)
+
+BSSL_NAMESPACE_END
 
 struct conf_st {
   LHASH_OF(CONF_VALUE) *values;
@@ -47,9 +47,5 @@ OPENSSL_EXPORT int CONF_parse_list(
     const char *list, char sep, int remove_whitespace,
     int (*list_cb)(const char *elem, size_t len, void *usr), void *arg);
 
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
 
 #endif  // OPENSSL_HEADER_CRYPTO_CONF_INTERNAL_H

@@ -33,7 +33,13 @@
 #include "obj_dat.h"
 
 
+using namespace bssl;
+
+BSSL_NAMESPACE_BEGIN
+
 DEFINE_LHASH_OF(ASN1_OBJECT)
+
+BSSL_NAMESPACE_END
 
 static CRYPTO_MUTEX global_added_lock = CRYPTO_MUTEX_INIT;
 // These globals are protected by |global_added_lock|.

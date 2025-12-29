@@ -3762,7 +3762,7 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   bssl::UniquePtr<bssl::SSLCipherPreferenceList> cipher_list;
 
   X509_STORE *cert_store = nullptr;
-  LHASH_OF(bssl::SSL_SESSION) *sessions = nullptr;
+  LHASH_OF(SSL_SESSION) *sessions = nullptr;
   // Most session-ids that will be cached, default is
   // SSL_SESSION_CACHE_MAX_SIZE_DEFAULT. 0 is unlimited.
   unsigned long session_cache_size = SSL_SESSION_CACHE_MAX_SIZE_DEFAULT;

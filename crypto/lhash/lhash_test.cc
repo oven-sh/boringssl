@@ -30,9 +30,11 @@
 #include "internal.h"
 
 
-namespace {
+BSSL_NAMESPACE_BEGIN
 
 DEFINE_LHASH_OF(char)
+
+namespace {
 
 static std::unique_ptr<char[]> RandString() {
   unsigned len = 1 + (rand() % 3);
@@ -144,3 +146,4 @@ TEST(LHashTest, Basic) {
 }
 
 }  // namespace
+BSSL_NAMESPACE_END

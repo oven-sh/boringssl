@@ -26,6 +26,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 static uint32_t CRYPTO_BUFFER_hash(const CRYPTO_BUFFER *buf) {
   return (uint32_t)SIPHASH_24(buf->pool->hash_key, buf->data, buf->len);
 }

@@ -29,7 +29,13 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
+BSSL_NAMESPACE_BEGIN
+
 DEFINE_LHASH_OF(ASN1_STRING_TABLE)
+
+BSSL_NAMESPACE_END
 
 static LHASH_OF(ASN1_STRING_TABLE) *string_tables = nullptr;
 static CRYPTO_MUTEX string_tables_lock = CRYPTO_MUTEX_INIT;
