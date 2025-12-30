@@ -29,11 +29,15 @@
 
 using namespace bssl;
 
+BSSL_NAMESPACE_BEGIN
+
 struct conf_section_st {
   char *name;
   // values contains non-owning pointers to the values in the section.
   STACK_OF(CONF_VALUE) *values;
 };
+
+BSSL_NAMESPACE_END
 
 static const char kDefaultSectionName[] = "default";
 
@@ -80,7 +84,7 @@ CONF *NCONF_new(void *method) {
   return conf;
 }
 
-CONF_VALUE *CONF_VALUE_new() {
+CONF_VALUE *bssl::CONF_VALUE_new() {
   return reinterpret_cast<CONF_VALUE *>(OPENSSL_zalloc(sizeof(CONF_VALUE)));
 }
 
@@ -576,9 +580,10 @@ int NCONF_load(CONF *conf, const char *filename, long *out_error_line) {
   return ret;
 }
 
-int CONF_parse_list(const char *list, char sep, int remove_whitespace,
-                    int (*list_cb)(const char *elem, size_t len, void *usr),
-                    void *arg) {
+int bssl::CONF_parse_list(const char *list, char sep, int remove_whitespace,
+                          int (*list_cb)(const char *elem, size_t len,
+                                         void *usr),
+                          void *arg) {
   int ret;
   const char *lstart, *tmpend, *p;
 
