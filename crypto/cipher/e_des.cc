@@ -23,6 +23,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 typedef struct {
   union {
     double align;
