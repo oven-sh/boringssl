@@ -30,6 +30,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 static X509_PKEY *X509_PKEY_new() {
   return reinterpret_cast<X509_PKEY *>(OPENSSL_zalloc(sizeof(X509_PKEY)));
 }
@@ -121,9 +123,9 @@ static enum parse_result_t parse_key(X509_INFO *info, const uint8_t *data,
 STACK_OF(X509_INFO) *PEM_X509_INFO_read_bio(BIO *bp, STACK_OF(X509_INFO) *sk,
                                             pem_password_cb *cb, void *u) {
   X509_INFO *info = nullptr;
-  bssl::UniquePtr<char> name;
-  bssl::UniquePtr<char> header;
-  bssl::Array<uint8_t> data;
+  UniquePtr<char> name;
+  UniquePtr<char> header;
+  Array<uint8_t> data;
   int ok = 0;
   STACK_OF(X509_INFO) *ret = nullptr;
 
