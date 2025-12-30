@@ -122,6 +122,8 @@ OPENSSL_CLANG_PRAGMA("clang diagnostic ignored \"-Wheader-hygiene\"")
 OPENSSL_CLANG_PRAGMA("clang diagnostic pop")
 
 
+using namespace bssl;
+
 #if defined(BORINGSSL_FIPS)
 
 #if !defined(OPENSSL_ASAN)

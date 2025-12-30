@@ -32,6 +32,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 DEFINE_STATIC_EX_DATA_CLASS(g_ec_ex_data_class)
 
 static EC_WRAPPED_SCALAR *ec_wrapped_scalar_new(const EC_GROUP *group) {
@@ -326,7 +328,7 @@ int EC_KEY_set_public_key_affine_coordinates(EC_KEY *key, const BIGNUM *x,
     return 0;
   }
 
-  bssl::UniquePtr<EC_POINT> point(EC_POINT_new(key->group));
+  UniquePtr<EC_POINT> point(EC_POINT_new(key->group));
   if (point == nullptr ||
       !EC_POINT_set_affine_coordinates_GFp(key->group, point.get(), x, y,
                                            nullptr) ||
@@ -344,7 +346,7 @@ int EC_KEY_oct2key(EC_KEY *key, const uint8_t *in, size_t len, BN_CTX *ctx) {
     return 0;
   }
 
-  bssl::UniquePtr<EC_POINT> point(EC_POINT_new(key->group));
+  UniquePtr<EC_POINT> point(EC_POINT_new(key->group));
   return point != nullptr &&
          EC_POINT_oct2point(key->group, point.get(), in, len, ctx) &&
          EC_KEY_set_public_key(key, point.get());
