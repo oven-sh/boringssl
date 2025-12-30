@@ -29,6 +29,8 @@
 #include "thash.h"
 
 
+using namespace bssl;
+
 namespace {
 
 namespace fips {
