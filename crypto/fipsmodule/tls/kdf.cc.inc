@@ -25,6 +25,8 @@
 #include "../service_indicator/internal.h"
 
 
+using namespace bssl;
+
 // tls1_P_hash computes the TLS P_<hash> function as described in RFC 5246,
 // section 5. It XORs |out_len| bytes to |out|, using |md| as the hash and
 // |secret| as the secret. |label|, |seed1|, and |seed2| are concatenated to
@@ -100,12 +102,11 @@ err:
   return ret;
 }
 
-int CRYPTO_tls1_prf(const EVP_MD *digest,
-                    uint8_t *out, size_t out_len,
-                    const uint8_t *secret, size_t secret_len,
-                    const char *label, size_t label_len,
-                    const uint8_t *seed1, size_t seed1_len,
-                    const uint8_t *seed2, size_t seed2_len) {
+int bssl::CRYPTO_tls1_prf(const EVP_MD *digest, uint8_t *out, size_t out_len,
+                          const uint8_t *secret, size_t secret_len,
+                          const char *label, size_t label_len,
+                          const uint8_t *seed1, size_t seed1_len,
+                          const uint8_t *seed2, size_t seed2_len) {
   if (out_len == 0) {
     return 1;
   }
@@ -141,11 +142,12 @@ end:
   return ret;
 }
 
-int CRYPTO_tls13_hkdf_expand_label(uint8_t *out, size_t out_len,
-                                   const EVP_MD *digest,  //
-                                   const uint8_t *secret, size_t secret_len,
-                                   const uint8_t *label, size_t label_len,
-                                   const uint8_t *hash, size_t hash_len) {
+int bssl::CRYPTO_tls13_hkdf_expand_label(uint8_t *out, size_t out_len,
+                                         const EVP_MD *digest,  //
+                                         const uint8_t *secret,
+                                         size_t secret_len,
+                                         const uint8_t *label, size_t label_len,
+                                         const uint8_t *hash, size_t hash_len) {
   static const uint8_t kProtocolLabel[] = "tls13 ";
   CBB cbb, child;
   uint8_t *hkdf_label = nullptr;
@@ -177,4 +179,3 @@ int CRYPTO_tls13_hkdf_expand_label(uint8_t *out, size_t out_len,
   }
   return ret;
 }
-

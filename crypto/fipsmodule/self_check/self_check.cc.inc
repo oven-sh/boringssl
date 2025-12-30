@@ -46,6 +46,8 @@
 #include "../tls/internal.h"
 
 
+using namespace bssl;
+
 static void hexdump(FILE *out, const void *in, size_t len) {
   const uint8_t *in8 = reinterpret_cast<const uint8_t *>(in);
   for (size_t i = 0; i < len; i++) {
@@ -758,7 +760,7 @@ static int boringssl_self_test_fast() {
   size_t out_len;
   uint8_t nonce[EVP_AEAD_MAX_NONCE_LENGTH];
   OPENSSL_memset(nonce, 0, sizeof(nonce));
-  bssl::ScopedEVP_AEAD_CTX aead_ctx;
+  ScopedEVP_AEAD_CTX aead_ctx;
   if (!EVP_AEAD_CTX_init(aead_ctx.get(), EVP_aead_aes_128_gcm(), kAESKey,
                          sizeof(kAESKey), 0, nullptr)) {
     fprintf(CRYPTO_get_stderr(), "EVP_AEAD_CTX_init for AES-128-GCM failed.\n");
