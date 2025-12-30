@@ -470,8 +470,9 @@ static int write_signer_info(CBB *out, void *arg) {
   return 1;
 }
 
-int pkcs7_add_external_signature(CBB *out, X509 *sign_cert, EVP_PKEY *key,
-                                 const EVP_MD *md, BIO *data, bool use_key_id) {
+int bssl::pkcs7_add_external_signature(CBB *out, X509 *sign_cert, EVP_PKEY *key,
+                                       const EVP_MD *md, BIO *data,
+                                       bool use_key_id) {
   signer_info_data si_data;
   si_data.use_key_id = use_key_id;
   si_data.sign_cert = sign_cert;
