@@ -29,6 +29,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 typedef int (*hash_to_group_func_t)(const EC_GROUP *group, EC_JACOBIAN *out,
                                     const uint8_t t[TRUST_TOKEN_NONCE_SIZE]);
 typedef int (*hash_to_scalar_func_t)(const EC_GROUP *group, EC_SCALAR *out,
