@@ -34,7 +34,10 @@ include_files() {
 }
 
 source_to_ast() {
+	# Note: for now not including any symbols defined by asm functions.
+	# The full story for those still needs to be figured out.
 	clang++ \
+		-DOPENSSL_NO_ASM \
 		-Iinclude \
 		-Ithird_party/benchmark/include \
 		-Ithird_party/googletest/googlemock/include \
