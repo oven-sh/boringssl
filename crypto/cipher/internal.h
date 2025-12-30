@@ -24,10 +24,8 @@
 
 #include "../internal.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
 
+BSSL_NAMESPACE_BEGIN
 
 // EVP_tls_cbc_get_padding determines the padding from the decrypted, TLS, CBC
 // record in |in|. This decrypted record should not include any "decrypted"
@@ -156,10 +154,10 @@ inline int chacha20_poly1305_asm_capable() {
 // write calculated tag value to |aead_data->out.tag|, which the caller must
 // check.
 #if defined(OPENSSL_X86_64)
-extern void chacha20_poly1305_open_sse41(
+extern "C" void chacha20_poly1305_open_sse41(
     uint8_t *out_plaintext, const uint8_t *ciphertext, size_t plaintext_len,
     const uint8_t *ad, size_t ad_len, union chacha20_poly1305_open_data *data);
-extern void chacha20_poly1305_open_avx2(
+extern "C" void chacha20_poly1305_open_avx2(
     uint8_t *out_plaintext, const uint8_t *ciphertext, size_t plaintext_len,
     const uint8_t *ad, size_t ad_len, union chacha20_poly1305_open_data *data);
 inline void chacha20_poly1305_open(uint8_t *out_plaintext,
@@ -176,11 +174,11 @@ inline void chacha20_poly1305_open(uint8_t *out_plaintext,
   }
 }
 #else
-extern void chacha20_poly1305_open(uint8_t *out_plaintext,
-                                   const uint8_t *ciphertext,
-                                   size_t plaintext_len, const uint8_t *ad,
-                                   size_t ad_len,
-                                   union chacha20_poly1305_open_data *data);
+extern "C" void chacha20_poly1305_open(uint8_t *out_plaintext,
+                                       const uint8_t *ciphertext,
+                                       size_t plaintext_len, const uint8_t *ad,
+                                       size_t ad_len,
+                                       union chacha20_poly1305_open_data *data);
 #endif
 
 // chacha20_poly1305_open is defined in chacha20_poly1305_*.pl. It encrypts
@@ -189,10 +187,10 @@ extern void chacha20_poly1305_open(uint8_t *out_plaintext,
 // value is over the computed ciphertext concatenated with |extra_ciphertext|
 // and written to |aead_data->out.tag|.
 #if defined(OPENSSL_X86_64)
-extern void chacha20_poly1305_seal_sse41(
+extern "C" void chacha20_poly1305_seal_sse41(
     uint8_t *out_ciphertext, const uint8_t *plaintext, size_t plaintext_len,
     const uint8_t *ad, size_t ad_len, union chacha20_poly1305_seal_data *data);
-extern void chacha20_poly1305_seal_avx2(
+extern "C" void chacha20_poly1305_seal_avx2(
     uint8_t *out_ciphertext, const uint8_t *plaintext, size_t plaintext_len,
     const uint8_t *ad, size_t ad_len, union chacha20_poly1305_seal_data *data);
 inline void chacha20_poly1305_seal(uint8_t *out_ciphertext,
@@ -209,11 +207,11 @@ inline void chacha20_poly1305_seal(uint8_t *out_ciphertext,
   }
 }
 #else
-extern void chacha20_poly1305_seal(uint8_t *out_ciphertext,
-                                   const uint8_t *plaintext,
-                                   size_t plaintext_len, const uint8_t *ad,
-                                   size_t ad_len,
-                                   union chacha20_poly1305_seal_data *data);
+extern "C" void chacha20_poly1305_seal(uint8_t *out_ciphertext,
+                                       const uint8_t *plaintext,
+                                       size_t plaintext_len, const uint8_t *ad,
+                                       size_t ad_len,
+                                       union chacha20_poly1305_seal_data *data);
 #endif
 
 #else
@@ -237,9 +235,6 @@ inline void chacha20_poly1305_seal(uint8_t *out_ciphertext,
 }
 #endif
 
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_CIPHER_INTERNAL_H

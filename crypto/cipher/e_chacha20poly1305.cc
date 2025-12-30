@@ -135,7 +135,7 @@ static int chacha20_poly1305_sealv(const uint8_t *key,
   // 32-bits and this produces a warning because it's always false.
   // Casting to uint64_t inside the conditional is not sufficient to stop
   // the warning.
-  const uint64_t in_len_64 = iovec::TotalLength(iovecs);
+  const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
   if (in_len_64 >= (UINT64_C(1) << 32) * 64 - 64) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
     return 0;
@@ -190,7 +190,7 @@ static int chacha20_poly1305_sealv(const uint8_t *key,
 
     size_t ciphertext_total = 0;
     size_t block = 1;
-    iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
+    bssl::iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
         iovecs,
         [&](const uint8_t *in, uint8_t *out, size_t len) {
           // TODO(crbug.com/473454967): Maybe just provide asm version of this?
@@ -277,7 +277,7 @@ static int chacha20_poly1305_openv_detached(const uint8_t *key,
   // 32-bits and this produces a warning because it's always false.
   // Casting to uint64_t inside the conditional is not sufficient to stop
   // the warning.
-  const uint64_t in_len_64 = iovec::TotalLength(iovecs);
+  const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
   if (in_len_64 >= (UINT64_C(1) << 32) * 64 - 64) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_TOO_LARGE);
     return 0;
@@ -301,7 +301,7 @@ static int chacha20_poly1305_openv_detached(const uint8_t *key,
 
     size_t ciphertext_total = 0;
     size_t block = 1;
-    iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
+    bssl::iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
         iovecs,
         [&](const uint8_t *in, uint8_t *out, size_t len) {
           // TODO(crbug.com/473454967): Maybe just provide asm version of this?
