@@ -174,4 +174,7 @@ TEST(ForkDetect, Test) {
   EXPECT_EQ(start, CRYPTO_get_fork_generation());
 }
 
+}  // namespace
+BSSL_NAMESPACE_END
+
 #endif  // OPENSSL_FORK_DETECTION && !OPENSSL_TSAN && !OPENSSL_IOS

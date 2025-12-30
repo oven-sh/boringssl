@@ -24,8 +24,8 @@
 #include "../bcm_support.h"
 #include "../fipsmodule/rand/internal.h"
 #include "../internal.h"
-#include "internal.h"
 #include "getrandom_fillin.h"
+#include "internal.h"
 
 
 #if (defined(OPENSSL_X86_64) || defined(OPENSSL_AARCH64)) &&               \
@@ -41,6 +41,7 @@
 #include <sys/un.h>
 #include <sys/user.h>
 
+BSSL_NAMESPACE_BEGIN
 namespace {
 
 #if !defined(PTRACE_O_EXITKILL)
@@ -766,6 +767,7 @@ TEST(URandomTest, Test) {
 }
 
 }  // namespace
+BSSL_NAMESPACE_END
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

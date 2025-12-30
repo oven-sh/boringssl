@@ -31,6 +31,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // It's assumed that the operating system always has an unfailing source of
 // entropy which is accessed via |CRYPTO_sysrand|. (If the operating system
 // entropy source fails, it's up to |CRYPTO_sysrand| to abort the process—we
