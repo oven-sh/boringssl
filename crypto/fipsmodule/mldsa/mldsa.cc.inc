@@ -28,6 +28,9 @@
 #include "../bcm_interface.h"
 #include "../keccak/internal.h"
 
+
+using namespace bssl;
+
 namespace mldsa {
 namespace {
 
@@ -1620,7 +1623,7 @@ int mldsa_finish_keygen(uint8_t out_encoded_public_key[public_key_bytes<K>()],
     vector<L> s1_ntt;
     vector<K> t;
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr) {
     return 0;
   }
@@ -1725,7 +1728,7 @@ int mldsa_sign_mu_no_self_test(
     vector<L> cs1;
     vector<K> cs2;
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr) {
     return 0;
   }
@@ -1929,7 +1932,7 @@ int mldsa_verify_mu_no_self_test(
     vector<K> az_ntt;
     vector<K> ct1_ntt;
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr) {
     return 0;
   }
@@ -2116,7 +2119,7 @@ static int keygen_self_test() {
     uint8_t pub_bytes[MLDSA65_PUBLIC_KEY_BYTES];
     uint8_t priv_bytes[BCM_MLDSA65_PRIVATE_KEY_BYTES];
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr ||
       !mldsa_generate_key_external_entropy_no_self_test(
           values->pub_bytes, &values->priv, kGenerateKeyEntropy)) {
@@ -2150,7 +2153,7 @@ static int sign_self_test() {
     uint8_t pub_bytes[MLDSA65_PUBLIC_KEY_BYTES];
     uint8_t sig[MLDSA65_SIGNATURE_BYTES];
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr ||
       !mldsa_generate_key_external_entropy(values->pub_bytes, &values->priv,
                                            kSignEntropy)) {
@@ -2194,7 +2197,7 @@ static int verify_self_test() {
     private_key<6, 5> priv;
     uint8_t pub_bytes[MLDSA65_PUBLIC_KEY_BYTES];
   };
-  auto values = bssl::MakeUnique<Values>();
+  auto values = MakeUnique<Values>();
   if (values == nullptr) {
     return 0;
   }

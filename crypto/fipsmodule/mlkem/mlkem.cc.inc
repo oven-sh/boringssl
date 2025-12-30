@@ -29,6 +29,8 @@
 #include "../keccak/internal.h"
 
 
+using namespace bssl;
+
 namespace mlkem {
 namespace {
 
