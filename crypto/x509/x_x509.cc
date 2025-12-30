@@ -40,7 +40,7 @@ static constexpr CBS_ASN1_TAG kSubjectUIDTag = CBS_ASN1_CONTEXT_SPECIFIC | 2;
 static constexpr CBS_ASN1_TAG kExtensionsTag =
     CBS_ASN1_CONSTRUCTED | CBS_ASN1_CONTEXT_SPECIFIC | 3;
 
-X509 *X509_new(void) {
+X509 *X509_new() {
   bssl::UniquePtr<X509> ret(
       reinterpret_cast<X509 *>(OPENSSL_zalloc(sizeof(X509))));
   if (ret == nullptr) {

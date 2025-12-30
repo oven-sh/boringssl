@@ -22,10 +22,10 @@
 // TODO(crbug.com/42290417): While we need |ASN1_ITEM|s, the exposed new, free,
 // i2d, and d2i functions should call the underlying implementations directly.
 
-#define IMPLEMENT_ASN1_STRING_FUNCTIONS(sname)                         \
-  IMPLEMENT_ASN1_TYPE(sname)                                           \
-  IMPLEMENT_ASN1_ENCODE_FUNCTIONS_const_fname(sname, sname, sname)     \
-  sname *sname##_new(void) { return ASN1_STRING_type_new(V_##sname); } \
+#define IMPLEMENT_ASN1_STRING_FUNCTIONS(sname)                     \
+  IMPLEMENT_ASN1_TYPE(sname)                                       \
+  IMPLEMENT_ASN1_ENCODE_FUNCTIONS_const_fname(sname, sname, sname) \
+  sname *sname##_new() { return ASN1_STRING_type_new(V_##sname); } \
   void sname##_free(sname *x) { ASN1_STRING_free(x); }
 
 IMPLEMENT_ASN1_STRING_FUNCTIONS(ASN1_OCTET_STRING)

@@ -1297,7 +1297,7 @@ TEST(SSLTest, SessionEncoding) {
 }
 
 static void ExpectDefaultVersion(uint16_t min_version, uint16_t max_version,
-                                 const SSL_METHOD *(*method)(void)) {
+                                 const SSL_METHOD *(*method)()) {
   bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(method()));
   ASSERT_TRUE(ctx);
   EXPECT_EQ(min_version, SSL_CTX_get_min_proto_version(ctx.get()));
@@ -8671,7 +8671,7 @@ TEST_F(QUICMethodTest, QuicCodePointDefault) {
 
 }  // namespace
 
-extern "C" int BORINGSSL_enum_c_type_test(void);
+extern "C" int BORINGSSL_enum_c_type_test();
 
 namespace {
 

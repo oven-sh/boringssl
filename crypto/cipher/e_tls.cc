@@ -584,30 +584,30 @@ static const EVP_AEAD aead_des_ede3_cbc_sha1_tls_implicit_iv = {
     aead_tls_tag_len,
 };
 
-const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls(void) {
+const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls() {
   return &aead_aes_128_cbc_sha1_tls;
 }
 
-const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls_implicit_iv(void) {
+const EVP_AEAD *EVP_aead_aes_128_cbc_sha1_tls_implicit_iv() {
   return &aead_aes_128_cbc_sha1_tls_implicit_iv;
 }
 
-const EVP_AEAD *EVP_aead_aes_128_cbc_sha256_tls(void) {
+const EVP_AEAD *EVP_aead_aes_128_cbc_sha256_tls() {
   return &aead_aes_128_cbc_sha256_tls;
 }
 
-const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls(void) {
+const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls() {
   return &aead_aes_256_cbc_sha1_tls;
 }
 
-const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls_implicit_iv(void) {
+const EVP_AEAD *EVP_aead_aes_256_cbc_sha1_tls_implicit_iv() {
   return &aead_aes_256_cbc_sha1_tls_implicit_iv;
 }
 
-const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls(void) {
+const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls() {
   return &aead_des_ede3_cbc_sha1_tls;
 }
 
-const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls_implicit_iv(void) {
+const EVP_AEAD *EVP_aead_des_ede3_cbc_sha1_tls_implicit_iv() {
   return &aead_des_ede3_cbc_sha1_tls_implicit_iv;
 }

@@ -34,9 +34,9 @@ void RAND_enable_fork_unsafe_buffering(int fd) {
   g_buffering_enabled.store(1);
 }
 
-void RAND_disable_fork_unsafe_buffering(void) { g_buffering_enabled.store(0); }
+void RAND_disable_fork_unsafe_buffering() { g_buffering_enabled.store(0); }
 #endif
 
-int rand_fork_unsafe_buffering_enabled(void) {
+int rand_fork_unsafe_buffering_enabled() {
   return g_buffering_enabled.load() != 0;
 }

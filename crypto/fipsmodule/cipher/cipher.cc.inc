@@ -32,7 +32,7 @@ void EVP_CIPHER_CTX_init(EVP_CIPHER_CTX *ctx) {
   OPENSSL_memset(ctx, 0, sizeof(EVP_CIPHER_CTX));
 }
 
-EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void) {
+EVP_CIPHER_CTX *EVP_CIPHER_CTX_new() {
   EVP_CIPHER_CTX *ctx = reinterpret_cast<EVP_CIPHER_CTX *>(
       OPENSSL_malloc(sizeof(EVP_CIPHER_CTX)));
   if (ctx) {

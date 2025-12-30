@@ -1037,14 +1037,14 @@ const EVP_AEAD aead_aes_256_gcm_siv = {
 
 #if defined(AES_GCM_SIV_ASM)
 
-const EVP_AEAD *EVP_aead_aes_128_gcm_siv(void) {
+const EVP_AEAD *EVP_aead_aes_128_gcm_siv() {
   if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable()) {
     return &aead_aes_128_gcm_siv_asm;
   }
   return &aead_aes_128_gcm_siv;
 }
 
-const EVP_AEAD *EVP_aead_aes_256_gcm_siv(void) {
+const EVP_AEAD *EVP_aead_aes_256_gcm_siv() {
   if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable()) {
     return &aead_aes_256_gcm_siv_asm;
   }
@@ -1053,8 +1053,8 @@ const EVP_AEAD *EVP_aead_aes_256_gcm_siv(void) {
 
 #else
 
-const EVP_AEAD *EVP_aead_aes_128_gcm_siv(void) { return &aead_aes_128_gcm_siv; }
+const EVP_AEAD *EVP_aead_aes_128_gcm_siv() { return &aead_aes_128_gcm_siv; }
 
-const EVP_AEAD *EVP_aead_aes_256_gcm_siv(void) { return &aead_aes_256_gcm_siv; }
+const EVP_AEAD *EVP_aead_aes_256_gcm_siv() { return &aead_aes_256_gcm_siv; }
 
 #endif  // AES_GCM_SIV_ASM

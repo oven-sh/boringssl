@@ -324,7 +324,7 @@ const EVP_PKEY_CTX_METHOD ed25519_pkey_meth = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_PKEY_ALG *EVP_pkey_ed25519(void) {
+const EVP_PKEY_ALG *EVP_pkey_ed25519() {
   static const EVP_PKEY_ALG kAlg = {&ed25519_asn1_meth};
   return &kAlg;
 }

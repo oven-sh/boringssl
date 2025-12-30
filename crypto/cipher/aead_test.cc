@@ -58,7 +58,7 @@ constexpr uint32_t kSkipIOVec = 1 << 5;
 
 struct KnownAEAD {
   const char name[40];
-  const EVP_AEAD *(*func)(void);
+  const EVP_AEAD *(*func)();
   const char *test_vectors;
   uint32_t flags;
 

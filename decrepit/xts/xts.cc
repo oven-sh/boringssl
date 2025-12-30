@@ -205,8 +205,7 @@ static const EVP_CIPHER aes_256_xts = {
     /* iv_len= */ 16,
     /* ctx_size= */ sizeof(EVP_AES_XTS_CTX),
     /* flags= */ EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV |
-             EVP_CIPH_ALWAYS_CALL_INIT | EVP_CIPH_CTRL_INIT |
-             EVP_CIPH_CUSTOM_COPY,
+        EVP_CIPH_ALWAYS_CALL_INIT | EVP_CIPH_CTRL_INIT | EVP_CIPH_CUSTOM_COPY,
     /* init= */ aes_xts_init_key,
     /* cipher_update= */ aes_xts_cipher_update,
     /* cipher_final= */ nullptr,
@@ -215,4 +214,4 @@ static const EVP_CIPHER aes_256_xts = {
     /* ctrl= */ aes_xts_ctrl,
 };
 
-const EVP_CIPHER *EVP_aes_256_xts(void) { return &aes_256_xts; }
+const EVP_CIPHER *EVP_aes_256_xts() { return &aes_256_xts; }

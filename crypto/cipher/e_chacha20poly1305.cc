@@ -392,10 +392,8 @@ static const EVP_AEAD aead_xchacha20_poly1305 = {
     nullptr,  // tag_len
 };
 
-const EVP_AEAD *EVP_aead_chacha20_poly1305(void) {
-  return &aead_chacha20_poly1305;
-}
+const EVP_AEAD *EVP_aead_chacha20_poly1305() { return &aead_chacha20_poly1305; }
 
-const EVP_AEAD *EVP_aead_xchacha20_poly1305(void) {
+const EVP_AEAD *EVP_aead_xchacha20_poly1305() {
   return &aead_xchacha20_poly1305;
 }

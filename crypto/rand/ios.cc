@@ -22,7 +22,7 @@
 
 #include <CommonCrypto/CommonRandom.h>
 
-void CRYPTO_init_sysrand(void) {}
+void CRYPTO_init_sysrand() {}
 
 void CRYPTO_sysrand(uint8_t *out, size_t requested) {
   if (CCRandomGenerateBytes(out, requested) != kCCSuccess) {

@@ -1067,6 +1067,6 @@ int dtls1_flush(SSL *ssl) {
   return 1;
 }
 
-unsigned int dtls1_min_mtu(void) { return kMinMTU; }
+unsigned int dtls1_min_mtu() { return kMinMTU; }
 
 BSSL_NAMESPACE_END

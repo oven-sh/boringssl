@@ -1555,7 +1555,7 @@ const char *SSL_CIPHER_get_version(const SSL_CIPHER *cipher) {
   return "TLSv1/SSLv3";
 }
 
-STACK_OF(SSL_COMP) *SSL_COMP_get_compression_methods(void) { return nullptr; }
+STACK_OF(SSL_COMP) *SSL_COMP_get_compression_methods() { return nullptr; }
 
 int SSL_COMP_add_compression_method(int id, COMP_METHOD *cm) { return 1; }
 
@@ -1565,7 +1565,7 @@ const char *SSL_COMP_get0_name(const SSL_COMP *comp) { return comp->name; }
 
 int SSL_COMP_get_id(const SSL_COMP *comp) { return comp->id; }
 
-void SSL_COMP_free_compression_methods(void) {}
+void SSL_COMP_free_compression_methods() {}
 
 size_t SSL_get_all_cipher_names(const char **out, size_t max_out) {
   return GetAllNames(out, max_out, Span(&kUnknownCipher, 1), &SSL_CIPHER::name,

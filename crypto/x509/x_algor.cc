@@ -38,7 +38,7 @@ void x509_algor_cleanup(X509_ALGOR *alg) {
   ASN1_TYPE_free(alg->parameter);
 }
 
-X509_ALGOR *X509_ALGOR_new(void) {
+X509_ALGOR *X509_ALGOR_new() {
   bssl::UniquePtr<X509_ALGOR> ret = bssl::MakeUnique<X509_ALGOR>();
   if (ret == nullptr) {
     return nullptr;

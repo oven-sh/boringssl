@@ -151,7 +151,7 @@ size_t ECDSA_size(const EC_KEY *key) {
   return ECDSA_SIG_max_len(group_order_size);
 }
 
-ECDSA_SIG *ECDSA_SIG_new(void) {
+ECDSA_SIG *ECDSA_SIG_new() {
   ECDSA_SIG *sig =
       reinterpret_cast<ECDSA_SIG *>(OPENSSL_malloc(sizeof(ECDSA_SIG)));
   if (sig == nullptr) {

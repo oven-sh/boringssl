@@ -35,7 +35,7 @@ typedef int (*hash_to_scalar_func_t)(const EC_GROUP *group, EC_SCALAR *out,
                                      uint8_t *buf, size_t len);
 
 typedef struct {
-  const EC_GROUP *(*group_func)(void);
+  const EC_GROUP *(*group_func)();
 
   // hash_to_group implements the HashToGroup operation for VOPRFs. It returns
   // one on success and zero on error.

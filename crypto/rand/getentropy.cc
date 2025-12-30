@@ -31,7 +31,7 @@
 #include <sys/random.h>
 #endif
 
-void CRYPTO_init_sysrand(void) {}
+void CRYPTO_init_sysrand() {}
 
 // CRYPTO_sysrand puts |requested| random bytes into |out|.
 void CRYPTO_sysrand(uint8_t *out, size_t requested) {

@@ -52,7 +52,7 @@ static void ec_wrapped_scalar_free(EC_WRAPPED_SCALAR *scalar) {
   OPENSSL_free(scalar);
 }
 
-EC_KEY *EC_KEY_new(void) { return EC_KEY_new_method(nullptr); }
+EC_KEY *EC_KEY_new() { return EC_KEY_new_method(nullptr); }
 
 EC_KEY *EC_KEY_new_method(const ENGINE *engine) {
   EC_KEY *ret = reinterpret_cast<EC_KEY *>(OPENSSL_zalloc(sizeof(EC_KEY)));

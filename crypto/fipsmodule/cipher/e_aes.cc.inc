@@ -681,19 +681,19 @@ DEFINE_LOCAL_DATA(EVP_CIPHER, aes_hw_256_ecb) {
   out->cipher_update = aes_hw_ecb_cipher_update;
 }
 
-#define EVP_ECB_CIPHER_FUNCTION(keybits)            \
-  const EVP_CIPHER *EVP_aes_##keybits##_ecb(void) { \
-    if (hwaes_capable()) {                          \
-      return aes_hw_##keybits##_ecb();              \
-    }                                               \
-    return aes_##keybits##_ecb_generic();           \
+#define EVP_ECB_CIPHER_FUNCTION(keybits)        \
+  const EVP_CIPHER *EVP_aes_##keybits##_ecb() { \
+    if (hwaes_capable()) {                      \
+      return aes_hw_##keybits##_ecb();          \
+    }                                           \
+    return aes_##keybits##_ecb_generic();       \
   }
 
 #else
 
-#define EVP_ECB_CIPHER_FUNCTION(keybits)            \
-  const EVP_CIPHER *EVP_aes_##keybits##_ecb(void) { \
-    return aes_##keybits##_ecb_generic();           \
+#define EVP_ECB_CIPHER_FUNCTION(keybits)        \
+  const EVP_CIPHER *EVP_aes_##keybits##_ecb() { \
+    return aes_##keybits##_ecb_generic();       \
   }
 
 #endif  // HWAES_ECB
@@ -1213,7 +1213,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_256_gcm_tls13) {
   out->openv_detached = aead_aes_gcm_openv_detached;
 }
 
-int EVP_has_aes_hardware(void) {
+int EVP_has_aes_hardware() {
 #if defined(OPENSSL_X86) || defined(OPENSSL_X86_64)
   return hwaes_capable() && crypto_gcm_clmul_enabled();
 #elif defined(OPENSSL_ARM) || defined(OPENSSL_AARCH64)

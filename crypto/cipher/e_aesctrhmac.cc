@@ -272,10 +272,10 @@ static const EVP_AEAD aead_aes_256_ctr_hmac_sha256 = {
     nullptr /* tag_len */,
 };
 
-const EVP_AEAD *EVP_aead_aes_128_ctr_hmac_sha256(void) {
+const EVP_AEAD *EVP_aead_aes_128_ctr_hmac_sha256() {
   return &aead_aes_128_ctr_hmac_sha256;
 }
 
-const EVP_AEAD *EVP_aead_aes_256_ctr_hmac_sha256(void) {
+const EVP_AEAD *EVP_aead_aes_256_ctr_hmac_sha256() {
   return &aead_aes_256_ctr_hmac_sha256;
 }

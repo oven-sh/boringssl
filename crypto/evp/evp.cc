@@ -34,7 +34,7 @@ OPENSSL_DECLARE_ERROR_REASON(EVP, NOT_XOF_OR_INVALID_LENGTH)
 // directory.
 OPENSSL_DECLARE_ERROR_REASON(EVP, EMPTY_PSK)
 
-EVP_PKEY *EVP_PKEY_new(void) {
+EVP_PKEY *EVP_PKEY_new() {
   EVP_PKEY *ret =
       reinterpret_cast<EVP_PKEY *>(OPENSSL_zalloc(sizeof(EVP_PKEY)));
   if (ret == nullptr) {
@@ -346,15 +346,15 @@ void *EVP_PKEY_get0(const EVP_PKEY *pkey) {
   return nullptr;
 }
 
-void OpenSSL_add_all_algorithms(void) {}
+void OpenSSL_add_all_algorithms() {}
 
-void OPENSSL_add_all_algorithms_conf(void) {}
+void OPENSSL_add_all_algorithms_conf() {}
 
-void OpenSSL_add_all_ciphers(void) {}
+void OpenSSL_add_all_ciphers() {}
 
-void OpenSSL_add_all_digests(void) {}
+void OpenSSL_add_all_digests() {}
 
-void EVP_cleanup(void) {}
+void EVP_cleanup() {}
 
 int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
                                    size_t len) {

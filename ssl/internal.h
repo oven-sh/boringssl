@@ -3593,7 +3593,7 @@ bool dtls1_parse_fragment(CBS *cbs, struct hm_header_st *out_hdr,
 
 void dtls1_stop_timer(SSL *ssl);
 
-unsigned int dtls1_min_mtu(void);
+unsigned int dtls1_min_mtu();
 
 bool dtls1_new(SSL *ssl);
 void dtls1_free(SSL *ssl);

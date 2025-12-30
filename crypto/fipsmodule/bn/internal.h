@@ -306,7 +306,7 @@ void bn_mul_mont_words(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
                        const BN_ULONG n0[BN_MONT_CTX_N0_LIMBS], size_t num);
 
 #if defined(OPENSSL_X86_64)
-inline int bn_mulx_adx_capable(void) {
+inline int bn_mulx_adx_capable() {
   // MULX is in BMI2.
   return CRYPTO_is_BMI2_capable() && CRYPTO_is_ADX_capable();
 }

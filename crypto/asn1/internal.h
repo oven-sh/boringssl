@@ -71,7 +71,7 @@ struct asn1_object_st {
   int flags;                  // Should we free this one
 };
 
-ASN1_OBJECT *ASN1_OBJECT_new(void);
+ASN1_OBJECT *ASN1_OBJECT_new();
 
 // asn1_parse_object parses a DER-encoded ASN.1 OBJECT IDENTIFIER from |cbs| and
 // write the result to |out|. If |tag| is non-zero, the value is implicitly
@@ -287,7 +287,7 @@ typedef struct {
 OPENSSL_EXPORT void asn1_get_string_table_for_testing(
     const ASN1_STRING_TABLE **out_ptr, size_t *out_len);
 
-typedef ASN1_VALUE *ASN1_new_func(void);
+typedef ASN1_VALUE *ASN1_new_func();
 typedef void ASN1_free_func(ASN1_VALUE *a);
 typedef ASN1_VALUE *ASN1_d2i_func(ASN1_VALUE **a, const unsigned char **in,
                                   long length);

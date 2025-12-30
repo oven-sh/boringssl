@@ -59,7 +59,7 @@ static const EVP_CIPHER evp_des_cbc = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_cbc(void) { return &evp_des_cbc; }
+const EVP_CIPHER *EVP_des_cbc() { return &evp_des_cbc; }
 
 static int des_ecb_cipher_update(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                  const uint8_t *in, size_t len) {
@@ -90,7 +90,7 @@ static const EVP_CIPHER evp_des_ecb = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_ecb(void) { return &evp_des_ecb; }
+const EVP_CIPHER *EVP_des_ecb() { return &evp_des_ecb; }
 
 typedef struct {
   union {
@@ -131,7 +131,7 @@ static const EVP_CIPHER evp_des_ede3_cbc = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_ede3_cbc(void) { return &evp_des_ede3_cbc; }
+const EVP_CIPHER *EVP_des_ede3_cbc() { return &evp_des_ede3_cbc; }
 
 static int des_ede_init_key(EVP_CIPHER_CTX *ctx, const uint8_t *key,
                             const uint8_t *iv, int enc) {
@@ -158,7 +158,7 @@ static const EVP_CIPHER evp_des_ede_cbc = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_ede_cbc(void) { return &evp_des_ede_cbc; }
+const EVP_CIPHER *EVP_des_ede_cbc() { return &evp_des_ede_cbc; }
 
 static int des_ede_ecb_cipher_update(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                      const uint8_t *in, size_t len) {
@@ -190,7 +190,7 @@ static const EVP_CIPHER evp_des_ede = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_ede(void) { return &evp_des_ede; }
+const EVP_CIPHER *EVP_des_ede() { return &evp_des_ede; }
 
 static const EVP_CIPHER evp_des_ede3 = {
     /*nid=*/NID_des_ede3_ecb,
@@ -207,6 +207,6 @@ static const EVP_CIPHER evp_des_ede3 = {
     /*ctrl=*/nullptr,
 };
 
-const EVP_CIPHER *EVP_des_ede3(void) { return &evp_des_ede3; }
+const EVP_CIPHER *EVP_des_ede3() { return &evp_des_ede3; }
 
-const EVP_CIPHER *EVP_des_ede3_ecb(void) { return EVP_des_ede3(); }
+const EVP_CIPHER *EVP_des_ede3_ecb() { return EVP_des_ede3(); }

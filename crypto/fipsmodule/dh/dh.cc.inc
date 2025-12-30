@@ -29,7 +29,7 @@
 #include "internal.h"
 
 
-DH *DH_new(void) {
+DH *DH_new() {
   DH *dh = reinterpret_cast<DH *>(OPENSSL_zalloc(sizeof(DH)));
   if (dh == nullptr) {
     return nullptr;
@@ -379,7 +379,7 @@ int DH_up_ref(DH *dh) {
   return 1;
 }
 
-DH *DH_get_rfc7919_2048(void) {
+DH *DH_get_rfc7919_2048() {
   // This is the prime from https://tools.ietf.org/html/rfc7919#appendix-A.1,
   // which is specifically approved for FIPS in appendix D of SP 800-56Ar3.
   static const BN_ULONG kFFDHE2048Data[] = {

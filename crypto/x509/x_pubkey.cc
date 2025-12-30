@@ -39,7 +39,7 @@ void x509_pubkey_init(X509_PUBKEY *key) {
   asn1_string_init(&key->public_key, V_ASN1_BIT_STRING);
 }
 
-X509_PUBKEY *X509_PUBKEY_new(void) {
+X509_PUBKEY *X509_PUBKEY_new() {
   bssl::UniquePtr<X509_PUBKEY> ret = bssl::MakeUnique<X509_PUBKEY>();
   if (ret == nullptr) {
     return nullptr;

@@ -34,7 +34,7 @@ OPENSSL_MSVC_PRAGMA(comment(lib, "bcrypt.lib"))
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) && \
     !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
-void CRYPTO_init_sysrand(void) {}
+void CRYPTO_init_sysrand() {}
 
 void CRYPTO_sysrand(uint8_t *out, size_t requested) {
   while (requested > 0) {
@@ -55,10 +55,10 @@ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
 #else
 
 // See: https://learn.microsoft.com/en-us/windows/win32/seccng/processprng
-typedef BOOL (WINAPI *ProcessPrngFunction)(PBYTE pbData, SIZE_T cbData);
+typedef BOOL(WINAPI *ProcessPrngFunction)(PBYTE pbData, SIZE_T cbData);
 static ProcessPrngFunction g_processprng_fn = nullptr;
 
-static void init_processprng(void) {
+static void init_processprng() {
   HMODULE hmod = LoadLibraryW(L"bcryptprimitives");
   if (hmod == nullptr) {
     abort();
@@ -69,7 +69,7 @@ static void init_processprng(void) {
   }
 }
 
-void CRYPTO_init_sysrand(void) {
+void CRYPTO_init_sysrand() {
   static CRYPTO_once_t once = CRYPTO_ONCE_INIT;
   CRYPTO_once(&once, init_processprng);
 }

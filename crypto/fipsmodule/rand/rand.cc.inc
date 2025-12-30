@@ -91,8 +91,8 @@ struct rand_thread_state {
 DEFINE_BSS_GET(struct rand_thread_state *, thread_states_list, nullptr)
 DEFINE_STATIC_MUTEX(thread_states_list_lock)
 
-static void rand_thread_state_clear_all(void) __attribute__((destructor));
-static void rand_thread_state_clear_all(void) {
+static void rand_thread_state_clear_all() __attribute__((destructor));
+static void rand_thread_state_clear_all() {
   CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
   for (struct rand_thread_state *cur = *thread_states_list_bss_get();
        cur != nullptr; cur = cur->next) {

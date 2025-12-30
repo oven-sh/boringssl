@@ -345,6 +345,6 @@ static const EVP_AEAD aead_aes_256_eax = {
     nullptr,  // tag_len
 };
 
-const EVP_AEAD *EVP_aead_aes_128_eax(void) { return &aead_aes_128_eax; }
+const EVP_AEAD *EVP_aead_aes_128_eax() { return &aead_aes_128_eax; }
 
-const EVP_AEAD *EVP_aead_aes_256_eax(void) { return &aead_aes_256_eax; }
+const EVP_AEAD *EVP_aead_aes_256_eax() { return &aead_aes_256_eax; }

@@ -804,24 +804,24 @@ static int pkey_rsa_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
 
 }  // namespace
 
-const EVP_PKEY_ALG *EVP_pkey_rsa(void) {
+const EVP_PKEY_ALG *EVP_pkey_rsa() {
   static const EVP_PKEY_ALG kAlg = {&rsa_asn1_meth};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha256(void) {
+const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha256() {
   static const EVP_PKEY_ALG_RSA_PSS kAlg = {{&rsa_pss_asn1_meth},
                                             rsa_pss_sha256};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha384(void) {
+const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha384() {
   static const EVP_PKEY_ALG_RSA_PSS kAlg = {{&rsa_pss_asn1_meth},
                                             rsa_pss_sha384};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha512(void) {
+const EVP_PKEY_ALG *EVP_pkey_rsa_pss_sha512() {
   static const EVP_PKEY_ALG_RSA_PSS kAlg = {{&rsa_pss_asn1_meth},
                                             rsa_pss_sha512};
   return &kAlg;

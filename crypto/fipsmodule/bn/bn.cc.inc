@@ -30,7 +30,7 @@
 // spare.
 #define BN_MAX_WORDS (INT_MAX / (4 * BN_BITS2))
 
-BIGNUM *BN_new(void) {
+BIGNUM *BN_new() {
   BIGNUM *bn = reinterpret_cast<BIGNUM *>(OPENSSL_malloc(sizeof(BIGNUM)));
 
   if (bn == nullptr) {
@@ -43,7 +43,7 @@ BIGNUM *BN_new(void) {
   return bn;
 }
 
-BIGNUM *BN_secure_new(void) { return BN_new(); }
+BIGNUM *BN_secure_new() { return BN_new(); }
 
 void BN_init(BIGNUM *bn) { OPENSSL_memset(bn, 0, sizeof(BIGNUM)); }
 

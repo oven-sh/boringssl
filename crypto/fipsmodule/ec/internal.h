@@ -537,7 +537,7 @@ struct ec_method_st {
                           const EC_SCALAR *r);
 } /* EC_METHOD */;
 
-const EC_METHOD *EC_GFp_mont_method(void);
+const EC_METHOD *EC_GFp_mont_method();
 
 struct ec_point_st {
   // group is an owning reference to |group|, unless this is
@@ -668,12 +668,12 @@ int ec_GFp_mont_felem_from_bytes(const EC_GROUP *group, EC_FELEM *out,
 void ec_GFp_nistp_recode_scalar_bits(crypto_word_t *sign, crypto_word_t *digit,
                                      crypto_word_t in);
 
-const EC_METHOD *EC_GFp_nistp224_method(void);
-const EC_METHOD *EC_GFp_nistp256_method(void);
+const EC_METHOD *EC_GFp_nistp224_method();
+const EC_METHOD *EC_GFp_nistp256_method();
 
 // EC_GFp_nistz256_method is a GFp method using montgomery multiplication, with
 // x86-64 optimized P256. See http://eprint.iacr.org/2013/816.
-const EC_METHOD *EC_GFp_nistz256_method(void);
+const EC_METHOD *EC_GFp_nistz256_method();
 
 // An EC_WRAPPED_SCALAR is an |EC_SCALAR| with a parallel |BIGNUM|
 // representation. It exists to support the |EC_KEY_get0_private_key| API.

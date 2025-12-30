@@ -40,7 +40,7 @@ static int CRYPTO_BUFFER_cmp(const CRYPTO_BUFFER *a, const CRYPTO_BUFFER *b) {
   return OPENSSL_memcmp(a->data, b->data, a->len);
 }
 
-CRYPTO_BUFFER_POOL *CRYPTO_BUFFER_POOL_new(void) {
+CRYPTO_BUFFER_POOL *CRYPTO_BUFFER_POOL_new() {
   CRYPTO_BUFFER_POOL *pool = reinterpret_cast<CRYPTO_BUFFER_POOL *>(
       OPENSSL_zalloc(sizeof(CRYPTO_BUFFER_POOL)));
   if (pool == nullptr) {

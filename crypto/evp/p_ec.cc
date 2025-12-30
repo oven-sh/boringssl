@@ -298,22 +298,22 @@ const EVP_PKEY_ASN1_METHOD ec_asn1_meth = {
 
 }  // namespace
 
-const EVP_PKEY_ALG *EVP_pkey_ec_p224(void) {
+const EVP_PKEY_ALG *EVP_pkey_ec_p224() {
   static const EVP_PKEY_ALG_EC kAlg = {{&ec_asn1_meth}, &EC_group_p224};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_ec_p256(void) {
+const EVP_PKEY_ALG *EVP_pkey_ec_p256() {
   static const EVP_PKEY_ALG_EC kAlg = {{&ec_asn1_meth}, &EC_group_p256};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_ec_p384(void) {
+const EVP_PKEY_ALG *EVP_pkey_ec_p384() {
   static const EVP_PKEY_ALG_EC kAlg = {{&ec_asn1_meth}, &EC_group_p384};
   return &kAlg;
 }
 
-const EVP_PKEY_ALG *EVP_pkey_ec_p521(void) {
+const EVP_PKEY_ALG *EVP_pkey_ec_p521() {
   static const EVP_PKEY_ALG_EC kAlg = {{&ec_asn1_meth}, &EC_group_p521};
   return &kAlg;
 }

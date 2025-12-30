@@ -55,7 +55,7 @@ void HMAC_CTX_init(HMAC_CTX *ctx) {
   EVP_MD_CTX_init(&ctx->md_ctx);
 }
 
-HMAC_CTX *HMAC_CTX_new(void) {
+HMAC_CTX *HMAC_CTX_new() {
   HMAC_CTX *ctx =
       reinterpret_cast<HMAC_CTX *>(OPENSSL_malloc(sizeof(HMAC_CTX)));
   if (ctx != nullptr) {

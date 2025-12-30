@@ -193,7 +193,7 @@ err:
 }
 
 #if !defined(OPENSSL_ASAN)
-int BORINGSSL_integrity_test(void) {
+int BORINGSSL_integrity_test() {
   const uint8_t *const start = BORINGSSL_bcm_text_start;
   const uint8_t *const end = BORINGSSL_bcm_text_end;
 
@@ -268,11 +268,11 @@ int BORINGSSL_integrity_test(void) {
   return 1;
 }
 
-const uint8_t *FIPS_module_hash(void) { return BORINGSSL_bcm_text_hash; }
+const uint8_t *FIPS_module_hash() { return BORINGSSL_bcm_text_hash; }
 
 #endif  // OPENSSL_ASAN
 
-void BORINGSSL_FIPS_abort(void) {
+void BORINGSSL_FIPS_abort() {
   for (;;) {
     abort();
     exit(1);

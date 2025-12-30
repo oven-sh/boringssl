@@ -171,7 +171,7 @@ int X509V3_EXT_add_alias(int nid_to, int nid_from) {
   OPENSSL_END_ALLOW_DEPRECATED
 }
 
-int X509V3_add_standard_extensions(void) { return 1; }
+int X509V3_add_standard_extensions() { return 1; }
 
 // Return an extension internal structure
 

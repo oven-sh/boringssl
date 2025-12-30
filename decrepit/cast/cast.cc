@@ -423,6 +423,6 @@ static const EVP_CIPHER cast5_cbc = {
     /* ctrl= */ nullptr,
 };
 
-const EVP_CIPHER *EVP_cast5_ecb(void) { return &cast5_ecb; }
+const EVP_CIPHER *EVP_cast5_ecb() { return &cast5_ecb; }
 
-const EVP_CIPHER *EVP_cast5_cbc(void) { return &cast5_cbc; }
+const EVP_CIPHER *EVP_cast5_cbc() { return &cast5_cbc; }

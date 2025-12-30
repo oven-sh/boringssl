@@ -36,7 +36,7 @@ static CRYPTO_MUTEX string_tables_lock = CRYPTO_MUTEX_INIT;
 
 void ASN1_STRING_set_default_mask(unsigned long mask) {}
 
-unsigned long ASN1_STRING_get_default_mask(void) { return B_ASN1_UTF8STRING; }
+unsigned long ASN1_STRING_get_default_mask() { return B_ASN1_UTF8STRING; }
 
 int ASN1_STRING_set_default_mask_asc(const char *p) { return 1; }
 
@@ -199,7 +199,7 @@ err:
   return ret;
 }
 
-void ASN1_STRING_TABLE_cleanup(void) {}
+void ASN1_STRING_TABLE_cleanup() {}
 
 void asn1_get_string_table_for_testing(const ASN1_STRING_TABLE **out_ptr,
                                        size_t *out_len) {

@@ -45,7 +45,7 @@ static LHASH_OF(ASN1_OBJECT) *global_added_by_long_name = nullptr;
 static CRYPTO_MUTEX global_next_nid_lock = CRYPTO_MUTEX_INIT;
 static unsigned global_next_nid = NUM_NID;
 
-static int obj_next_nid(void) {
+static int obj_next_nid() {
   CRYPTO_MUTEX_lock_write(&global_next_nid_lock);
   int ret = global_next_nid++;
   CRYPTO_MUTEX_unlock_write(&global_next_nid_lock);
@@ -281,7 +281,7 @@ OPENSSL_EXPORT int OBJ_nid2cbb(CBB *out, int nid) {
          CBB_add_asn1_element(out, CBS_ASN1_OBJECT, obj->data, obj->length);
 }
 
-const ASN1_OBJECT *OBJ_get_undef(void) {
+const ASN1_OBJECT *OBJ_get_undef() {
   static const ASN1_OBJECT kUndef = {
       /*sn=*/SN_undef,
       /*ln=*/LN_undef,
@@ -342,7 +342,7 @@ const char *OBJ_nid2ln(int nid) {
   return obj->ln;
 }
 
-static ASN1_OBJECT *create_object_with_text_oid(int (*get_nid)(void),
+static ASN1_OBJECT *create_object_with_text_oid(int (*get_nid)(),
                                                 const char *oid,
                                                 const char *short_name,
                                                 const char *long_name) {
@@ -509,4 +509,4 @@ int OBJ_create(const char *oid, const char *short_name, const char *long_name) {
   return op->nid;
 }
 
-void OBJ_cleanup(void) {}
+void OBJ_cleanup() {}

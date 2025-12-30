@@ -1012,7 +1012,7 @@ TEST_P(EVPMDServiceIndicatorTest, EVP_Digests) {
 
 static const struct HMACTestVector {
   // func is the hash function for HMAC to test.
-  const EVP_MD *(*func)(void);
+  const EVP_MD *(*func)();
   // expected_digest is the expected digest.
   const uint8_t *expected_digest;
   // expected to be approved or not.

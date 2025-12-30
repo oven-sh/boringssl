@@ -43,7 +43,7 @@ struct fips_service_indicator_state {
 // FIPS 140-3 requires that the module should provide the service indicator
 // for approved services irrespective of whether the user queries it or not.
 // Hence, it is lazily initialized in any call to an approved service.
-static struct fips_service_indicator_state *service_indicator_get(void) {
+static struct fips_service_indicator_state *service_indicator_get() {
   struct fips_service_indicator_state *indicator =
       reinterpret_cast<fips_service_indicator_state *>(CRYPTO_get_thread_local(
           OPENSSL_THREAD_LOCAL_FIPS_SERVICE_INDICATOR_STATE));
@@ -69,7 +69,7 @@ static struct fips_service_indicator_state *service_indicator_get(void) {
   return indicator;
 }
 
-static uint64_t service_indicator_get_counter(void) {
+static uint64_t service_indicator_get_counter() {
   struct fips_service_indicator_state *indicator = service_indicator_get();
   if (indicator == nullptr) {
     return 0;
@@ -77,22 +77,22 @@ static uint64_t service_indicator_get_counter(void) {
   return indicator->counter;
 }
 
-uint64_t FIPS_service_indicator_before_call(void) {
+uint64_t FIPS_service_indicator_before_call() {
   return service_indicator_get_counter();
 }
 
-uint64_t FIPS_service_indicator_after_call(void) {
+uint64_t FIPS_service_indicator_after_call() {
   return service_indicator_get_counter();
 }
 
-void FIPS_service_indicator_update_state(void) {
+void FIPS_service_indicator_update_state() {
   struct fips_service_indicator_state *indicator = service_indicator_get();
   if (indicator && indicator->lock_state == STATE_UNLOCKED) {
     indicator->counter++;
   }
 }
 
-void FIPS_service_indicator_lock_state(void) {
+void FIPS_service_indicator_lock_state() {
   struct fips_service_indicator_state *indicator = service_indicator_get();
   if (indicator == nullptr) {
     return;
@@ -113,7 +113,7 @@ void FIPS_service_indicator_lock_state(void) {
   indicator->lock_state = new_state;
 }
 
-void FIPS_service_indicator_unlock_state(void) {
+void FIPS_service_indicator_unlock_state() {
   struct fips_service_indicator_state *indicator = service_indicator_get();
   if (indicator == nullptr) {
     return;
@@ -315,9 +315,9 @@ void TLSKDF_verify_service_indicator(const EVP_MD *md) {
 
 #else
 
-uint64_t FIPS_service_indicator_before_call(void) { return 0; }
+uint64_t FIPS_service_indicator_before_call() { return 0; }
 
-uint64_t FIPS_service_indicator_after_call(void) {
+uint64_t FIPS_service_indicator_after_call() {
   // One is returned so that the return value is always greater than zero, the
   // return value of |FIPS_service_indicator_before_call|. This makes everything
   // report as "approved" in non-FIPS builds.

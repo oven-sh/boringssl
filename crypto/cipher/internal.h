@@ -142,7 +142,7 @@ static_assert(sizeof(union chacha20_poly1305_open_data) == 48,
 static_assert(sizeof(union chacha20_poly1305_seal_data) == 48 + 8 + 8,
               "wrong chacha20_poly1305_seal_data size");
 
-inline int chacha20_poly1305_asm_capable(void) {
+inline int chacha20_poly1305_asm_capable() {
 #if defined(OPENSSL_X86_64)
   return CRYPTO_is_SSE4_1_capable();
 #elif defined(OPENSSL_AARCH64)
@@ -218,7 +218,7 @@ extern void chacha20_poly1305_seal(uint8_t *out_ciphertext,
 
 #else
 
-inline int chacha20_poly1305_asm_capable(void) { return 0; }
+inline int chacha20_poly1305_asm_capable() { return 0; }
 
 inline void chacha20_poly1305_open(uint8_t *out_plaintext,
                                    const uint8_t *ciphertext,

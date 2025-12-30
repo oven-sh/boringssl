@@ -40,7 +40,7 @@
 
 static int asn1_marshal_string_canon(CBB *cbb, const ASN1_STRING *in);
 
-X509_NAME_ENTRY *X509_NAME_ENTRY_new(void) {
+X509_NAME_ENTRY *X509_NAME_ENTRY_new() {
   bssl::UniquePtr<X509_NAME_ENTRY> ret = bssl::MakeUnique<X509_NAME_ENTRY>();
   if (ret == nullptr) {
     return nullptr;
@@ -133,7 +133,7 @@ void x509_name_cleanup(X509_NAME *name) {
   x509_name_cache_free(name->cache.exchange(nullptr));
 }
 
-X509_NAME *X509_NAME_new(void) {
+X509_NAME *X509_NAME_new() {
   return static_cast<X509_NAME *>(OPENSSL_zalloc(sizeof(X509_NAME)));
 }
 

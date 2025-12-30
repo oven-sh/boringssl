@@ -30,7 +30,7 @@
 // protocol for issuing and redeeming tokens built on top of the PMBTokens
 // construction.
 
-const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v1(void) {
+const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v1() {
   static const TRUST_TOKEN_METHOD kMethod = {
       pmbtoken_exp1_generate_key,
       pmbtoken_exp1_derive_key_from_secret,
@@ -47,7 +47,7 @@ const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v1(void) {
   return &kMethod;
 }
 
-const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_voprf(void) {
+const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_voprf() {
   static const TRUST_TOKEN_METHOD kMethod = {
       voprf_exp2_generate_key,
       voprf_exp2_derive_key_from_secret,
@@ -64,7 +64,7 @@ const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_voprf(void) {
   return &kMethod;
 }
 
-const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_pmb(void) {
+const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_pmb() {
   static const TRUST_TOKEN_METHOD kMethod = {
       pmbtoken_exp2_generate_key,
       pmbtoken_exp2_derive_key_from_secret,
@@ -81,7 +81,7 @@ const TRUST_TOKEN_METHOD *TRUST_TOKEN_experiment_v2_pmb(void) {
   return &kMethod;
 }
 
-const TRUST_TOKEN_METHOD *TRUST_TOKEN_pst_v1_voprf(void) {
+const TRUST_TOKEN_METHOD *TRUST_TOKEN_pst_v1_voprf() {
   static const TRUST_TOKEN_METHOD kMethod = {
       voprf_pst1_generate_key,
       voprf_pst1_derive_key_from_secret,
@@ -98,7 +98,7 @@ const TRUST_TOKEN_METHOD *TRUST_TOKEN_pst_v1_voprf(void) {
   return &kMethod;
 }
 
-const TRUST_TOKEN_METHOD *TRUST_TOKEN_pst_v1_pmb(void) {
+const TRUST_TOKEN_METHOD *TRUST_TOKEN_pst_v1_pmb() {
   static const TRUST_TOKEN_METHOD kMethod = {
       pmbtoken_pst1_generate_key,
       pmbtoken_pst1_derive_key_from_secret,

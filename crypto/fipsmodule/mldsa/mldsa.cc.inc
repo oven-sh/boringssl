@@ -2238,7 +2238,7 @@ int check_key(const private_key<K, L> *priv) {
 
 DEFINE_STATIC_ONCE(g_mldsa_keygen_self_test_once)
 
-void ensure_keygen_self_test(void) {
+void ensure_keygen_self_test() {
   CRYPTO_once(g_mldsa_keygen_self_test_once_bss_get(), []() {
     if (!keygen_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -2248,7 +2248,7 @@ void ensure_keygen_self_test(void) {
 
 DEFINE_STATIC_ONCE(g_mldsa_sign_self_test_once)
 
-void ensure_sign_self_test(void) {
+void ensure_sign_self_test() {
   CRYPTO_once(g_mldsa_sign_self_test_once_bss_get(), []() {
     if (!sign_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -2258,7 +2258,7 @@ void ensure_sign_self_test(void) {
 
 DEFINE_STATIC_ONCE(g_mldsa_verify_self_test_once)
 
-void ensure_verify_self_test(void) {
+void ensure_verify_self_test() {
   CRYPTO_once(g_mldsa_verify_self_test_once_bss_get(), []() {
     if (!verify_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -2268,9 +2268,9 @@ void ensure_verify_self_test(void) {
 
 #else
 
-void ensure_keygen_self_test(void) {}
-void ensure_sign_self_test(void) {}
-void ensure_verify_self_test(void) {}
+void ensure_keygen_self_test() {}
+void ensure_sign_self_test() {}
+void ensure_verify_self_test() {}
 
 #endif
 

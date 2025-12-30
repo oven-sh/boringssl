@@ -63,8 +63,8 @@ struct pbe_suite {
   int pbe_nid;
   uint8_t oid[10];
   uint8_t oid_len;
-  const EVP_CIPHER *(*cipher_func)(void);
-  const EVP_MD *(*md_func)(void);
+  const EVP_CIPHER *(*cipher_func)();
+  const EVP_MD *(*md_func)();
   // decrypt_init initialize |ctx| for decrypting. The password is specified by
   // |pass| and |pass_len|. |param| contains the serialized parameters field of
   // the AlgorithmIdentifier.

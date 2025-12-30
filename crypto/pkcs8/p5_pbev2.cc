@@ -49,7 +49,7 @@ static const struct {
   uint8_t oid[9];
   uint8_t oid_len;
   int nid;
-  const EVP_CIPHER *(*cipher_func)(void);
+  const EVP_CIPHER *(*cipher_func)();
 } kCipherOIDs[] = {
     // 1.2.840.113549.3.2
     {{0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x03, 0x02},

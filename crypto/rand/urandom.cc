@@ -72,7 +72,7 @@ static CRYPTO_once_t rand_once = CRYPTO_ONCE_INIT;
 // init_once initializes the state of this module to values previously
 // requested. This is the only function that modifies |urandom_fd|, which may be
 // read safely after calling the once.
-static void init_once(void) {
+static void init_once() {
 #if defined(USE_NR_getrandom)
   int have_getrandom;
   uint8_t dummy;
@@ -117,7 +117,7 @@ static void init_once(void) {
   urandom_fd = fd;
 }
 
-void CRYPTO_init_sysrand(void) { CRYPTO_once(&rand_once, init_once); }
+void CRYPTO_init_sysrand() { CRYPTO_once(&rand_once, init_once); }
 
 // CRYPTO_sysrand writes |len| bytes of entropy into |out|.
 void CRYPTO_sysrand(uint8_t *out, size_t len) {

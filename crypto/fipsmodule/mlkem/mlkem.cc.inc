@@ -1032,7 +1032,7 @@ static int decap_self_test() {
 
 DEFINE_STATIC_ONCE(g_mlkem_keygen_self_test_once)
 
-void ensure_keygen_self_test(void) {
+void ensure_keygen_self_test() {
   CRYPTO_once(g_mlkem_keygen_self_test_once_bss_get(), []() {
     if (!keygen_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -1042,7 +1042,7 @@ void ensure_keygen_self_test(void) {
 
 DEFINE_STATIC_ONCE(g_mlkem_encap_self_test_once)
 
-void ensure_encap_self_test(void) {
+void ensure_encap_self_test() {
   CRYPTO_once(g_mlkem_encap_self_test_once_bss_get(), []() {
     if (!encap_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -1052,7 +1052,7 @@ void ensure_encap_self_test(void) {
 
 DEFINE_STATIC_ONCE(g_mlkem_decap_self_test_once)
 
-void ensure_decap_self_test(void) {
+void ensure_decap_self_test() {
   CRYPTO_once(g_mlkem_decap_self_test_once_bss_get(), []() {
     if (!decap_self_test()) {
       BORINGSSL_FIPS_abort();
@@ -1062,9 +1062,9 @@ void ensure_decap_self_test(void) {
 
 #else
 
-void ensure_keygen_self_test(void) {}
-void ensure_encap_self_test(void) {}
-void ensure_decap_self_test(void) {}
+void ensure_keygen_self_test() {}
+void ensure_encap_self_test() {}
+void ensure_decap_self_test() {}
 
 #endif
 }  // namespace fips

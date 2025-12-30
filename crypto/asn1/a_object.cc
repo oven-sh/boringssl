@@ -135,7 +135,7 @@ ASN1_OBJECT *asn1_parse_object(CBS *cbs, CBS_ASN1_TAG tag) {
                             /*sn=*/nullptr, /*ln=*/nullptr);
 }
 
-ASN1_OBJECT *ASN1_OBJECT_new(void) {
+ASN1_OBJECT *ASN1_OBJECT_new() {
   ASN1_OBJECT *ret;
 
   ret = (ASN1_OBJECT *)OPENSSL_malloc(sizeof(ASN1_OBJECT));

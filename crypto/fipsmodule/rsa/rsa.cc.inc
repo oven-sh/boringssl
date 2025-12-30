@@ -162,7 +162,7 @@ RSA *RSA_new_private_key_large_e(const BIGNUM *n, const BIGNUM *e,
   return rsa;
 }
 
-RSA *RSA_new(void) { return RSA_new_method(nullptr); }
+RSA *RSA_new() { return RSA_new_method(nullptr); }
 
 RSA *RSA_new_method(const ENGINE *engine) {
   RSA *rsa = reinterpret_cast<RSA *>(OPENSSL_zalloc(sizeof(RSA)));

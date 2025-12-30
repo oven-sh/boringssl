@@ -37,7 +37,7 @@ void bn_mont_ctx_cleanup(BN_MONT_CTX *mont) {
   BN_free(&mont->N);
 }
 
-BN_MONT_CTX *BN_MONT_CTX_new(void) {
+BN_MONT_CTX *BN_MONT_CTX_new() {
   BN_MONT_CTX *ret =
       reinterpret_cast<BN_MONT_CTX *>(OPENSSL_malloc(sizeof(BN_MONT_CTX)));
   if (ret == nullptr) {

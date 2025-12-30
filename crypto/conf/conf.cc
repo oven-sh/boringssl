@@ -78,7 +78,7 @@ CONF *NCONF_new(void *method) {
   return conf;
 }
 
-CONF_VALUE *CONF_VALUE_new(void) {
+CONF_VALUE *CONF_VALUE_new() {
   return reinterpret_cast<CONF_VALUE *>(OPENSSL_zalloc(sizeof(CONF_VALUE)));
 }
 
@@ -625,8 +625,8 @@ int CONF_modules_load_file(const char *filename, const char *appname,
 
 void CONF_modules_unload(int all) {}
 
-void CONF_modules_free(void) {}
+void CONF_modules_free() {}
 
 void OPENSSL_config(const char *config_name) {}
 
-void OPENSSL_no_config(void) {}
+void OPENSSL_no_config() {}

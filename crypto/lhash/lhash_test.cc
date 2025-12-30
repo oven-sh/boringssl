@@ -34,7 +34,7 @@ namespace {
 
 DEFINE_LHASH_OF(char)
 
-static std::unique_ptr<char[]> RandString(void) {
+static std::unique_ptr<char[]> RandString() {
   unsigned len = 1 + (rand() % 3);
   auto ret = std::make_unique<char[]>(len + 1);
 

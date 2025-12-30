@@ -280,7 +280,7 @@ void ASN1_STRING_set0(ASN1_STRING *str, void *data, int len) {
   str->length = len;
 }
 
-ASN1_STRING *ASN1_STRING_new(void) {
+ASN1_STRING *ASN1_STRING_new() {
   return (ASN1_STRING_type_new(V_ASN1_OCTET_STRING));
 }
 

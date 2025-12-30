@@ -35,7 +35,7 @@ struct conf_st {
 };
 
 // CONF_VALUE_new returns a freshly allocated and zeroed |CONF_VALUE|.
-CONF_VALUE *CONF_VALUE_new(void);
+CONF_VALUE *CONF_VALUE_new();
 
 // CONF_parse_list takes a list separated by 'sep' and calls |list_cb| giving
 // the start and length of each member, optionally stripping leading and

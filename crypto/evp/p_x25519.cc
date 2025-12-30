@@ -256,7 +256,7 @@ const EVP_PKEY_ASN1_METHOD x25519_asn1_meth = {
 
 }  // namespace
 
-const EVP_PKEY_ALG *EVP_pkey_x25519(void) {
+const EVP_PKEY_ALG *EVP_pkey_x25519() {
   static const EVP_PKEY_ALG kAlg = {&x25519_asn1_meth};
   return &kAlg;
 }

@@ -67,7 +67,7 @@
 typedef __m128i vec_t;
 
 // vec_capable returns one iff the current platform supports SSE2.
-static int vec_capable(void) { return 1; }
+static int vec_capable() { return 1; }
 
 // vec_add performs a pair-wise addition of four uint16s from |a| and |b|.
 static inline vec_t vec_add(vec_t a, vec_t b) { return _mm_add_epi16(a, b); }
@@ -192,7 +192,7 @@ typedef uint16x8_t vec_t;
 // These functions perform the same actions as the SSE2 function of the same
 // name, above.
 
-static int vec_capable(void) { return CRYPTO_is_NEON_capable(); }
+static int vec_capable() { return CRYPTO_is_NEON_capable(); }
 
 static inline vec_t vec_add(vec_t a, vec_t b) { return a + b; }
 

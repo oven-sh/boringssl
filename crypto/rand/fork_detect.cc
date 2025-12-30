@@ -44,7 +44,7 @@ static CRYPTO_MUTEX g_fork_detect_lock = CRYPTO_MUTEX_INIT;
 static bssl::Atomic<uint32_t> *g_fork_detect_addr;
 static uint64_t g_fork_generation;
 
-static void init_fork_detect(void) {
+static void init_fork_detect() {
   if (g_force_madv_wipeonfork) {
     return;
   }
@@ -77,7 +77,7 @@ static void init_fork_detect(void) {
   g_fork_generation = 1;
 }
 
-uint64_t CRYPTO_get_fork_generation(void) {
+uint64_t CRYPTO_get_fork_generation() {
   CRYPTO_once(&g_fork_detect_once, init_fork_detect);
 
   // In a single-threaded process, there are obviously no races because there's
@@ -153,7 +153,7 @@ void CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(int on) {
 static CRYPTO_once_t g_pthread_fork_detection_once = CRYPTO_ONCE_INIT;
 static uint64_t g_atfork_fork_generation;
 
-static void we_are_forked(void) {
+static void we_are_forked() {
   // Immediately after a fork, the process must be single-threaded.
   uint64_t value = g_atfork_fork_generation + 1;
   if (value == 0) {
@@ -162,14 +162,14 @@ static void we_are_forked(void) {
   g_atfork_fork_generation = value;
 }
 
-static void init_pthread_fork_detection(void) {
+static void init_pthread_fork_detection() {
   if (pthread_atfork(nullptr, nullptr, we_are_forked) != 0) {
     abort();
   }
   g_atfork_fork_generation = 1;
 }
 
-uint64_t CRYPTO_get_fork_generation(void) {
+uint64_t CRYPTO_get_fork_generation() {
   CRYPTO_once(&g_pthread_fork_detection_once, init_pthread_fork_detection);
 
   return g_atfork_fork_generation;
@@ -181,7 +181,7 @@ uint64_t CRYPTO_get_fork_generation(void) {
 // fork detection support. Returning a constant non zero value makes BoringSSL
 // assume address space duplication is not a concern and adding entropy to
 // every RAND_bytes call is not needed.
-uint64_t CRYPTO_get_fork_generation(void) { return 0xc0ffee; }
+uint64_t CRYPTO_get_fork_generation() { return 0xc0ffee; }
 
 #else
 
@@ -189,6 +189,6 @@ uint64_t CRYPTO_get_fork_generation(void) { return 0xc0ffee; }
 // place.  Returning a constant zero value makes BoringSSL assume that address
 // space duplication could have occurred on any call entropy must be added to
 // every RAND_bytes call.
-uint64_t CRYPTO_get_fork_generation(void) { return 0; }
+uint64_t CRYPTO_get_fork_generation() { return 0; }
 
 #endif
