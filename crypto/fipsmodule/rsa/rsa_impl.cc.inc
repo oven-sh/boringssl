@@ -32,11 +32,13 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 static_assert(OPENSSL_RSA_MAX_MODULUS_BITS <=
                   BN_MONTGOMERY_MAX_WORDS * BN_BITS2,
               "Max RSA size too big for Montgomery arithmetic");
 
-int rsa_check_public_key(const RSA *rsa) {
+int bssl::rsa_check_public_key(const RSA *rsa) {
   if (rsa->n == nullptr) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_VALUE_MISSING);
     return 0;
@@ -219,7 +221,7 @@ err:
   return ret;
 }
 
-void rsa_invalidate_key(RSA *rsa) {
+void bssl::rsa_invalidate_key(RSA *rsa) {
   rsa->private_key_frozen = 0;
 
   BN_MONT_CTX_free(rsa->mont_n);
@@ -239,9 +241,9 @@ void rsa_invalidate_key(RSA *rsa) {
   rsa->iqmp_mont = nullptr;
 }
 
-int rsa_default_sign_raw(RSA *rsa, size_t *out_len, uint8_t *out,
-                         size_t max_out, const uint8_t *in, size_t in_len,
-                         int padding) {
+int bssl::rsa_default_sign_raw(RSA *rsa, size_t *out_len, uint8_t *out,
+                               size_t max_out, const uint8_t *in, size_t in_len,
+                               int padding) {
   const unsigned rsa_size = RSA_size(rsa);
   uint8_t *buf = nullptr;
   int i, ret = 0;
@@ -289,9 +291,9 @@ err:
 
 static int rsa_mod_exp_crt(BIGNUM *r0, const BIGNUM *I, RSA *rsa, BN_CTX *ctx);
 
-int rsa_verify_raw_no_self_test(RSA *rsa, size_t *out_len, uint8_t *out,
-                                size_t max_out, const uint8_t *in,
-                                size_t in_len, int padding) {
+int bssl::rsa_verify_raw_no_self_test(RSA *rsa, size_t *out_len, uint8_t *out,
+                                      size_t max_out, const uint8_t *in,
+                                      size_t in_len, int padding) {
   if (rsa->n == nullptr || rsa->e == nullptr) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_VALUE_MISSING);
     return 0;
@@ -312,14 +314,14 @@ int rsa_verify_raw_no_self_test(RSA *rsa, size_t *out_len, uint8_t *out,
     return 0;
   }
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     return 0;
   }
 
   int ret = 0;
   uint8_t *buf = nullptr;
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   BIGNUM *f = BN_CTX_get(ctx.get());
   BIGNUM *result = BN_CTX_get(ctx.get());
   if (f == nullptr || result == nullptr) {
@@ -389,18 +391,18 @@ int RSA_verify_raw(RSA *rsa, size_t *out_len, uint8_t *out, size_t max_out,
                                      padding);
 }
 
-int rsa_default_private_transform(RSA *rsa, uint8_t *out, const uint8_t *in,
-                                  size_t len) {
+int bssl::rsa_default_private_transform(RSA *rsa, uint8_t *out,
+                                        const uint8_t *in, size_t len) {
   if (rsa->n == nullptr || rsa->d == nullptr) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_VALUE_MISSING);
     return 0;
   }
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     return 0;
   }
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   BIGNUM *f = BN_CTX_get(ctx.get());
   BIGNUM *result = BN_CTX_get(ctx.get());
   if (f == nullptr || result == nullptr) {
@@ -530,7 +532,7 @@ static int rsa_mod_exp_crt(BIGNUM *r0, const BIGNUM *I, RSA *rsa, BN_CTX *ctx) {
   assert(rsa->dmq1 != nullptr);
   assert(rsa->iqmp != nullptr);
 
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *r1 = BN_CTX_get(ctx);
   BIGNUM *m1 = BN_CTX_get(ctx);
   if (r1 == nullptr || m1 == nullptr) {
@@ -650,7 +652,7 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
   int limit = BN_is_word(e, 3) ? bits * 8 : bits * 5;
 
   int tries = 0, rand_tries = 0;
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *tmp = BN_CTX_get(ctx);
   if (tmp == nullptr) {
     return 0;
@@ -745,14 +747,14 @@ static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
     return 0;
   }
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     OPENSSL_PUT_ERROR(RSA, ERR_LIB_BN);
     return 0;
   }
 
   int prime_bits = bits / 2;
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   BIGNUM *totient = BN_CTX_get(ctx.get());
   BIGNUM *pm1 = BN_CTX_get(ctx.get());
   BIGNUM *qm1 = BN_CTX_get(ctx.get());
@@ -895,7 +897,7 @@ static int RSA_generate_key_ex_maybe_fips(RSA *rsa, int bits,
     return 0;
   }
 
-  bssl::UniquePtr<RSA> tmp;
+  UniquePtr<RSA> tmp;
 
   // |rsa_generate_key_impl|'s 2^-20 failure probability is too high at scale,
   // so we run the FIPS algorithm four times, bringing it down to 2^-80. We
@@ -974,6 +976,8 @@ int RSA_generate_key_fips(RSA *rsa, int bits, BN_GENCB *cb) {
   return ret;
 }
 
+BSSL_NAMESPACE_BEGIN
+
 DEFINE_METHOD_FUNCTION(RSA_METHOD, RSA_default_method) {
   // All of the methods are NULL to make it easier for the compiler/linker to
   // drop unused functions. The wrapper functions will select the appropriate
@@ -981,3 +985,5 @@ DEFINE_METHOD_FUNCTION(RSA_METHOD, RSA_default_method) {
   OPENSSL_memset(out, 0, sizeof(RSA_METHOD));
   out->common.is_static = 1;
 }
+
+BSSL_NAMESPACE_END

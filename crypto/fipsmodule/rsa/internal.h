@@ -22,10 +22,8 @@
 
 #include "../../internal.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
 
+BSSL_NAMESPACE_BEGIN
 
 // TODO(crbug.com/42290480): Raise this limit. 512-bit RSA was factored in 1999.
 #define OPENSSL_RSA_MIN_MODULUS_BITS 512
@@ -43,6 +41,8 @@ enum rsa_pss_params_t {
   // RSA-PSS using SHA-512, MGF1 with SHA-512, salt length 64.
   rsa_pss_sha512,
 };
+
+BSSL_NAMESPACE_END
 
 struct rsa_st {
   RSA_METHOD *meth;
@@ -81,13 +81,15 @@ struct rsa_st {
 
   // pss_params is the RSA-PSS parameters associated with the key. This is not
   // used by the low-level RSA implementation, just the EVP layer.
-  rsa_pss_params_t pss_params;
+  bssl::rsa_pss_params_t pss_params;
 
   // private_key_frozen is one if the key has been used for a private key
   // operation and may no longer be mutated.
   unsigned private_key_frozen:1;
 };
 
+
+BSSL_NAMESPACE_BEGIN
 
 #define RSA_PKCS1_PADDING_SIZE 11
 
@@ -156,9 +158,6 @@ int rsa_sign_no_self_test(int hash_nid, const uint8_t *digest,
                           size_t digest_len, uint8_t *out, unsigned *out_len,
                           RSA *rsa);
 
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_FIPSMODULE_RSA_INTERNAL_H
