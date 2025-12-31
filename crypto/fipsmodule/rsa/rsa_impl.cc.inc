@@ -48,9 +48,7 @@ int rsa_check_public_key(const RSA *rsa) {
     return 0;
   }
 
-  // TODO(crbug.com/boringssl/607): Raise this limit. 512-bit RSA was factored
-  // in 1999.
-  if (n_bits < 512) {
+  if (n_bits < OPENSSL_RSA_MIN_MODULUS_BITS) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL);
     return 0;
   }
@@ -815,7 +813,7 @@ static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
   bits &= ~127;
 
   // Reject excessively small keys.
-  if (bits < 256) {
+  if (bits < OPENSSL_RSA_MIN_MODULUS_BITS) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_KEY_SIZE_TOO_SMALL);
     return 0;
   }

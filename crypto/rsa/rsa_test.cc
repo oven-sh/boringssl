@@ -667,19 +667,6 @@ TEST(RSATest, BadExponent) {
   ERR_clear_error();
 }
 
-// Attempting to generate an excessively small key should fail.
-TEST(RSATest, GenerateSmallKey) {
-  bssl::UniquePtr<RSA> rsa(RSA_new());
-  ASSERT_TRUE(rsa);
-  bssl::UniquePtr<BIGNUM> e(BN_new());
-  ASSERT_TRUE(e);
-  ASSERT_TRUE(BN_set_word(e.get(), RSA_F4));
-
-  EXPECT_FALSE(RSA_generate_key_ex(rsa.get(), 255, e.get(), nullptr));
-  EXPECT_TRUE(
-      ErrorEquals(ERR_get_error(), ERR_LIB_RSA, RSA_R_KEY_SIZE_TOO_SMALL));
-}
-
 // Attempting to generate an funny RSA key length should round down.
 TEST(RSATest, RoundKeyLengths) {
   bssl::UniquePtr<BIGNUM> e(BN_new());
@@ -1286,11 +1273,23 @@ TEST(RSATest, KeyLimits) {
     return bssl::UniquePtr<RSA>(
         PEM_read_bio_RSA_PUBKEY(bio.get(), nullptr, nullptr, nullptr));
   };
+  auto generate_key = [](unsigned bits) -> bssl::UniquePtr<RSA> {
+    bssl::UniquePtr<RSA> rsa(RSA_new());
+    bssl::UniquePtr<BIGNUM> e(BN_new());
+    if (!rsa || !e || !BN_set_word(e.get(), RSA_F4) ||
+        !RSA_generate_key_ex(rsa.get(), bits, e.get(), nullptr)) {
+      return nullptr;
+    }
+    return rsa;
+  };
 
   // We support RSA-512 through RSA-8192.
   //
-  // TODO(crbug.com/boringssl/42290480): Raise this limit. 512-bit RSA was
-  // factored in 1999.
+  // TODO(crbug.com/42290480): Raise this limit. 512-bit RSA was factored in
+  // 1999.
+  EXPECT_FALSE(generate_key(511u));
+  EXPECT_TRUE(
+      ErrorEquals(ERR_get_error(), ERR_LIB_RSA, RSA_R_KEY_SIZE_TOO_SMALL));
   EXPECT_FALSE(read_private_key("crypto/rsa/test/rsa511.pem"));
   EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa511pub.pem"));
 
@@ -1300,6 +1299,9 @@ TEST(RSATest, KeyLimits) {
   rsa = read_public_key("crypto/rsa/test/rsa512pub.pem");
   ASSERT_TRUE(rsa);
   EXPECT_EQ(RSA_bits(rsa.get()), 512u);
+  rsa = generate_key(512u);
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(RSA_bits(rsa.get()), 512u);
 
   rsa = read_private_key("crypto/rsa/test/rsa8192.pem");
   ASSERT_TRUE(rsa);
@@ -1307,6 +1309,7 @@ TEST(RSATest, KeyLimits) {
   rsa = read_public_key("crypto/rsa/test/rsa8192pub.pem");
   ASSERT_TRUE(rsa);
   EXPECT_EQ(RSA_bits(rsa.get()), 8192u);
+  // RSA-8192 takes too long to generate, so skip this.
 
   EXPECT_FALSE(read_private_key("crypto/rsa/test/rsa8193.pem"));
   EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa8193pub.pem"));

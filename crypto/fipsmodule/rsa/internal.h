@@ -27,6 +27,9 @@ extern "C" {
 #endif
 
 
+// TODO(crbug.com/42290480): Raise this limit. 512-bit RSA was factored in 1999.
+#define OPENSSL_RSA_MIN_MODULUS_BITS 512
+
 // TODO(davidben): This is inside BCM because |RSA| is inside BCM, but BCM never
 // uses this. Split the RSA type in two.
 enum rsa_pss_params_t {
