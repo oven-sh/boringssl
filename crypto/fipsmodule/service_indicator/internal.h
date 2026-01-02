@@ -18,6 +18,8 @@
 #include <openssl/base.h>
 
 
+BSSL_NAMESPACE_BEGIN
+
 // FIPS_service_indicator_before_call and |FIPS_service_indicator_after_call|
 // both currently return the same local thread counter which is slowly
 // incremented whenever approved services are called. The
@@ -104,5 +106,7 @@ inline void TLSKDF_verify_service_indicator(
     [[maybe_unused]] const EVP_MD *dgst) {}
 
 #endif  // BORINGSSL_FIPS
+
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_FIPSMODULE_SERVICE_INDICATOR_INTERNAL_H

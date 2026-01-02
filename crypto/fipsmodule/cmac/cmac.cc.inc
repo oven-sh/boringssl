@@ -26,6 +26,8 @@
 #include "../service_indicator/internal.h"
 
 
+using namespace bssl;
+
 struct cmac_ctx_st {
   EVP_CIPHER_CTX cipher_ctx;
   // k1 and k2 are the CMAC subkeys. See

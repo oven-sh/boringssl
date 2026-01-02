@@ -24,6 +24,8 @@
 #include "../service_indicator/internal.h"
 
 
+using namespace bssl;
+
 uint8_t *HMAC(const EVP_MD *evp_md, const void *key, size_t key_len,
               const uint8_t *data, size_t data_len, uint8_t *out,
               unsigned int *out_len) {

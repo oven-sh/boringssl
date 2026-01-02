@@ -24,6 +24,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 bcm_infallible BCM_sha224_init(SHA256_CTX *sha) {
   OPENSSL_memset(sha, 0, sizeof(SHA256_CTX));
   sha->h[0] = 0xc1059ed8UL;
@@ -76,8 +78,8 @@ struct SHA256Traits {
 }  // namespace
 
 bcm_infallible BCM_sha256_update(SHA256_CTX *c, const void *data, size_t len) {
-  bssl::crypto_md32_update<SHA256Traits>(
-      c, bssl::Span(static_cast<const uint8_t *>(data), len));
+  crypto_md32_update<SHA256Traits>(
+      c, Span(static_cast<const uint8_t *>(data), len));
   return bcm_infallible::approved;
 }
 
@@ -87,7 +89,7 @@ bcm_infallible BCM_sha224_update(SHA256_CTX *ctx, const void *data,
 }
 
 static void sha256_final_impl(uint8_t *out, size_t md_len, SHA256_CTX *c) {
-  bssl::crypto_md32_final<SHA256Traits>(c);
+  crypto_md32_final<SHA256Traits>(c);
 
   BSSL_CHECK(md_len <= SHA256_DIGEST_LENGTH);
 

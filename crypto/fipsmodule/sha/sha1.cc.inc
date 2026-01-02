@@ -24,6 +24,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 bcm_infallible BCM_sha1_init(SHA_CTX *sha) {
   OPENSSL_memset(sha, 0, sizeof(SHA_CTX));
   sha->h[0] = 0x67452301UL;
@@ -57,8 +59,8 @@ struct SHA1Traits {
 }  // namespace
 
 bcm_infallible BCM_sha1_update(SHA_CTX *c, const void *data, size_t len) {
-  bssl::crypto_md32_update<SHA1Traits>(
-      c, bssl::Span(static_cast<const uint8_t *>(data), len));
+  crypto_md32_update<SHA1Traits>(c,
+                                 Span(static_cast<const uint8_t *>(data), len));
   return bcm_infallible::approved;
 }
 
@@ -72,7 +74,7 @@ static void sha1_output_state(uint8_t out[SHA_DIGEST_LENGTH],
 }
 
 bcm_infallible BCM_sha1_final(uint8_t out[SHA_DIGEST_LENGTH], SHA_CTX *c) {
-  bssl::crypto_md32_final<SHA1Traits>(c);
+  crypto_md32_final<SHA1Traits>(c);
   sha1_output_state(out, c);
   FIPS_service_indicator_update_state();
   return bcm_infallible::approved;

@@ -22,6 +22,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // The 32-bit hash algorithms share a common byte-order neutral collector and
 // padding function implementations that operate on unaligned data,
 // ../digest/md32_common.h. SHA-512 is the only 64-bit hash algorithm, as of

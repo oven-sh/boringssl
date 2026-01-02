@@ -26,6 +26,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 int BN_rand(BIGNUM *rnd, int bits, int top, int bottom) {
   if (rnd == nullptr) {
     return 0;
