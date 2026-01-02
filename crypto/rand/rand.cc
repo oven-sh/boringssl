@@ -20,6 +20,8 @@
 #include "../fipsmodule/bcm_interface.h"
 
 
+using namespace bssl;
+
 int RAND_bytes(uint8_t *buf, size_t len) {
   BCM_rand_bytes(buf, len);
   return 1;

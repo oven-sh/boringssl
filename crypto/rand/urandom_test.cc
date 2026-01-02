@@ -605,7 +605,9 @@ static void TestFunction() {
   RAND_bytes(&byte, sizeof(byte));
 }
 
-static bool have_fork_detection() { return CRYPTO_get_fork_generation() != 0; }
+static bool have_fork_detection() {
+  return bssl::CRYPTO_get_fork_generation() != 0;
+}
 
 static bool AppendDaemonEvents(std::vector<Event> *events, unsigned flags) {
   events->push_back(Event::Socket());
@@ -773,9 +775,9 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   if (getenv("BORINGSSL_IGNORE_MADV_WIPEONFORK")) {
-    CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(0);
+    bssl::CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(0);
   } else {
-    CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(1);
+    bssl::CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(1);
   }
 
   return RUN_ALL_TESTS();

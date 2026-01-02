@@ -22,6 +22,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 static_assert(sizeof(ossl_ssize_t) == sizeof(size_t),
               "ossl_ssize_t should be the same size as size_t");
 
@@ -147,4 +149,4 @@ int OPENSSL_init_crypto(uint64_t opts, const OPENSSL_INIT_SETTINGS *settings) {
 
 void OPENSSL_cleanup() {}
 
-FILE *CRYPTO_get_stderr() { return stderr; }
+FILE *bssl::CRYPTO_get_stderr() { return stderr; }

@@ -35,6 +35,8 @@
 
 #if defined(USE_NR_getrandom)
 
+using namespace bssl;
+
 #if defined(OPENSSL_MSAN)
 extern "C" {
 void __msan_unpoison(void *, size_t);
@@ -117,10 +119,10 @@ static void init_once() {
   urandom_fd = fd;
 }
 
-void CRYPTO_init_sysrand() { CRYPTO_once(&rand_once, init_once); }
+void bssl::CRYPTO_init_sysrand() { CRYPTO_once(&rand_once, init_once); }
 
 // CRYPTO_sysrand writes |len| bytes of entropy into |out|.
-void CRYPTO_sysrand(uint8_t *out, size_t len) {
+void bssl::CRYPTO_sysrand(uint8_t *out, size_t len) {
   if (len == 0) {
     return;
   }

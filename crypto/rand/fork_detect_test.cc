@@ -37,6 +37,9 @@
 #include <gtest/gtest.h>
 
 
+BSSL_NAMESPACE_BEGIN
+namespace {
+
 static pid_t WaitpidEINTR(pid_t pid, int *out_status, int options) {
   pid_t ret;
   do {

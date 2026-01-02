@@ -26,6 +26,8 @@
 #include "../internal.h"
 
 
+using namespace bssl;
+
 // g_num_calls is the number of calls to |CRYPTO_sysrand| that have occurred.
 //
 // This is intentionally not thread-safe. If the fuzzer mode is ever used in a
@@ -36,9 +38,9 @@ static CRYPTO_MUTEX g_num_calls_lock = CRYPTO_MUTEX_INIT;
 
 void RAND_reset_for_fuzzing() { g_num_calls = 0; }
 
-void CRYPTO_init_sysrand() {}
+void bssl::CRYPTO_init_sysrand() {}
 
-void CRYPTO_sysrand(uint8_t *out, size_t requested) {
+void bssl::CRYPTO_sysrand(uint8_t *out, size_t requested) {
   static const uint8_t kZeroKey[32] = {0};
 
   CRYPTO_MUTEX_lock_write(&g_num_calls_lock);

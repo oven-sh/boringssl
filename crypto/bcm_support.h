@@ -19,11 +19,8 @@
 
 #include <stdio.h>
 
-// Provided by libcrypto, called from BCM
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
+BSSL_NAMESPACE_BEGIN
 
 // Provided by libcrypto, called from BCM
 
@@ -64,9 +61,6 @@ OPENSSL_EXPORT void CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(
 // a data dependency on libc.
 FILE *CRYPTO_get_stderr();
 
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_BCM_SUPPORT_H
