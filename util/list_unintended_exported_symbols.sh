@@ -55,8 +55,16 @@ c_source_to_identifiers() {
 	source_to_ast -x c -std=c17 "$@" | ast_to_identifiers --language=C
 }
 
+c_source_to_symbols() {
+	source_to_ast -x c -std=c17 "$@" | ast_to_identifiers --language=C --global_symbols_only
+}
+
 cc_source_to_identifiers() {
 	source_to_ast -x c++ -std=c++17 "$@" | ast_to_identifiers --language=C++
+}
+
+cc_source_to_symbols() {
+	source_to_ast -x c++ -std=c++17 "$@" | ast_to_identifiers --language=C++ --global_symbols_only
 }
 
 lib_sources() {
@@ -155,17 +163,21 @@ fix_c_cc_include_deltas() {
 
 echo >&2 'Indexing C++ includes...'
 include_files $(public_cc_includes) | cc_source_to_identifiers - > include.cc.ids
+include_files $(public_cc_includes) | cc_source_to_symbols - > include.cc.syms
 echo >&2 'Indexing C includes...'
 include_files $(public_c_includes) | c_source_to_identifiers - > include.c.ids
+include_files $(public_c_includes) | c_source_to_symbols - > include.c.syms
 echo >&2 'Indexing C includes as C++...'
 include_files $(public_c_includes) | cc_source_to_identifiers - > include.c_as_cc.ids
+include_files $(public_c_includes) | cc_source_to_symbols - > include.c_as_cc.syms
+echo >&2 'Merging symbol lists...'
+cat include.c.syms include.cc.syms include.c_as_cc.syms | sort -u > include.syms
 
 # Check that the headers behave the same if included by C and C++ files, other
 # than for expected diffs.
 echo >&2 'Comparing C includes across including language...'
 fix_c_cc_include_deltas < include.c.ids > include.c.common.ids
 fix_c_cc_include_deltas < include.c_as_cc.ids > include.c_as_cc.common.ids
-diff -u include.c.common.ids include.c_as_cc.common.ids >&2
 
 # Check that no source file defines any public symbols that are not in the
 # public headers, namespaced or otherwise OK'd.
