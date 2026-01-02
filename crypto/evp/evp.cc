@@ -25,6 +25,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // Node depends on |EVP_R_NOT_XOF_OR_INVALID_LENGTH|.
 //
 // TODO(davidben): Fix Node to not touch the error queue itself and remove this.
@@ -154,8 +156,8 @@ int EVP_PKEY_id(const EVP_PKEY *pkey) {
   return pkey->ameth != nullptr ? pkey->ameth->pkey_id : EVP_PKEY_NONE;
 }
 
-void evp_pkey_set0(EVP_PKEY *pkey, const EVP_PKEY_ASN1_METHOD *method,
-                   void *pkey_data) {
+void bssl::evp_pkey_set0(EVP_PKEY *pkey, const EVP_PKEY_ASN1_METHOD *method,
+                         void *pkey_data) {
   if (pkey->ameth && pkey->ameth->pkey_free) {
     pkey->ameth->pkey_free(pkey);
   }
@@ -222,7 +224,7 @@ EVP_PKEY *EVP_PKEY_from_raw_private_key(const EVP_PKEY_ALG *alg,
     OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
     return nullptr;
   }
-  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
   if (ret == nullptr || !alg->method->set_priv_raw(ret.get(), in, len)) {
     return nullptr;
   }
@@ -235,7 +237,7 @@ EVP_PKEY *EVP_PKEY_from_private_seed(const EVP_PKEY_ALG *alg, const uint8_t *in,
     OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
     return nullptr;
   }
-  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
   if (ret == nullptr || !alg->method->set_priv_seed(ret.get(), in, len)) {
     return nullptr;
   }
@@ -248,7 +250,7 @@ EVP_PKEY *EVP_PKEY_from_raw_public_key(const EVP_PKEY_ALG *alg,
     OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
     return nullptr;
   }
-  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
   if (ret == nullptr || !alg->method->set_pub_raw(ret.get(), in, len)) {
     return nullptr;
   }

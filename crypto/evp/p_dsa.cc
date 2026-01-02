@@ -30,9 +30,9 @@ namespace {
 
 extern const EVP_PKEY_ASN1_METHOD dsa_asn1_meth;
 
-static evp_decode_result_t dsa_pub_decode(const EVP_PKEY_ALG *alg,
-                                          EVP_PKEY *out, CBS *params,
-                                          CBS *key) {
+static bssl::evp_decode_result_t dsa_pub_decode(const EVP_PKEY_ALG *alg,
+                                                EVP_PKEY *out, CBS *params,
+                                                CBS *key) {
   // See RFC 3279, section 2.3.2.
 
   // Decode parameters. RFC 3279 permits DSA parameters to be omitted, in which
@@ -80,9 +80,9 @@ static int dsa_pub_encode(CBB *out, const EVP_PKEY *key) {
   return 1;
 }
 
-static evp_decode_result_t dsa_priv_decode(const EVP_PKEY_ALG *alg,
-                                           EVP_PKEY *out, CBS *params,
-                                           CBS *key) {
+static bssl::evp_decode_result_t dsa_priv_decode(const EVP_PKEY_ALG *alg,
+                                                 EVP_PKEY *out, CBS *params,
+                                                 CBS *key) {
   // See PKCS#11, v2.40, section 2.5.
 
   // Decode parameters.

@@ -69,9 +69,9 @@ static int eckey_pub_encode(CBB *out, const EVP_PKEY *key) {
   return 1;
 }
 
-static evp_decode_result_t eckey_pub_decode(const EVP_PKEY_ALG *alg,
-                                            EVP_PKEY *out, CBS *params,
-                                            CBS *key) {
+static bssl::evp_decode_result_t eckey_pub_decode(const EVP_PKEY_ALG *alg,
+                                                  EVP_PKEY *out, CBS *params,
+                                                  CBS *key) {
   // See RFC 5480, section 2.
 
   // Check that |params| matches |alg|. Only the namedCurve form is allowed.
@@ -116,9 +116,9 @@ static int eckey_pub_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
   }
 }
 
-static evp_decode_result_t eckey_priv_decode(const EVP_PKEY_ALG *alg,
-                                             EVP_PKEY *out, CBS *params,
-                                             CBS *key) {
+static bssl::evp_decode_result_t eckey_priv_decode(const EVP_PKEY_ALG *alg,
+                                                   EVP_PKEY *out, CBS *params,
+                                                   CBS *key) {
   // See RFC 5915.
   const EC_GROUP *group = static_cast<const EVP_PKEY_ALG_EC*>(alg)->ec_group();
   if (ec_key_parse_parameters(params, Span(&group, 1)) == nullptr) {
@@ -534,7 +534,7 @@ static int pkey_ec_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey) {
   return 1;
 }
 
-const EVP_PKEY_CTX_METHOD ec_pkey_meth = {
+const EVP_PKEY_CTX_METHOD bssl::ec_pkey_meth = {
     EVP_PKEY_EC,
     pkey_ec_init,
     pkey_ec_copy,
