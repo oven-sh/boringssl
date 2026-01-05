@@ -171,7 +171,7 @@ static int chacha20_poly1305_sealv(const uint8_t *key,
                          iovecs[1].len - done, key, nonce.data(),
                          block_counter);
       }
-      // TODO(crbug.com/383343306): Support more than 1 extra ciphertext.
+      // TODO(crbug.com/473454967): Support more than 1 extra ciphertext.
       data.in.extra_ciphertext = iovecs[1].out;
       data.in.extra_ciphertext_len = iovecs[1].len;
     } else {
@@ -192,7 +192,7 @@ static int chacha20_poly1305_sealv(const uint8_t *key,
     bssl::iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
         iovecs,
         [&](const uint8_t *in, uint8_t *out, size_t len) {
-          // TODO(crbug.com/383343306): Maybe just provide asm version of this?
+          // TODO(crbug.com/473454967): Maybe just provide asm version of this?
           // Here, len is always a multiple of 64.
           CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);
           CRYPTO_poly1305_update(&ctx, out, len);
@@ -281,7 +281,7 @@ static int chacha20_poly1305_openv_detached(
   union chacha20_poly1305_open_data data;
   if (chacha20_poly1305_asm_capable() && iovecs.size() <= 1 &&
       aadvecs.size() <= 1) {
-    // TODO(crbug.com/383343306): Support more than 1 ciphertext segment.
+    // TODO(crbug.com/473454967): Support more than 1 ciphertext segment.
     OPENSSL_memcpy(data.in.key, key, 32);
     data.in.counter = 0;
     CopySpan(nonce, data.in.nonce);
@@ -299,7 +299,7 @@ static int chacha20_poly1305_openv_detached(
     bssl::iovec::ForEachBlockRange<64, /*WriteOut=*/true>(
         iovecs,
         [&](const uint8_t *in, uint8_t *out, size_t len) {
-          // TODO(crbug.com/383343306): Maybe just provide asm version of this?
+          // TODO(crbug.com/473454967): Maybe just provide asm version of this?
           // Here, len is always a multiple of 64.
           CRYPTO_poly1305_update(&ctx, in, len);
           CRYPTO_chacha_20(out, in, len, key, nonce.data(), block);

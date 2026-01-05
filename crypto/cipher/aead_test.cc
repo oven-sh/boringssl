@@ -628,20 +628,10 @@ void RunSealvTests(const KnownAEAD &aead_config, bool in_place) {
         TestIOVecs iovecs = TestIOVecs::Split(in, splits, in_place);
         std::vector<uint8_t> out_tag(EVP_AEAD_max_overhead(aead_config.func()));
         size_t out_tag_len;
-        int ret = EVP_AEAD_CTX_sealv(
+        ASSERT_TRUE(EVP_AEAD_CTX_sealv(
             ctx.get(), iovecs.iovecs().data(), iovecs.iovecs().size(),
             out_tag.data(), &out_tag_len, out_tag.size(), nonce.data(),
-            nonce.size(), advecs.ivecs().data(), advecs.ivecs().size());
-
-        // Skip encryption for AEADs that don't implement sealv().
-        // TODO(crbug.com/383343306): Remove this check once all AEADs do.
-        if (!ret && ERR_equals(ERR_peek_error(), ERR_LIB_CIPHER,
-                               CIPHER_R_CTRL_NOT_IMPLEMENTED)) {
-          t->SkipCurrent();
-          return;
-        }
-
-        ASSERT_TRUE(ret);
+            nonce.size(), advecs.ivecs().data(), advecs.ivecs().size()));
         out_tag.resize(out_tag_len);
         EXPECT_EQ(Bytes(ct), Bytes(iovecs.Output()));
         EXPECT_EQ(Bytes(tag), Bytes(out_tag));
