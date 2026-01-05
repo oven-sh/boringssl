@@ -22,8 +22,6 @@
 #include "../crypto/mem_internal.h"
 #include "../crypto/trust_token/internal.h"
 
-using namespace bssl;
-
 namespace {
 
 const uint8_t kClientData[] = "\x70TEST CLIENT DATA";
@@ -155,7 +153,7 @@ class TrustTokenFixture : public benchmark::Fixture {
   void SpeedFinishIssue(benchmark::State &state) {
     for (auto _ : state) {
       size_t key_index2;
-      UniquePtr<STACK_OF(TRUST_TOKEN)> test_tokens(
+      bssl::UniquePtr<STACK_OF(TRUST_TOKEN)> test_tokens(
           TRUST_TOKEN_CLIENT_finish_issuance(client_.get(), &key_index2,
                                              free_issue_resp_.data(),
                                              free_issue_resp_.size()));
@@ -269,21 +267,21 @@ class TrustTokenFixture : public benchmark::Fixture {
  private:
   size_t batchsize_;
   const TRUST_TOKEN_METHOD *method_;
-  UniquePtr<TRUST_TOKEN_CLIENT> client_;
-  UniquePtr<TRUST_TOKEN_ISSUER> issuer_;
+  bssl::UniquePtr<TRUST_TOKEN_CLIENT> client_;
+  bssl::UniquePtr<TRUST_TOKEN_ISSUER> issuer_;
 
   uint8_t priv_key_[TRUST_TOKEN_MAX_PRIVATE_KEY_SIZE];
   uint8_t pub_key_[TRUST_TOKEN_MAX_PUBLIC_KEY_SIZE];
 
-  UniquePtr<EVP_PKEY> priv_;
-  UniquePtr<EVP_PKEY> pub_;
+  bssl::UniquePtr<EVP_PKEY> priv_;
+  bssl::UniquePtr<EVP_PKEY> pub_;
 
-  Array<uint8_t> free_issue_msg_;
-  Array<uint8_t> free_issue_resp_;
-  UniquePtr<STACK_OF(TRUST_TOKEN_PRETOKEN)> pretokens_;
+  bssl::Array<uint8_t> free_issue_msg_;
+  bssl::Array<uint8_t> free_issue_resp_;
+  bssl::UniquePtr<STACK_OF(TRUST_TOKEN_PRETOKEN)> pretokens_;
   size_t key_index_;
-  UniquePtr<STACK_OF(TRUST_TOKEN)> tokens_;
-  Array<uint8_t> free_redeem_msg_;
+  bssl::UniquePtr<STACK_OF(TRUST_TOKEN)> tokens_;
+  bssl::Array<uint8_t> free_redeem_msg_;
 };
 
 void BM_SpeedTrustTokenKeyGen(benchmark::State &state,

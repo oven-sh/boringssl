@@ -36,7 +36,7 @@ extern "C" {
 // Defining stacks.
 
 // STACK_OF expands to the stack type for |type|.
-#define STACK_OF(type) struct type##_stack_st
+#define STACK_OF(type) struct stack_st_##type
 
 // DECLARE_STACK_OF declares the |STACK_OF(type)| type. It does not make the
 // corresponding |sk_type_*| functions available. This macro should be used in
@@ -47,8 +47,6 @@ extern "C" {
 // are |type| *. This macro makes the |sk_name_*| functions available.
 //
 // It is not necessary to use |DECLARE_STACK_OF| in files which use this macro.
-//
-// Must be used from the global namespace.
 #define DEFINE_NAMED_STACK_OF(name, type)                    \
   BORINGSSL_DEFINE_STACK_OF_IMPL(name, type *, const type *) \
   BORINGSSL_DEFINE_STACK_TRAITS(name, type, false)
@@ -57,35 +55,15 @@ extern "C" {
 // |type| *. This macro makes the |sk_type_*| functions available.
 //
 // It is not necessary to use |DECLARE_STACK_OF| in files which use this macro.
-//
-// Must be used from the global namespace.
 #define DEFINE_STACK_OF(type) DEFINE_NAMED_STACK_OF(type, type)
 
 // DEFINE_CONST_STACK_OF defines |STACK_OF(type)| to be a stack whose elements
 // are const |type| *. This macro makes the |sk_type_*| functions available.
 //
 // It is not necessary to use |DECLARE_STACK_OF| in files which use this macro.
-//
-// Must be used from the global namespace.
 #define DEFINE_CONST_STACK_OF(type)                                \
   BORINGSSL_DEFINE_STACK_OF_IMPL(type, const type *, const type *) \
   BORINGSSL_DEFINE_STACK_TRAITS(type, const type, true)
-
-// DEFINE_NAMESPACED_STACK_OF is same as DEFINE_STACK_OF but to be used for
-// internal stacks from within the bssl namespace.
-#define DEFINE_NAMESPACED_STACK_OF(type)                     \
-  BORINGSSL_DEFINE_STACK_OF_IMPL(type, type *, const type *) \
-  BSSL_NAMESPACE_END                                         \
-  BORINGSSL_DEFINE_STACK_TRAITS(type, type, false)           \
-  BSSL_NAMESPACE_BEGIN
-
-// DEFINE_NAMESPACED_CONST_STACK_OF is same as DEFINE_CONST_STACK_OF but to be
-// used for internal stacks from within the bssl namespace.
-#define DEFINE_NAMESPACED_CONST_STACK_OF(type)                     \
-  BORINGSSL_DEFINE_STACK_OF_IMPL(type, const type *, const type *) \
-  BSSL_NAMESPACE_END                                               \
-  BORINGSSL_DEFINE_STACK_TRAITS(type, const type, true)            \
-  BSSL_NAMESPACE_BEGIN
 
 
 // Using stacks.
