@@ -683,10 +683,10 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
   assert(BN_is_pow2(pow2_bits_100));
   assert(BN_is_bit_set(pow2_bits_100, bits - 100));
 
-  // See FIPS 186-4 appendix B.3.3, steps 4 and 5. Note |bits| here is nlen/2.
+  // See FIPS 186-5 appendix A.1.3, steps 4 and 5. Note |bits| here is nlen/2.
 
   // Use the limit from steps 4.7 and 5.8 for most values of |e|. When |e| is 3,
-  // the 186-4 limit is too low, so we use a higher one. Note this case is not
+  // the 186-5 limit is too low, so we use a higher one. Note this case is not
   // reachable from |RSA_generate_key_fips|.
   //
   // |limit| determines the failure probability. We must find a prime that is
@@ -735,17 +735,7 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
       return 0;
     }
 
-    if (p != nullptr) {
-      // If |p| and |out| are too close, try again (step 5.4).
-      if (!bn_abs_sub_consttime(tmp, out, p, ctx)) {
-        return 0;
-      }
-      if (BN_cmp(tmp, pow2_bits_100) <= 0) {
-        continue;
-      }
-    }
-
-    // If out < 2^(bits-1)×√2, try again (steps 4.4 and 5.5). This is equivalent
+    // If out < 2^(bits-1)×√2, try again (steps 4.4 and 5.4). This is equivalent
     // to out <= ⌊2^(bits-1)×√2⌋, or out <= sqrt2 for FIPS key sizes.
     //
     // For larger keys, the comparison is approximate, leaning towards
@@ -757,6 +747,16 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
     // comparison.
     if (constant_time_declassify_int(BN_cmp(out, sqrt2) <= 0)) {
       continue;
+    }
+
+    if (p != nullptr) {
+      // If |p| and |out| are too close, try again (step 5.5).
+      if (!bn_abs_sub_consttime(tmp, out, p, ctx)) {
+        return 0;
+      }
+      if (BN_cmp(tmp, pow2_bits_100) <= 0) {
+        continue;
+      }
     }
 
     // RSA key generation's bottleneck is discarding composites. If it fails
@@ -797,17 +797,13 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
 }
 
 // rsa_generate_key_impl generates an RSA key using a generalized version of
-// FIPS 186-4 appendix B.3. |RSA_generate_key_fips| performs additional checks
+// FIPS 186-5 appendix A.1.3. |RSA_generate_key_fips| performs additional checks
 // for FIPS-compliant key generation.
 //
 // This function returns one on success and zero on failure. It has a failure
 // probability of about 2^-20.
 static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
                                  BN_GENCB *cb) {
-  // See FIPS 186-4 appendix B.3. This function implements a generalized version
-  // of the FIPS algorithm. |RSA_generate_key_fips| performs additional checks
-  // for FIPS-compliant key generation.
-
   // Always generate RSA keys which are a multiple of 128 bits. Round |bits|
   // down as needed.
   bits &= ~127;
@@ -898,7 +894,7 @@ static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
 
   do {
     // Generate p and q, each of size |prime_bits|, using the steps outlined in
-    // appendix FIPS 186-4 appendix B.3.3.
+    // appendix FIPS 186-5 appendix C.3.3.
     //
     // Each call to |generate_prime| fails with probability p = 2^-21. The
     // probability that either call fails is 1 - (1-p)^2, which is around 2^-20.
@@ -918,7 +914,7 @@ static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
       rsa->q = tmp;
     }
 
-    // Calculate d = e^(-1) (mod lcm(p-1, q-1)), per FIPS 186-4. This differs
+    // Calculate d = e^(-1) (mod lcm(p-1, q-1)), per FIPS 186-5. This differs
     // from typical RSA implementations which use (p-1)*(q-1).
     //
     // Note this means the size of d might reveal information about p-1 and
@@ -935,7 +931,7 @@ static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
       return 0;
     }
 
-    // Retry if |rsa->d| <= 2^|prime_bits|. See appendix B.3.1's guidance on
+    // Retry if |rsa->d| <= 2^|prime_bits|. See appendix A.3.1's guidance on
     // values for d. When we retry, p and q are discarded, so it is safe to leak
     // this comparison.
   } while (constant_time_declassify_int(BN_cmp(rsa->d, pow2_prime_bits) <= 0));
@@ -1011,7 +1007,7 @@ static int RSA_generate_key_ex_maybe_fips(RSA *rsa, int bits,
 
   // |rsa_generate_key_impl|'s 2^-20 failure probability is too high at scale,
   // so we run the FIPS algorithm four times, bringing it down to 2^-80. We
-  // should just adjust the retry limit, but FIPS 186-4 prescribes that value
+  // should just adjust the retry limit, but FIPS 186-5 prescribes that value
   // and thus results in unnecessary complexity.
   int failures = 0;
   do {
@@ -1065,10 +1061,11 @@ int RSA_generate_key_ex(RSA *rsa, int bits, const BIGNUM *e_value,
 }
 
 int RSA_generate_key_fips(RSA *rsa, int bits, BN_GENCB *cb) {
-  // FIPS 186-4 allows 2048-bit and 3072-bit RSA keys (1024-bit and 1536-bit
+  // FIPS 186-4 allowed 2048-bit and 3072-bit RSA keys (1024-bit and 1536-bit
   // primes, respectively) with the prime generation method we use.
   // Subsequently, IG A.14 stated that larger modulus sizes can be used and ACVP
-  // testing supports 4096 bits.
+  // testing supports 4096 bits, and FIPS 186-5 allowed all key sizes at least
+  // 2048.
   if (bits != 2048 && bits != 3072 && bits != 4096) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_RSA_PARAMETERS);
     return 0;

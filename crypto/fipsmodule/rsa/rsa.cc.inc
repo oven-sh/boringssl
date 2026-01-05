@@ -646,8 +646,8 @@ int rsa_verify_no_self_test(int hash_nid, const uint8_t *digest,
     goto out;
   }
 
-  // Check that no other information follows the hash value (FIPS 186-4 Section
-  // 5.5) and it matches the expected hash.
+  // Check that no other information follows the hash value (FIPS 186-5 Section
+  // 5.4) and it matches the expected hash.
   if (len != signed_msg_len || OPENSSL_memcmp(buf, signed_msg, len) != 0) {
     OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_SIGNATURE);
     goto out;

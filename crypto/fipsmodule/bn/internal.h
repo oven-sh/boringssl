@@ -453,7 +453,7 @@ int bn_odd_number_is_obviously_composite(const BIGNUM *bn);
 // A BN_MILLER_RABIN stores state common to each Miller-Rabin iteration. It is
 // initialized within an existing |BN_CTX| scope and may not be used after
 // that scope is released with |BN_CTX_end|. Field names match those in FIPS
-// 186-4, section C.3.1.
+// 186-5, section B.3.1.
 typedef struct {
   // w1 is w-1.
   BIGNUM *w1;
