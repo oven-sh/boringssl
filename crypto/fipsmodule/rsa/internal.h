@@ -135,11 +135,6 @@ int rsa_private_transform(RSA *rsa, uint8_t *out, const uint8_t *in,
 void rsa_invalidate_key(RSA *rsa);
 
 
-// This constant is exported for test purposes.
-extern const BN_ULONG kBoringSSLRSASqrtTwo[];
-extern const size_t kBoringSSLRSASqrtTwoLen;
-
-
 // Functions that avoid self-tests.
 //
 // Self-tests need to call functions that don't try and ensure that the

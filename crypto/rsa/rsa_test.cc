@@ -1315,36 +1315,6 @@ TEST(RSATest, KeyLimits) {
   EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa8193pub.pem"));
 }
 
-#if !defined(BORINGSSL_SHARED_LIBRARY)
-TEST(RSATest, SqrtTwo) {
-  bssl::UniquePtr<BIGNUM> sqrt(BN_new()), pow2(BN_new());
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
-  ASSERT_TRUE(sqrt);
-  ASSERT_TRUE(pow2);
-  ASSERT_TRUE(ctx);
-
-  size_t bits = kBoringSSLRSASqrtTwoLen * BN_BITS2;
-  ASSERT_TRUE(BN_one(pow2.get()));
-  ASSERT_TRUE(BN_lshift(pow2.get(), pow2.get(), 2 * bits - 1));
-
-  // Check that sqrt² < pow2.
-  ASSERT_TRUE(
-      bn_set_words(sqrt.get(), kBoringSSLRSASqrtTwo, kBoringSSLRSASqrtTwoLen));
-  ASSERT_TRUE(BN_sqr(sqrt.get(), sqrt.get(), ctx.get()));
-  EXPECT_LT(BN_cmp(sqrt.get(), pow2.get()), 0);
-
-  // Check that pow2 < (sqrt + 1)².
-  ASSERT_TRUE(
-      bn_set_words(sqrt.get(), kBoringSSLRSASqrtTwo, kBoringSSLRSASqrtTwoLen));
-  ASSERT_TRUE(BN_add_word(sqrt.get(), 1));
-  ASSERT_TRUE(BN_sqr(sqrt.get(), sqrt.get(), ctx.get()));
-  EXPECT_LT(BN_cmp(pow2.get(), sqrt.get()), 0);
-
-  // Check the kBoringSSLRSASqrtTwo is sized for a 4096-bit RSA key.
-  EXPECT_EQ(4096u / 2u, bits);
-}
-#endif  // !BORINGSSL_SHARED_LIBRARY
-
 #if defined(OPENSSL_THREADS)
 TEST(RSATest, Threads) {
   bssl::UniquePtr<RSA> rsa_template(
