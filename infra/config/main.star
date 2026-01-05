@@ -332,7 +332,7 @@ WIN_HOST = {
 }
 
 # The Android tests take longer to run. See https://crbug.com/900953.
-ANDROID_TIMEOUT = 60 * time.minute
+ANDROID_TIMEOUT = 90 * time.minute
 
 WALLEYE_HOST = {
     "dimensions": {
