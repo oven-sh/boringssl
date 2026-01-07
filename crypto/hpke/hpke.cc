@@ -36,6 +36,8 @@
 #include "../internal.h"
 
 
+using namespace bssl;
+
 // This file implements RFC 9180.
 
 #define MAX_SEED_LEN XWING_SEED_LEN

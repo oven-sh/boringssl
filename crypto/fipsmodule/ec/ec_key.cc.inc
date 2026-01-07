@@ -36,7 +36,7 @@ using namespace bssl;
 
 DEFINE_STATIC_EX_DATA_CLASS(g_ec_ex_data_class)
 
-static EC_WRAPPED_SCALAR *ec_wrapped_scalar_new(const EC_GROUP *group) {
+static bssl::EC_WRAPPED_SCALAR *ec_wrapped_scalar_new(const EC_GROUP *group) {
   EC_WRAPPED_SCALAR *wrapped = reinterpret_cast<EC_WRAPPED_SCALAR *>(
       OPENSSL_zalloc(sizeof(EC_WRAPPED_SCALAR)));
   if (wrapped == nullptr) {
