@@ -1074,7 +1074,8 @@ void ensure_decap_self_test() {}
 }  // namespace
 }  // namespace mlkem
 
-bcm_status BCM_mlkem768_check_fips(const MLKEM768_private_key *private_key) {
+bcm_status bssl::BCM_mlkem768_check_fips(
+    const MLKEM768_private_key *private_key) {
   const mlkem::private_key<RANK768> *priv =
       mlkem::private_key_768_from_external(private_key);
 
@@ -1097,7 +1098,7 @@ bcm_status BCM_mlkem768_check_fips(const MLKEM768_private_key *private_key) {
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem768_generate_key_fips(
+bcm_status bssl::BCM_mlkem768_generate_key_fips(
     uint8_t out_encoded_public_key[MLKEM768_PUBLIC_KEY_BYTES],
     uint8_t optional_out_seed[MLKEM_SEED_BYTES],
     MLKEM768_private_key *out_private_key) {
@@ -1109,7 +1110,7 @@ bcm_status BCM_mlkem768_generate_key_fips(
   return BCM_mlkem768_check_fips(out_private_key);
 }
 
-bcm_infallible BCM_mlkem768_generate_key(
+bcm_infallible bssl::BCM_mlkem768_generate_key(
     uint8_t out_encoded_public_key[MLKEM768_PUBLIC_KEY_BYTES],
     uint8_t optional_out_seed[MLKEM_SEED_BYTES],
     MLKEM768_private_key *out_private_key) {
@@ -1124,7 +1125,7 @@ bcm_infallible BCM_mlkem768_generate_key(
   return bcm_infallible::not_approved;
 }
 
-bcm_status BCM_mlkem768_private_key_from_seed(
+bcm_status bssl::BCM_mlkem768_private_key_from_seed(
     MLKEM768_private_key *out_private_key, const uint8_t *seed,
     size_t seed_len) {
   if (seed_len != MLKEM_SEED_BYTES) {
@@ -1137,7 +1138,8 @@ bcm_status BCM_mlkem768_private_key_from_seed(
   return bcm_status::not_approved;
 }
 
-bcm_status BCM_mlkem1024_check_fips(const MLKEM1024_private_key *private_key) {
+bcm_status bssl::BCM_mlkem1024_check_fips(
+    const MLKEM1024_private_key *private_key) {
   const mlkem::private_key<RANK1024> *priv =
       mlkem::private_key_1024_from_external(private_key);
 
@@ -1160,7 +1162,7 @@ bcm_status BCM_mlkem1024_check_fips(const MLKEM1024_private_key *private_key) {
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem1024_generate_key_fips(
+bcm_status bssl::BCM_mlkem1024_generate_key_fips(
     uint8_t out_encoded_public_key[MLKEM1024_PUBLIC_KEY_BYTES],
     uint8_t optional_out_seed[MLKEM_SEED_BYTES],
     MLKEM1024_private_key *out_private_key) {
@@ -1172,7 +1174,7 @@ bcm_status BCM_mlkem1024_generate_key_fips(
   return BCM_mlkem1024_check_fips(out_private_key);
 }
 
-bcm_infallible BCM_mlkem1024_generate_key(
+bcm_infallible bssl::BCM_mlkem1024_generate_key(
     uint8_t out_encoded_public_key[MLKEM1024_PUBLIC_KEY_BYTES],
     uint8_t optional_out_seed[MLKEM_SEED_BYTES],
     MLKEM1024_private_key *out_private_key) {
@@ -1187,7 +1189,7 @@ bcm_infallible BCM_mlkem1024_generate_key(
   return bcm_infallible::not_approved;
 }
 
-bcm_status BCM_mlkem1024_private_key_from_seed(
+bcm_status bssl::BCM_mlkem1024_private_key_from_seed(
     MLKEM1024_private_key *out_private_key, const uint8_t *seed,
     size_t seed_len) {
   if (seed_len != MLKEM_SEED_BYTES) {
@@ -1199,7 +1201,7 @@ bcm_status BCM_mlkem1024_private_key_from_seed(
   return bcm_status::not_approved;
 }
 
-bcm_infallible BCM_mlkem768_generate_key_external_seed(
+bcm_infallible bssl::BCM_mlkem768_generate_key_external_seed(
     uint8_t out_encoded_public_key[MLKEM768_PUBLIC_KEY_BYTES],
     MLKEM768_private_key *out_private_key,
     const uint8_t seed[MLKEM_SEED_BYTES]) {
@@ -1209,7 +1211,7 @@ bcm_infallible BCM_mlkem768_generate_key_external_seed(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem1024_generate_key_external_seed(
+bcm_infallible bssl::BCM_mlkem1024_generate_key_external_seed(
     uint8_t out_encoded_public_key[MLKEM1024_PUBLIC_KEY_BYTES],
     MLKEM1024_private_key *out_private_key,
     const uint8_t seed[MLKEM_SEED_BYTES]) {
@@ -1219,7 +1221,7 @@ bcm_infallible BCM_mlkem1024_generate_key_external_seed(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem768_public_from_private(
+bcm_infallible bssl::BCM_mlkem768_public_from_private(
     MLKEM768_public_key *out_public_key,
     const MLKEM768_private_key *private_key) {
   mlkem::public_key<RANK768> *const pub =
@@ -1230,7 +1232,7 @@ bcm_infallible BCM_mlkem768_public_from_private(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem1024_public_from_private(
+bcm_infallible bssl::BCM_mlkem1024_public_from_private(
     MLKEM1024_public_key *out_public_key,
     const MLKEM1024_private_key *private_key) {
   mlkem::public_key<RANK1024> *const pub =
@@ -1243,7 +1245,7 @@ bcm_infallible BCM_mlkem1024_public_from_private(
 
 // Calls |MLKEM768_encap_external_entropy| with random bytes from
 // |BCM_rand_bytes|
-bcm_infallible BCM_mlkem768_encap(
+bcm_infallible bssl::BCM_mlkem768_encap(
     uint8_t out_ciphertext[MLKEM768_CIPHERTEXT_BYTES],
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const MLKEM768_public_key *public_key) {
@@ -1255,7 +1257,7 @@ bcm_infallible BCM_mlkem768_encap(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem1024_encap(
+bcm_infallible bssl::BCM_mlkem1024_encap(
     uint8_t out_ciphertext[MLKEM1024_CIPHERTEXT_BYTES],
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const MLKEM1024_public_key *public_key) {
@@ -1267,7 +1269,7 @@ bcm_infallible BCM_mlkem1024_encap(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem768_encap_external_entropy(
+bcm_infallible bssl::BCM_mlkem768_encap_external_entropy(
     uint8_t out_ciphertext[MLKEM768_CIPHERTEXT_BYTES],
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const MLKEM768_public_key *public_key,
@@ -1278,7 +1280,7 @@ bcm_infallible BCM_mlkem768_encap_external_entropy(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_mlkem1024_encap_external_entropy(
+bcm_infallible bssl::BCM_mlkem1024_encap_external_entropy(
     uint8_t out_ciphertext[MLKEM1024_CIPHERTEXT_BYTES],
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const MLKEM1024_public_key *public_key,
@@ -1289,7 +1291,7 @@ bcm_infallible BCM_mlkem1024_encap_external_entropy(
   return bcm_infallible::approved;
 }
 
-bcm_status BCM_mlkem768_decap(
+bcm_status bssl::BCM_mlkem768_decap(
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const uint8_t *ciphertext, size_t ciphertext_len,
     const MLKEM768_private_key *private_key) {
@@ -1303,7 +1305,7 @@ bcm_status BCM_mlkem768_decap(
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem1024_decap(
+bcm_status bssl::BCM_mlkem1024_decap(
     uint8_t out_shared_secret[MLKEM_SHARED_SECRET_BYTES],
     const uint8_t *ciphertext, size_t ciphertext_len,
     const MLKEM1024_private_key *private_key) {
@@ -1317,20 +1319,20 @@ bcm_status BCM_mlkem1024_decap(
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem768_marshal_public_key(
+bcm_status bssl::BCM_mlkem768_marshal_public_key(
     CBB *out, const MLKEM768_public_key *public_key) {
   return mlkem_marshal_public_key(
       out, mlkem::public_key_768_from_external(public_key));
 }
 
-bcm_status BCM_mlkem1024_marshal_public_key(
+bcm_status bssl::BCM_mlkem1024_marshal_public_key(
     CBB *out, const MLKEM1024_public_key *public_key) {
   return mlkem_marshal_public_key(
       out, mlkem::public_key_1024_from_external(public_key));
 }
 
-bcm_status BCM_mlkem768_parse_public_key(MLKEM768_public_key *public_key,
-                                         CBS *in) {
+bcm_status bssl::BCM_mlkem768_parse_public_key(MLKEM768_public_key *public_key,
+                                               CBS *in) {
   mlkem::public_key<RANK768> *pub =
       mlkem::public_key_768_from_external(public_key);
   if (!mlkem_parse_public_key(pub, in)) {
@@ -1339,8 +1341,8 @@ bcm_status BCM_mlkem768_parse_public_key(MLKEM768_public_key *public_key,
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem1024_parse_public_key(MLKEM1024_public_key *public_key,
-                                          CBS *in) {
+bcm_status bssl::BCM_mlkem1024_parse_public_key(
+    MLKEM1024_public_key *public_key, CBS *in) {
   mlkem::public_key<RANK1024> *pub =
       mlkem::public_key_1024_from_external(public_key);
   if (!mlkem_parse_public_key(pub, in)) {
@@ -1349,7 +1351,7 @@ bcm_status BCM_mlkem1024_parse_public_key(MLKEM1024_public_key *public_key,
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem768_marshal_private_key(
+bcm_status bssl::BCM_mlkem768_marshal_private_key(
     CBB *out, const MLKEM768_private_key *private_key) {
   const mlkem::private_key<RANK768> *const priv =
       mlkem::private_key_768_from_external(private_key);
@@ -1359,7 +1361,7 @@ bcm_status BCM_mlkem768_marshal_private_key(
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem1024_marshal_private_key(
+bcm_status bssl::BCM_mlkem1024_marshal_private_key(
     CBB *out, const MLKEM1024_private_key *private_key) {
   const mlkem::private_key<RANK1024> *const priv =
       mlkem::private_key_1024_from_external(private_key);
@@ -1369,8 +1371,8 @@ bcm_status BCM_mlkem1024_marshal_private_key(
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem768_parse_private_key(MLKEM768_private_key *out_private_key,
-                                          CBS *in) {
+bcm_status bssl::BCM_mlkem768_parse_private_key(
+    MLKEM768_private_key *out_private_key, CBS *in) {
   mlkem::private_key<RANK768> *const priv =
       mlkem::private_key_768_from_external(out_private_key);
   if (!mlkem_parse_private_key(priv, in)) {
@@ -1379,7 +1381,7 @@ bcm_status BCM_mlkem768_parse_private_key(MLKEM768_private_key *out_private_key,
   return bcm_status::approved;
 }
 
-bcm_status BCM_mlkem1024_parse_private_key(
+bcm_status bssl::BCM_mlkem1024_parse_private_key(
     MLKEM1024_private_key *out_private_key, CBS *in) {
   mlkem::private_key<RANK1024> *const priv =
       mlkem::private_key_1024_from_external(out_private_key);

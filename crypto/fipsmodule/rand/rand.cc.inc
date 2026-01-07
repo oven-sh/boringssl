@@ -172,7 +172,7 @@ static int rdrand(uint8_t *buf, size_t len) { return 0; }
 
 #endif
 
-bcm_status BCM_rand_bytes_hwrng(uint8_t *buf, const size_t len) {
+bcm_status bssl::BCM_rand_bytes_hwrng(uint8_t *buf, const size_t len) {
   if (!have_rdrand()) {
     return bcm_status::failure;
   }
@@ -203,8 +203,9 @@ struct entropy_buffer {
 DEFINE_BSS_GET(struct entropy_buffer, entropy_buffer, {})
 DEFINE_STATIC_MUTEX(entropy_buffer_lock)
 
-bcm_infallible BCM_rand_load_entropy(const uint8_t *entropy, size_t entropy_len,
-                                     int want_additional_input) {
+bcm_infallible bssl::BCM_rand_load_entropy(const uint8_t *entropy,
+                                           size_t entropy_len,
+                                           int want_additional_input) {
   struct entropy_buffer *const buffer = entropy_buffer_bss_get();
 
   CRYPTO_MUTEX_lock_write(entropy_buffer_lock_bss_get());
@@ -332,7 +333,7 @@ static void rand_get_seed(struct rand_thread_state *state,
 
 #endif
 
-bcm_infallible BCM_rand_bytes_with_additional_data(
+bcm_infallible bssl::BCM_rand_bytes_with_additional_data(
     uint8_t *out, size_t out_len, const uint8_t user_additional_data[32]) {
   if (out_len == 0) {
     return bcm_infallible::approved;
@@ -474,7 +475,7 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_rand_bytes(uint8_t *out, size_t out_len) {
+bcm_infallible bssl::BCM_rand_bytes(uint8_t *out, size_t out_len) {
   static const uint8_t kZeroAdditionalData[32] = {0};
   BCM_rand_bytes_with_additional_data(out, out_len, kZeroAdditionalData);
   return bcm_infallible::approved;

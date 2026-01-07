@@ -25,8 +25,8 @@ using namespace bssl;
 // value, or both. Therefore they cannot mix. Also, on AArch64, the plain-C
 // code, above, is incompatible with the |aes_hw_*| functions.
 
-bcm_infallible BCM_aes_encrypt(const uint8_t *in, uint8_t *out,
-                               const AES_KEY *key) {
+bcm_infallible bssl::BCM_aes_encrypt(const uint8_t *in, uint8_t *out,
+                                     const AES_KEY *key) {
   if (hwaes_capable()) {
     aes_hw_encrypt(in, out, key);
   } else if (vpaes_capable()) {
@@ -37,8 +37,8 @@ bcm_infallible BCM_aes_encrypt(const uint8_t *in, uint8_t *out,
   return bcm_infallible::not_approved;
 }
 
-bcm_infallible BCM_aes_decrypt(const uint8_t *in, uint8_t *out,
-                               const AES_KEY *key) {
+bcm_infallible bssl::BCM_aes_decrypt(const uint8_t *in, uint8_t *out,
+                                     const AES_KEY *key) {
   if (hwaes_capable()) {
     aes_hw_decrypt(in, out, key);
   } else if (vpaes_capable()) {
@@ -49,8 +49,8 @@ bcm_infallible BCM_aes_decrypt(const uint8_t *in, uint8_t *out,
   return bcm_infallible::not_approved;
 }
 
-bcm_status BCM_aes_set_encrypt_key(const uint8_t *key, unsigned bits,
-                                   AES_KEY *aeskey) {
+bcm_status bssl::BCM_aes_set_encrypt_key(const uint8_t *key, unsigned bits,
+                                         AES_KEY *aeskey) {
   int ret = -1;
   if (hwaes_capable()) {
     ret = aes_hw_set_encrypt_key(key, bits, aeskey);
@@ -66,8 +66,8 @@ bcm_status BCM_aes_set_encrypt_key(const uint8_t *key, unsigned bits,
   return bcm_status::not_approved;
 }
 
-bcm_status BCM_aes_set_decrypt_key(const uint8_t *key, unsigned bits,
-                                   AES_KEY *aeskey) {
+bcm_status bssl::BCM_aes_set_decrypt_key(const uint8_t *key, unsigned bits,
+                                         AES_KEY *aeskey) {
   int ret = -1;
   if (hwaes_capable()) {
     ret = aes_hw_set_decrypt_key(key, bits, aeskey);

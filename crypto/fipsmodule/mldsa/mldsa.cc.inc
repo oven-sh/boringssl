@@ -2285,34 +2285,34 @@ void ensure_verify_self_test() {}
 
 // ML-DSA-65 specific wrappers.
 
-bcm_status BCM_mldsa65_parse_public_key(MLDSA65_public_key *public_key,
-                                        CBS *in) {
+bcm_status bssl::BCM_mldsa65_parse_public_key(MLDSA65_public_key *public_key,
+                                              CBS *in) {
   return bcm_as_approved_status(mldsa_parse_public_key(
       mldsa::public_key_from_external_65(public_key), in));
 }
 
-bcm_status BCM_mldsa65_marshal_private_key(
+bcm_status bssl::BCM_mldsa65_marshal_private_key(
     CBB *out, const MLDSA65_private_key *private_key) {
   return bcm_as_approved_status(mldsa_marshal_private_key(
       out, mldsa::private_key_from_external_65(private_key)));
 }
 
-bcm_status BCM_mldsa65_parse_private_key(MLDSA65_private_key *private_key,
-                                         CBS *in) {
+bcm_status bssl::BCM_mldsa65_parse_private_key(MLDSA65_private_key *private_key,
+                                               CBS *in) {
   return bcm_as_approved_status(
       mldsa_parse_private_key(mldsa::private_key_from_external_65(private_key),
                               in) &&
       CBS_len(in) == 0);
 }
 
-bcm_status BCM_mldsa65_check_key_fips(MLDSA65_private_key *private_key) {
+bcm_status bssl::BCM_mldsa65_check_key_fips(MLDSA65_private_key *private_key) {
   return bcm_as_approved_status(
       mldsa::fips::check_key(mldsa::private_key_from_external_65(private_key)));
 }
 
 // Calls |MLDSA_generate_key_external_entropy| with random bytes from
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa65_generate_key(
+bcm_status bssl::BCM_mldsa65_generate_key(
     uint8_t out_encoded_public_key[MLDSA65_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA65_private_key *out_private_key) {
   BCM_rand_bytes(out_seed, MLDSA_SEED_BYTES);
@@ -2321,7 +2321,7 @@ bcm_status BCM_mldsa65_generate_key(
                                                    out_private_key, out_seed);
 }
 
-bcm_status BCM_mldsa65_private_key_from_seed(
+bcm_status bssl::BCM_mldsa65_private_key_from_seed(
     MLDSA65_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA65_PUBLIC_KEY_BYTES];
@@ -2329,7 +2329,7 @@ bcm_status BCM_mldsa65_private_key_from_seed(
                                                    seed);
 }
 
-bcm_status BCM_mldsa65_generate_key_external_entropy(
+bcm_status bssl::BCM_mldsa65_generate_key_external_entropy(
     uint8_t out_encoded_public_key[MLDSA65_PUBLIC_KEY_BYTES],
     MLDSA65_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2338,7 +2338,7 @@ bcm_status BCM_mldsa65_generate_key_external_entropy(
       mldsa::private_key_from_external_65(out_private_key), entropy));
 }
 
-bcm_status BCM_mldsa65_generate_key_fips(
+bcm_status bssl::BCM_mldsa65_generate_key_fips(
     uint8_t out_encoded_public_key[MLDSA65_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA65_private_key *out_private_key) {
   if (out_encoded_public_key == nullptr || out_private_key == nullptr) {
@@ -2351,7 +2351,7 @@ bcm_status BCM_mldsa65_generate_key_fips(
   return BCM_mldsa65_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa65_generate_key_external_entropy_fips(
+bcm_status bssl::BCM_mldsa65_generate_key_external_entropy_fips(
     uint8_t out_encoded_public_key[MLDSA65_PUBLIC_KEY_BYTES],
     MLDSA65_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2366,7 +2366,7 @@ bcm_status BCM_mldsa65_generate_key_external_entropy_fips(
   return BCM_mldsa65_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa65_private_key_from_seed_fips(
+bcm_status bssl::BCM_mldsa65_private_key_from_seed_fips(
     MLDSA65_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA65_PUBLIC_KEY_BYTES];
@@ -2377,7 +2377,7 @@ bcm_status BCM_mldsa65_private_key_from_seed_fips(
   return BCM_mldsa65_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa65_public_from_private(
+bcm_status bssl::BCM_mldsa65_public_from_private(
     MLDSA65_public_key *out_public_key,
     const MLDSA65_private_key *private_key) {
   const auto *priv = mldsa::private_key_from_external_65(private_key);
@@ -2386,13 +2386,13 @@ bcm_status BCM_mldsa65_public_from_private(
   return bcm_status::approved;
 }
 
-const MLDSA65_public_key *BCM_mldsa65_public_of_private(
+const MLDSA65_public_key *bssl::BCM_mldsa65_public_of_private(
     const MLDSA65_private_key *private_key) {
   return reinterpret_cast<const MLDSA65_public_key *>(
       &mldsa::private_key_from_external_65(private_key)->pub);
 }
 
-bcm_status BCM_mldsa65_sign_internal(
+bcm_status bssl::BCM_mldsa65_sign_internal(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context_prefix, size_t context_prefix_len,
@@ -2404,7 +2404,7 @@ bcm_status BCM_mldsa65_sign_internal(
       randomizer));
 }
 
-bcm_status BCM_mldsa65_sign_mu_internal(
+bcm_status bssl::BCM_mldsa65_sign_mu_internal(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES],
@@ -2416,7 +2416,7 @@ bcm_status BCM_mldsa65_sign_mu_internal(
 
 // ML-DSA signature in randomized mode, filling the random bytes with
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa65_sign(
+bcm_status bssl::BCM_mldsa65_sign(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context, size_t context_len) {
@@ -2432,9 +2432,10 @@ bcm_status BCM_mldsa65_sign(
 }
 
 // ML-DSA pre-hashed API: initializing a pre-hashing context.
-void BCM_mldsa65_prehash_init(MLDSA65_prehash *out_prehash_ctx,
-                              const MLDSA65_public_key *public_key,
-                              const uint8_t *context, size_t context_len) {
+void bssl::BCM_mldsa65_prehash_init(MLDSA65_prehash *out_prehash_ctx,
+                                    const MLDSA65_public_key *public_key,
+                                    const uint8_t *context,
+                                    size_t context_len) {
   BSSL_CHECK(context_len <= 255);
 
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
@@ -2445,21 +2446,21 @@ void BCM_mldsa65_prehash_init(MLDSA65_prehash *out_prehash_ctx,
 }
 
 // ML-DSA pre-hashed API: updating a pre-hashing context with a message chunk.
-void BCM_mldsa65_prehash_update(MLDSA65_prehash *inout_prehash_ctx,
-                                const uint8_t *msg, size_t msg_len) {
+void bssl::BCM_mldsa65_prehash_update(MLDSA65_prehash *inout_prehash_ctx,
+                                      const uint8_t *msg, size_t msg_len) {
   mldsa_prehash_update(
       mldsa::prehash_context_from_external_65(inout_prehash_ctx), msg, msg_len);
 }
 
 // ML-DSA pre-hashed API: obtaining a message representative to sign.
-void BCM_mldsa65_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
-                                  MLDSA65_prehash *inout_prehash_ctx) {
+void bssl::BCM_mldsa65_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
+                                        MLDSA65_prehash *inout_prehash_ctx) {
   mldsa_prehash_finalize(
       out_msg_rep, mldsa::prehash_context_from_external_65(inout_prehash_ctx));
 }
 
 // ML-DSA pre-hashed API: signing a message representative.
-bcm_status BCM_mldsa65_sign_message_representative(
+bcm_status bssl::BCM_mldsa65_sign_message_representative(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2473,7 +2474,7 @@ bcm_status BCM_mldsa65_sign_message_representative(
 }
 
 // ML-DSA pre-hashed API: verifying a message representative.
-bcm_status BCM_mldsa65_verify_message_representative(
+bcm_status bssl::BCM_mldsa65_verify_message_representative(
     const MLDSA65_public_key *public_key,
     const uint8_t signature[MLDSA65_SIGNATURE_BYTES],
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2482,10 +2483,10 @@ bcm_status BCM_mldsa65_verify_message_representative(
 }
 
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).
-bcm_status BCM_mldsa65_verify(const MLDSA65_public_key *public_key,
-                              const uint8_t signature[MLDSA65_SIGNATURE_BYTES],
-                              const uint8_t *msg, size_t msg_len,
-                              const uint8_t *context, size_t context_len) {
+bcm_status bssl::BCM_mldsa65_verify(
+    const MLDSA65_public_key *public_key,
+    const uint8_t signature[MLDSA65_SIGNATURE_BYTES], const uint8_t *msg,
+    size_t msg_len, const uint8_t *context, size_t context_len) {
   BSSL_CHECK(context_len <= 255);
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
   return BCM_mldsa65_verify_internal(public_key, signature, msg, msg_len,
@@ -2493,7 +2494,7 @@ bcm_status BCM_mldsa65_verify(const MLDSA65_public_key *public_key,
                                      context, context_len);
 }
 
-bcm_status BCM_mldsa65_verify_internal(
+bcm_status bssl::BCM_mldsa65_verify_internal(
     const MLDSA65_public_key *public_key,
     const uint8_t encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const uint8_t *msg, size_t msg_len, const uint8_t *context_prefix,
@@ -2503,14 +2504,14 @@ bcm_status BCM_mldsa65_verify_internal(
       msg_len, context_prefix, context_prefix_len, context, context_len));
 }
 
-bcm_status BCM_mldsa65_marshal_public_key(
+bcm_status bssl::BCM_mldsa65_marshal_public_key(
     CBB *out, const MLDSA65_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_65(public_key)));
 }
 
-int BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
-                                  const MLDSA65_public_key *b) {
+int bssl::BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
+                                        const MLDSA65_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_65(a);
   auto *b_pub = mldsa::public_key_from_external_65(b);
   // It is sufficient to compare |public_key_hash|. When importing a public key,
@@ -2524,34 +2525,34 @@ int BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
 
 // ML-DSA-87 specific wrappers.
 
-bcm_status BCM_mldsa87_parse_public_key(MLDSA87_public_key *public_key,
-                                        CBS *in) {
+bcm_status bssl::BCM_mldsa87_parse_public_key(MLDSA87_public_key *public_key,
+                                              CBS *in) {
   return bcm_as_approved_status(mldsa_parse_public_key(
       mldsa::public_key_from_external_87(public_key), in));
 }
 
-bcm_status BCM_mldsa87_marshal_private_key(
+bcm_status bssl::BCM_mldsa87_marshal_private_key(
     CBB *out, const MLDSA87_private_key *private_key) {
   return bcm_as_approved_status(mldsa_marshal_private_key(
       out, mldsa::private_key_from_external_87(private_key)));
 }
 
-bcm_status BCM_mldsa87_parse_private_key(MLDSA87_private_key *private_key,
-                                         CBS *in) {
+bcm_status bssl::BCM_mldsa87_parse_private_key(MLDSA87_private_key *private_key,
+                                               CBS *in) {
   return bcm_as_approved_status(
       mldsa_parse_private_key(mldsa::private_key_from_external_87(private_key),
                               in) &&
       CBS_len(in) == 0);
 }
 
-bcm_status BCM_mldsa87_check_key_fips(MLDSA87_private_key *private_key) {
+bcm_status bssl::BCM_mldsa87_check_key_fips(MLDSA87_private_key *private_key) {
   return bcm_as_approved_status(
       mldsa::fips::check_key(mldsa::private_key_from_external_87(private_key)));
 }
 
 // Calls |MLDSA_generate_key_external_entropy| with random bytes from
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa87_generate_key(
+bcm_status bssl::BCM_mldsa87_generate_key(
     uint8_t out_encoded_public_key[MLDSA87_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA87_private_key *out_private_key) {
   BCM_rand_bytes(out_seed, MLDSA_SEED_BYTES);
@@ -2559,7 +2560,7 @@ bcm_status BCM_mldsa87_generate_key(
                                                    out_private_key, out_seed);
 }
 
-bcm_status BCM_mldsa87_private_key_from_seed(
+bcm_status bssl::BCM_mldsa87_private_key_from_seed(
     MLDSA87_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA87_PUBLIC_KEY_BYTES];
@@ -2567,7 +2568,7 @@ bcm_status BCM_mldsa87_private_key_from_seed(
                                                    seed);
 }
 
-bcm_status BCM_mldsa87_generate_key_external_entropy(
+bcm_status bssl::BCM_mldsa87_generate_key_external_entropy(
     uint8_t out_encoded_public_key[MLDSA87_PUBLIC_KEY_BYTES],
     MLDSA87_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2576,7 +2577,7 @@ bcm_status BCM_mldsa87_generate_key_external_entropy(
       mldsa::private_key_from_external_87(out_private_key), entropy));
 }
 
-bcm_status BCM_mldsa87_generate_key_fips(
+bcm_status bssl::BCM_mldsa87_generate_key_fips(
     uint8_t out_encoded_public_key[MLDSA87_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA87_private_key *out_private_key) {
   if (out_encoded_public_key == nullptr || out_private_key == nullptr) {
@@ -2589,7 +2590,7 @@ bcm_status BCM_mldsa87_generate_key_fips(
   return BCM_mldsa87_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa87_generate_key_external_entropy_fips(
+bcm_status bssl::BCM_mldsa87_generate_key_external_entropy_fips(
     uint8_t out_encoded_public_key[MLDSA87_PUBLIC_KEY_BYTES],
     MLDSA87_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2604,7 +2605,7 @@ bcm_status BCM_mldsa87_generate_key_external_entropy_fips(
   return BCM_mldsa87_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa87_private_key_from_seed_fips(
+bcm_status bssl::BCM_mldsa87_private_key_from_seed_fips(
     MLDSA87_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA87_PUBLIC_KEY_BYTES];
@@ -2615,7 +2616,7 @@ bcm_status BCM_mldsa87_private_key_from_seed_fips(
   return BCM_mldsa87_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa87_public_from_private(
+bcm_status bssl::BCM_mldsa87_public_from_private(
     MLDSA87_public_key *out_public_key,
     const MLDSA87_private_key *private_key) {
   const auto *priv = mldsa::private_key_from_external_87(private_key);
@@ -2624,13 +2625,13 @@ bcm_status BCM_mldsa87_public_from_private(
   return bcm_status::approved;
 }
 
-const MLDSA87_public_key *BCM_mldsa87_public_of_private(
+const MLDSA87_public_key *bssl::BCM_mldsa87_public_of_private(
     const MLDSA87_private_key *private_key) {
   return reinterpret_cast<const MLDSA87_public_key *>(
       &mldsa::private_key_from_external_87(private_key)->pub);
 }
 
-bcm_status BCM_mldsa87_sign_internal(
+bcm_status bssl::BCM_mldsa87_sign_internal(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context_prefix, size_t context_prefix_len,
@@ -2642,7 +2643,7 @@ bcm_status BCM_mldsa87_sign_internal(
       randomizer));
 }
 
-bcm_status BCM_mldsa87_sign_mu_internal(
+bcm_status bssl::BCM_mldsa87_sign_mu_internal(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES],
@@ -2654,7 +2655,7 @@ bcm_status BCM_mldsa87_sign_mu_internal(
 
 // ML-DSA signature in randomized mode, filling the random bytes with
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa87_sign(
+bcm_status bssl::BCM_mldsa87_sign(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context, size_t context_len) {
@@ -2669,9 +2670,10 @@ bcm_status BCM_mldsa87_sign(
 }
 
 // ML-DSA pre-hashed API: initializing a pre-hashing context.
-void BCM_mldsa87_prehash_init(MLDSA87_prehash *out_prehash_ctx,
-                              const MLDSA87_public_key *public_key,
-                              const uint8_t *context, size_t context_len) {
+void bssl::BCM_mldsa87_prehash_init(MLDSA87_prehash *out_prehash_ctx,
+                                    const MLDSA87_public_key *public_key,
+                                    const uint8_t *context,
+                                    size_t context_len) {
   BSSL_CHECK(context_len <= 255);
 
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
@@ -2682,21 +2684,21 @@ void BCM_mldsa87_prehash_init(MLDSA87_prehash *out_prehash_ctx,
 }
 
 // ML-DSA pre-hashed API: updating a pre-hashing context with a message chunk.
-void BCM_mldsa87_prehash_update(MLDSA87_prehash *inout_prehash_ctx,
-                                const uint8_t *msg, size_t msg_len) {
+void bssl::BCM_mldsa87_prehash_update(MLDSA87_prehash *inout_prehash_ctx,
+                                      const uint8_t *msg, size_t msg_len) {
   mldsa_prehash_update(
       mldsa::prehash_context_from_external_87(inout_prehash_ctx), msg, msg_len);
 }
 
 // ML-DSA pre-hashed API: obtaining a message representative to sign.
-void BCM_mldsa87_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
-                                  MLDSA87_prehash *inout_prehash_ctx) {
+void bssl::BCM_mldsa87_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
+                                        MLDSA87_prehash *inout_prehash_ctx) {
   mldsa_prehash_finalize(
       out_msg_rep, mldsa::prehash_context_from_external_87(inout_prehash_ctx));
 }
 
 // ML-DSA pre-hashed API: signing a message representative.
-bcm_status BCM_mldsa87_sign_message_representative(
+bcm_status bssl::BCM_mldsa87_sign_message_representative(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2710,7 +2712,7 @@ bcm_status BCM_mldsa87_sign_message_representative(
 }
 
 // ML-DSA pre-hashed API: verifying a message representative.
-bcm_status BCM_mldsa87_verify_message_representative(
+bcm_status bssl::BCM_mldsa87_verify_message_representative(
     const MLDSA87_public_key *public_key,
     const uint8_t signature[MLDSA87_SIGNATURE_BYTES],
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2719,10 +2721,11 @@ bcm_status BCM_mldsa87_verify_message_representative(
 }
 
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).
-bcm_status BCM_mldsa87_verify(const MLDSA87_public_key *public_key,
-                              const uint8_t *signature, const uint8_t *msg,
-                              size_t msg_len, const uint8_t *context,
-                              size_t context_len) {
+bcm_status bssl::BCM_mldsa87_verify(const MLDSA87_public_key *public_key,
+                                    const uint8_t *signature,
+                                    const uint8_t *msg, size_t msg_len,
+                                    const uint8_t *context,
+                                    size_t context_len) {
   BSSL_CHECK(context_len <= 255);
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
   return BCM_mldsa87_verify_internal(public_key, signature, msg, msg_len,
@@ -2730,7 +2733,7 @@ bcm_status BCM_mldsa87_verify(const MLDSA87_public_key *public_key,
                                      context, context_len);
 }
 
-bcm_status BCM_mldsa87_verify_internal(
+bcm_status bssl::BCM_mldsa87_verify_internal(
     const MLDSA87_public_key *public_key,
     const uint8_t encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const uint8_t *msg, size_t msg_len, const uint8_t *context_prefix,
@@ -2740,14 +2743,14 @@ bcm_status BCM_mldsa87_verify_internal(
       msg_len, context_prefix, context_prefix_len, context, context_len));
 }
 
-bcm_status BCM_mldsa87_marshal_public_key(
+bcm_status bssl::BCM_mldsa87_marshal_public_key(
     CBB *out, const MLDSA87_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_87(public_key)));
 }
 
-int BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
-                                  const MLDSA87_public_key *b) {
+int bssl::BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
+                                        const MLDSA87_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_87(a);
   auto *b_pub = mldsa::public_key_from_external_87(b);
   // It is sufficient to compare |public_key_hash|. When importing a public key,
@@ -2761,34 +2764,34 @@ int BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
 
 // ML-DSA-44 specific wrappers.
 
-bcm_status BCM_mldsa44_parse_public_key(MLDSA44_public_key *public_key,
-                                        CBS *in) {
+bcm_status bssl::BCM_mldsa44_parse_public_key(MLDSA44_public_key *public_key,
+                                              CBS *in) {
   return bcm_as_approved_status(mldsa_parse_public_key(
       mldsa::public_key_from_external_44(public_key), in));
 }
 
-bcm_status BCM_mldsa44_marshal_private_key(
+bcm_status bssl::BCM_mldsa44_marshal_private_key(
     CBB *out, const MLDSA44_private_key *private_key) {
   return bcm_as_approved_status(mldsa_marshal_private_key(
       out, mldsa::private_key_from_external_44(private_key)));
 }
 
-bcm_status BCM_mldsa44_parse_private_key(MLDSA44_private_key *private_key,
-                                         CBS *in) {
+bcm_status bssl::BCM_mldsa44_parse_private_key(MLDSA44_private_key *private_key,
+                                               CBS *in) {
   return bcm_as_approved_status(
       mldsa_parse_private_key(mldsa::private_key_from_external_44(private_key),
                               in) &&
       CBS_len(in) == 0);
 }
 
-bcm_status BCM_mldsa44_check_key_fips(MLDSA44_private_key *private_key) {
+bcm_status bssl::BCM_mldsa44_check_key_fips(MLDSA44_private_key *private_key) {
   return bcm_as_approved_status(
       mldsa::fips::check_key(mldsa::private_key_from_external_44(private_key)));
 }
 
 // Calls |MLDSA_generate_key_external_entropy| with random bytes from
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa44_generate_key(
+bcm_status bssl::BCM_mldsa44_generate_key(
     uint8_t out_encoded_public_key[MLDSA44_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA44_private_key *out_private_key) {
   BCM_rand_bytes(out_seed, MLDSA_SEED_BYTES);
@@ -2796,7 +2799,7 @@ bcm_status BCM_mldsa44_generate_key(
                                                    out_private_key, out_seed);
 }
 
-bcm_status BCM_mldsa44_private_key_from_seed(
+bcm_status bssl::BCM_mldsa44_private_key_from_seed(
     MLDSA44_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA44_PUBLIC_KEY_BYTES];
@@ -2804,7 +2807,7 @@ bcm_status BCM_mldsa44_private_key_from_seed(
                                                    seed);
 }
 
-bcm_status BCM_mldsa44_generate_key_external_entropy(
+bcm_status bssl::BCM_mldsa44_generate_key_external_entropy(
     uint8_t out_encoded_public_key[MLDSA44_PUBLIC_KEY_BYTES],
     MLDSA44_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2813,7 +2816,7 @@ bcm_status BCM_mldsa44_generate_key_external_entropy(
       mldsa::private_key_from_external_44(out_private_key), entropy));
 }
 
-bcm_status BCM_mldsa44_generate_key_fips(
+bcm_status bssl::BCM_mldsa44_generate_key_fips(
     uint8_t out_encoded_public_key[MLDSA44_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA44_private_key *out_private_key) {
   if (out_encoded_public_key == nullptr || out_private_key == nullptr) {
@@ -2826,7 +2829,7 @@ bcm_status BCM_mldsa44_generate_key_fips(
   return BCM_mldsa44_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa44_generate_key_external_entropy_fips(
+bcm_status bssl::BCM_mldsa44_generate_key_external_entropy_fips(
     uint8_t out_encoded_public_key[MLDSA44_PUBLIC_KEY_BYTES],
     MLDSA44_private_key *out_private_key,
     const uint8_t entropy[MLDSA_SEED_BYTES]) {
@@ -2841,7 +2844,7 @@ bcm_status BCM_mldsa44_generate_key_external_entropy_fips(
   return BCM_mldsa44_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa44_private_key_from_seed_fips(
+bcm_status bssl::BCM_mldsa44_private_key_from_seed_fips(
     MLDSA44_private_key *out_private_key,
     const uint8_t seed[MLDSA_SEED_BYTES]) {
   uint8_t public_key[MLDSA44_PUBLIC_KEY_BYTES];
@@ -2852,7 +2855,7 @@ bcm_status BCM_mldsa44_private_key_from_seed_fips(
   return BCM_mldsa44_check_key_fips(out_private_key);
 }
 
-bcm_status BCM_mldsa44_public_from_private(
+bcm_status bssl::BCM_mldsa44_public_from_private(
     MLDSA44_public_key *out_public_key,
     const MLDSA44_private_key *private_key) {
   const auto *priv = mldsa::private_key_from_external_44(private_key);
@@ -2861,13 +2864,13 @@ bcm_status BCM_mldsa44_public_from_private(
   return bcm_status::approved;
 }
 
-const MLDSA44_public_key *BCM_mldsa44_public_of_private(
+const MLDSA44_public_key *bssl::BCM_mldsa44_public_of_private(
     const MLDSA44_private_key *private_key) {
   return reinterpret_cast<const MLDSA44_public_key *>(
       &mldsa::private_key_from_external_44(private_key)->pub);
 }
 
-bcm_status BCM_mldsa44_sign_internal(
+bcm_status bssl::BCM_mldsa44_sign_internal(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context_prefix, size_t context_prefix_len,
@@ -2879,7 +2882,7 @@ bcm_status BCM_mldsa44_sign_internal(
       randomizer));
 }
 
-bcm_status BCM_mldsa44_sign_mu_internal(
+bcm_status bssl::BCM_mldsa44_sign_mu_internal(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES],
@@ -2891,7 +2894,7 @@ bcm_status BCM_mldsa44_sign_mu_internal(
 
 // ML-DSA signature in randomized mode, filling the random bytes with
 // |BCM_rand_bytes|.
-bcm_status BCM_mldsa44_sign(
+bcm_status bssl::BCM_mldsa44_sign(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key, const uint8_t *msg, size_t msg_len,
     const uint8_t *context, size_t context_len) {
@@ -2906,9 +2909,10 @@ bcm_status BCM_mldsa44_sign(
 }
 
 // ML-DSA pre-hashed API: initializing a pre-hashing context.
-void BCM_mldsa44_prehash_init(MLDSA44_prehash *out_prehash_ctx,
-                              const MLDSA44_public_key *public_key,
-                              const uint8_t *context, size_t context_len) {
+void bssl::BCM_mldsa44_prehash_init(MLDSA44_prehash *out_prehash_ctx,
+                                    const MLDSA44_public_key *public_key,
+                                    const uint8_t *context,
+                                    size_t context_len) {
   BSSL_CHECK(context_len <= 255);
 
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
@@ -2919,21 +2923,21 @@ void BCM_mldsa44_prehash_init(MLDSA44_prehash *out_prehash_ctx,
 }
 
 // ML-DSA pre-hashed API: updating a pre-hashing context with a message chunk.
-void BCM_mldsa44_prehash_update(MLDSA44_prehash *inout_prehash_ctx,
-                                const uint8_t *msg, size_t msg_len) {
+void bssl::BCM_mldsa44_prehash_update(MLDSA44_prehash *inout_prehash_ctx,
+                                      const uint8_t *msg, size_t msg_len) {
   mldsa_prehash_update(
       mldsa::prehash_context_from_external_44(inout_prehash_ctx), msg, msg_len);
 }
 
 // ML-DSA pre-hashed API: obtaining a message representative to sign.
-void BCM_mldsa44_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
-                                  MLDSA44_prehash *inout_prehash_ctx) {
+void bssl::BCM_mldsa44_prehash_finalize(uint8_t out_msg_rep[MLDSA_MU_BYTES],
+                                        MLDSA44_prehash *inout_prehash_ctx) {
   mldsa_prehash_finalize(
       out_msg_rep, mldsa::prehash_context_from_external_44(inout_prehash_ctx));
 }
 
 // ML-DSA pre-hashed API: signing a message representative.
-bcm_status BCM_mldsa44_sign_message_representative(
+bcm_status bssl::BCM_mldsa44_sign_message_representative(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key,
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2947,7 +2951,7 @@ bcm_status BCM_mldsa44_sign_message_representative(
 }
 
 // ML-DSA pre-hashed API: verifying a message representative.
-bcm_status BCM_mldsa44_verify_message_representative(
+bcm_status bssl::BCM_mldsa44_verify_message_representative(
     const MLDSA44_public_key *public_key,
     const uint8_t signature[MLDSA44_SIGNATURE_BYTES],
     const uint8_t msg_rep[MLDSA_MU_BYTES]) {
@@ -2956,10 +2960,11 @@ bcm_status BCM_mldsa44_verify_message_representative(
 }
 
 // FIPS 204, Algorithm 3 (`ML-DSA.Verify`).
-bcm_status BCM_mldsa44_verify(const MLDSA44_public_key *public_key,
-                              const uint8_t *signature, const uint8_t *msg,
-                              size_t msg_len, const uint8_t *context,
-                              size_t context_len) {
+bcm_status bssl::BCM_mldsa44_verify(const MLDSA44_public_key *public_key,
+                                    const uint8_t *signature,
+                                    const uint8_t *msg, size_t msg_len,
+                                    const uint8_t *context,
+                                    size_t context_len) {
   BSSL_CHECK(context_len <= 255);
   const uint8_t context_prefix[2] = {0, static_cast<uint8_t>(context_len)};
   return BCM_mldsa44_verify_internal(public_key, signature, msg, msg_len,
@@ -2967,7 +2972,7 @@ bcm_status BCM_mldsa44_verify(const MLDSA44_public_key *public_key,
                                      context, context_len);
 }
 
-bcm_status BCM_mldsa44_verify_internal(
+bcm_status bssl::BCM_mldsa44_verify_internal(
     const MLDSA44_public_key *public_key,
     const uint8_t encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const uint8_t *msg, size_t msg_len, const uint8_t *context_prefix,
@@ -2977,14 +2982,14 @@ bcm_status BCM_mldsa44_verify_internal(
       msg_len, context_prefix, context_prefix_len, context, context_len));
 }
 
-bcm_status BCM_mldsa44_marshal_public_key(
+bcm_status bssl::BCM_mldsa44_marshal_public_key(
     CBB *out, const MLDSA44_public_key *public_key) {
   return bcm_as_approved_status(mldsa_marshal_public_key(
       out, mldsa::public_key_from_external_44(public_key)));
 }
 
-int BCM_mldsa44_public_keys_equal(const MLDSA44_public_key *a,
-                                  const MLDSA44_public_key *b) {
+int bssl::BCM_mldsa44_public_keys_equal(const MLDSA44_public_key *a,
+                                        const MLDSA44_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_44(a);
   auto *b_pub = mldsa::public_key_from_external_44(b);
   // It is sufficient to compare |public_key_hash|. When importing a public key,
