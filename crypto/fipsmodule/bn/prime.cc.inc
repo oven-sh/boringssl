@@ -23,6 +23,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // kPrimes contains the first 1024 primes.
 static const uint16_t kPrimes[] = {
     2,    3,    5,    7,    11,   13,   17,   19,   23,   29,   31,   37,
@@ -305,11 +307,11 @@ int BN_generate_prime_ex(BIGNUM *ret, int bits, int safe, const BIGNUM *add,
     return 0;
   }
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     return 0;
   }
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   t = BN_CTX_get(ctx.get());
   if (!t) {
     return 0;
@@ -397,13 +399,13 @@ static int bn_trial_division(uint16_t *out, const BIGNUM *bn) {
   return 0;
 }
 
-int bn_odd_number_is_obviously_composite(const BIGNUM *bn) {
+int bssl::bn_odd_number_is_obviously_composite(const BIGNUM *bn) {
   uint16_t prime;
   return bn_trial_division(&prime, bn) && !BN_is_word(bn, prime);
 }
 
-int bn_miller_rabin_init(BN_MILLER_RABIN *miller_rabin, const BN_MONT_CTX *mont,
-                         BN_CTX *ctx) {
+int bssl::bn_miller_rabin_init(BN_MILLER_RABIN *miller_rabin,
+                               const BN_MONT_CTX *mont, BN_CTX *ctx) {
   // This function corresponds to steps 1 through 3 of FIPS 186-5, B.3.1.
   const BIGNUM *w = &mont->N;
   // Note we do not call |BN_CTX_start| in this function. We intentionally
@@ -441,11 +443,11 @@ int bn_miller_rabin_init(BN_MILLER_RABIN *miller_rabin, const BN_MONT_CTX *mont,
   return 1;
 }
 
-int bn_miller_rabin_iteration(const BN_MILLER_RABIN *miller_rabin,
-                              int *out_is_possibly_prime, const BIGNUM *b,
-                              const BN_MONT_CTX *mont, BN_CTX *ctx) {
+int bssl::bn_miller_rabin_iteration(const BN_MILLER_RABIN *miller_rabin,
+                                    int *out_is_possibly_prime, const BIGNUM *b,
+                                    const BN_MONT_CTX *mont, BN_CTX *ctx) {
   // This function corresponds to steps 4.3 through 4.5 of FIPS 186-5, B.3.1.
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
 
   // Step 4.3. We use Montgomery-encoding for better performance and to avoid
   // timing leaks.
@@ -585,7 +587,7 @@ int BN_primality_test(int *out_is_probably_prime, const BIGNUM *w, int checks,
     checks = BN_prime_checks_for_size(BN_num_bits(w));
   }
 
-  bssl::UniquePtr<BN_CTX> new_ctx;
+  UniquePtr<BN_CTX> new_ctx;
   if (ctx == nullptr) {
     new_ctx.reset(BN_CTX_new());
     if (new_ctx == nullptr) {
@@ -595,9 +597,9 @@ int BN_primality_test(int *out_is_probably_prime, const BIGNUM *w, int checks,
   }
 
   // See B.3.1 from FIPS 186-5.
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *b = BN_CTX_get(ctx);
-  bssl::UniquePtr<BN_MONT_CTX> mont(BN_MONT_CTX_new_consttime(w, ctx));
+  UniquePtr<BN_MONT_CTX> mont(BN_MONT_CTX_new_consttime(w, ctx));
   BN_MILLER_RABIN miller_rabin;
   crypto_word_t uniform_iterations = 0;
   if (b == nullptr || mont == nullptr ||
@@ -699,7 +701,7 @@ int BN_enhanced_miller_rabin_primality_test(
     checks = BN_prime_checks_for_size(BN_num_bits(w));
   }
 
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *w1 = BN_CTX_get(ctx);
   if (w1 == nullptr || !BN_copy(w1, w) || !BN_sub_word(w1, 1)) {
     return 0;
@@ -726,7 +728,7 @@ int BN_enhanced_miller_rabin_primality_test(
   }
 
   // Montgomery setup for computations mod w
-  bssl::UniquePtr<BN_MONT_CTX> mont(BN_MONT_CTX_new_for_modulus(w, ctx));
+  UniquePtr<BN_MONT_CTX> mont(BN_MONT_CTX_new_for_modulus(w, ctx));
   if (mont == nullptr) {
     return 0;
   }
@@ -816,7 +818,7 @@ static int probable_prime(BIGNUM *rnd, int bits) {
 
 static int probable_prime_dh(BIGNUM *rnd, int bits, const BIGNUM *add,
                              const BIGNUM *rem, BN_CTX *ctx) {
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *t1;
   if ((t1 = BN_CTX_get(ctx)) == nullptr) {
     return 0;
@@ -862,7 +864,7 @@ loop:
 static int probable_prime_dh_safe(BIGNUM *p, int bits, const BIGNUM *padd,
                                   const BIGNUM *rem, BN_CTX *ctx) {
   bits--;
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *t1 = BN_CTX_get(ctx);
   BIGNUM *q = BN_CTX_get(ctx);
   BIGNUM *qadd = BN_CTX_get(ctx);
