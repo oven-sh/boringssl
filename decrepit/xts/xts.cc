@@ -23,6 +23,8 @@
 #include "../../crypto/fipsmodule/aes/internal.h"
 
 
+using namespace bssl;
+
 typedef struct xts128_context {
   AES_KEY *key1, *key2;
   block128_f block1, block2;

@@ -34,8 +34,8 @@ BSSL_NAMESPACE_END
 // 800-90Ar1.
 struct ctr_drbg_state_st {
   AES_KEY ks;
-  block128_f block;
-  ctr128_f ctr;
+  bssl::block128_f block;
+  bssl::ctr128_f ctr;
   uint8_t counter[16];
   uint64_t reseed_counter;
   int df;
