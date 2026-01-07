@@ -20,10 +20,8 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
 
+BSSL_NAMESPACE_BEGIN
 
 // Wrapper functions for time functions.
 
@@ -57,6 +55,8 @@ OPENSSL_EXPORT int OPENSSL_gmtime_diff(int *out_days, int *out_secs,
 #define ASN1_OBJECT_FLAG_DYNAMIC_STRINGS 0x04  // internal use
 #define ASN1_OBJECT_FLAG_DYNAMIC_DATA 0x08     // internal use
 
+BSSL_NAMESPACE_END
+
 // An asn1_object_st (aka |ASN1_OBJECT|) represents an ASN.1 OBJECT IDENTIFIER.
 // Note: Mutating an |ASN1_OBJECT| is only permitted when initializing it. The
 // library maintains a table of static |ASN1_OBJECT|s, which may be referenced
@@ -70,6 +70,8 @@ struct asn1_object_st {
   const unsigned char *data;  // data remains const after init
   int flags;                  // Should we free this one
 };
+
+BSSL_NAMESPACE_BEGIN
 
 ASN1_OBJECT *ASN1_OBJECT_new();
 
@@ -365,9 +367,6 @@ DECLARE_ASN1_ITEM(DIRECTORYSTRING)
 // 5280) and C type is |ASN1_STRING*|.
 DECLARE_ASN1_ITEM(DISPLAYTEXT)
 
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_ASN1_INTERNAL_H
