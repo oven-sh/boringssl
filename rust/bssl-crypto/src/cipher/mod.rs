@@ -187,7 +187,7 @@ impl<C: EvpCipherType> Cipher<C> {
         assert_eq!(
             self.cipher_mode(),
             bssl_sys::EVP_CIPH_CTR_MODE as u32,
-            "Cannot use apply_keystraem_in_place for non-CTR modes"
+            "Cannot use apply_keystream_in_place for non-CTR modes"
         );
         let mut cslice_buf_mut = CSliceMut::from(buffer);
         let mut out_len = 0;
