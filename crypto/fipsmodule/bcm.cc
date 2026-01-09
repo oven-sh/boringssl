@@ -32,8 +32,14 @@
 #include "../internal.h"
 #include "bcm_interface.h"
 
+// The .cc.inc files are not written as headers, but .cc files which we
+// currently need to combine together in the style of a unity or jumbo build.
+// -Wheader-hygiene interprets them as headers.
+//
 // TODO(crbug.com/362530616): When delocate is removed, build these files as
 // separate compilation units again.
+OPENSSL_CLANG_PRAGMA("clang diagnostic push")
+OPENSSL_CLANG_PRAGMA("clang diagnostic ignored \"-Wheader-hygiene\"")
 #include "aes/aes.cc.inc"
 #include "aes/aes_nohw.cc.inc"
 #include "aes/cbc.cc.inc"
@@ -113,6 +119,7 @@
 #include "slhdsa/thash.cc.inc"
 #include "slhdsa/wots.cc.inc"
 #include "tls/kdf.cc.inc"
+OPENSSL_CLANG_PRAGMA("clang diagnostic pop")
 
 
 #if defined(BORINGSSL_FIPS)
