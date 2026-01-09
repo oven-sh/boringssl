@@ -359,6 +359,8 @@ struct trust_token_client_st {
 
   // keys is the set of public keys that are supported by the client for
   // issuance/redemptions.
+  // TODO(crbug.com/42290036): Replace this and |num_keys| with an
+  // InplaceVector.
   struct trust_token_client_key_st keys[6];
 
   // num_keys is the number of keys currently configured.

@@ -227,6 +227,33 @@ void TRUST_TOKEN_CLIENT_free(TRUST_TOKEN_CLIENT *ctx) {
   OPENSSL_free(ctx);
 }
 
+static TRUST_TOKEN_PRETOKEN *dup_pretoken(const TRUST_TOKEN_PRETOKEN *in) {
+  return static_cast<TRUST_TOKEN_PRETOKEN *>(
+      OPENSSL_memdup(in, sizeof(TRUST_TOKEN_PRETOKEN)));
+}
+
+TRUST_TOKEN_CLIENT *TRUST_TOKEN_CLIENT_dup_for_testing(
+    const TRUST_TOKEN_CLIENT *ctx) {
+  bssl::UniquePtr<TRUST_TOKEN_CLIENT> ret(
+      TRUST_TOKEN_CLIENT_new(ctx->method, ctx->max_batchsize));
+  if (ret == nullptr) {
+    return nullptr;
+  }
+  for (size_t i = 0; i < std::size(ret->keys); i++) {
+    ret->keys[i] = ctx->keys[i];
+  }
+  ret->num_keys = ctx->num_keys;
+  if (ctx->pretokens != nullptr) {
+    ret->pretokens = sk_TRUST_TOKEN_PRETOKEN_deep_copy(
+        ctx->pretokens, dup_pretoken, TRUST_TOKEN_PRETOKEN_free);
+    if (ret->pretokens == nullptr) {
+      return nullptr;
+    }
+  }
+  ret->srr_key = bssl::UpRef(ctx->srr_key).release();
+  return ret.release();
+}
+
 int TRUST_TOKEN_CLIENT_add_key(TRUST_TOKEN_CLIENT *ctx, size_t *out_key_index,
                                const uint8_t *key, size_t key_len) {
   if (ctx->num_keys == std::size(ctx->keys) ||
