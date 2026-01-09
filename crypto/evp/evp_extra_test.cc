@@ -33,6 +33,7 @@
 #include <openssl/err.h>
 #include <openssl/pkcs8.h>
 #include <openssl/rsa.h>
+#include <openssl/span.h>
 
 #include "../internal.h"
 #include "../test/test_util.h"
@@ -368,7 +369,7 @@ static const uint8_t kInvalidPrivateKey[] = {
     0x48, 0x30, 0x01, 0xaa, 0x02, 0x86, 0xc0, 0x30, 0xdf, 0xe9, 0x80,
 };
 
-static bssl::UniquePtr<EVP_PKEY> LoadExampleRSAKey() {
+static UniquePtr<EVP_PKEY> LoadExampleRSAKey() {
   UniquePtr<RSA> rsa(
       RSA_private_key_from_bytes(kExampleRSAKeyDER, sizeof(kExampleRSAKeyDER)));
   if (!rsa) {
@@ -457,27 +458,21 @@ TEST(EVPExtraTest, VerifyRecover) {
   EXPECT_EQ(51u, out_len);
 }
 
-static void TestValidPrivateKey(const uint8_t *input, size_t input_len,
-                                int expected_id) {
-  const uint8_t *p = input;
-  UniquePtr<EVP_PKEY> pkey(d2i_AutoPrivateKey(nullptr, &p, input_len));
+static void TestValidPrivateKey(Span<const uint8_t> input, int expected_id) {
+  const uint8_t *p = input.data();
+  UniquePtr<EVP_PKEY> pkey(d2i_AutoPrivateKey(nullptr, &p, input.size()));
   ASSERT_TRUE(pkey);
-  EXPECT_EQ(input + input_len, p);
+  EXPECT_EQ(input.data() + input.size(), p);
   EXPECT_EQ(expected_id, EVP_PKEY_id(pkey.get()));
 }
 
 TEST(EVPExtraTest, d2i_AutoPrivateKey) {
-  TestValidPrivateKey(kExampleRSAKeyDER, sizeof(kExampleRSAKeyDER),
-                      EVP_PKEY_RSA);
-  TestValidPrivateKey(kExampleRSAKeyPKCS8, sizeof(kExampleRSAKeyPKCS8),
-                      EVP_PKEY_RSA);
-  TestValidPrivateKey(kExampleECKeyDER, sizeof(kExampleECKeyDER), EVP_PKEY_EC);
-  TestValidPrivateKey(kExampleECKeyPKCS8, sizeof(kExampleECKeyPKCS8),
-                      EVP_PKEY_EC);
-  TestValidPrivateKey(kExampleECKeySpecifiedCurvePKCS8,
-                      sizeof(kExampleECKeySpecifiedCurvePKCS8), EVP_PKEY_EC);
-  TestValidPrivateKey(kExampleDSAKeyDER, sizeof(kExampleDSAKeyDER),
-                      EVP_PKEY_DSA);
+  TestValidPrivateKey(kExampleRSAKeyDER, EVP_PKEY_RSA);
+  TestValidPrivateKey(kExampleRSAKeyPKCS8, EVP_PKEY_RSA);
+  TestValidPrivateKey(kExampleECKeyDER, EVP_PKEY_EC);
+  TestValidPrivateKey(kExampleECKeyPKCS8, EVP_PKEY_EC);
+  TestValidPrivateKey(kExampleECKeySpecifiedCurvePKCS8, EVP_PKEY_EC);
+  TestValidPrivateKey(kExampleDSAKeyDER, EVP_PKEY_DSA);
 
   const uint8_t *p = kInvalidPrivateKey;
   UniquePtr<EVP_PKEY> pkey(
@@ -486,15 +481,14 @@ TEST(EVPExtraTest, d2i_AutoPrivateKey) {
   ERR_clear_error();
 }
 
-static bssl::UniquePtr<EVP_PKEY> ParsePrivateKey(int type, const uint8_t *in,
-                                                 size_t len) {
-  const uint8_t *ptr = in;
-  UniquePtr<EVP_PKEY> pkey(d2i_PrivateKey(type, nullptr, &ptr, len));
+static UniquePtr<EVP_PKEY> ParsePrivateKey(int type, Span<const uint8_t> in) {
+  const uint8_t *ptr = in.data();
+  UniquePtr<EVP_PKEY> pkey(d2i_PrivateKey(type, nullptr, &ptr, in.size()));
   if (!pkey) {
     return nullptr;
   }
 
-  EXPECT_EQ(in + len, ptr);
+  EXPECT_EQ(in.data() + in.size(), ptr);
   return pkey;
 }
 
@@ -515,8 +509,7 @@ static std::string PrintToString(const EVP_PKEY *pkey, int indent,
 }
 
 TEST(EVPExtraTest, Print) {
-  UniquePtr<EVP_PKEY> rsa = ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyDER,
-                                            sizeof(kExampleRSAKeyDER));
+  UniquePtr<EVP_PKEY> rsa = ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyDER);
   ASSERT_TRUE(rsa);
   EXPECT_EQ(PrintToString(rsa.get(), /*indent=*/2, &EVP_PKEY_print_params),
             "  Parameters algorithm unsupported\n");
@@ -590,8 +583,7 @@ TEST(EVPExtraTest, Print) {
 )");
 
   // We don't support printing DSA keys.
-  UniquePtr<EVP_PKEY> dsa = ParsePrivateKey(EVP_PKEY_DSA, kExampleDSAKeyDER,
-                                            sizeof(kExampleDSAKeyDER));
+  UniquePtr<EVP_PKEY> dsa = ParsePrivateKey(EVP_PKEY_DSA, kExampleDSAKeyDER);
   ASSERT_TRUE(dsa);
   EXPECT_EQ(PrintToString(dsa.get(), /*indent=*/2, &EVP_PKEY_print_params),
             "  Parameters algorithm unsupported\n");
@@ -600,8 +592,7 @@ TEST(EVPExtraTest, Print) {
   EXPECT_EQ(PrintToString(dsa.get(), /*indent=*/2, &EVP_PKEY_print_private),
             "  Private Key algorithm unsupported\n");
 
-  UniquePtr<EVP_PKEY> ec =
-      ParsePrivateKey(EVP_PKEY_EC, kExampleECKeyDER, sizeof(kExampleECKeyDER));
+  UniquePtr<EVP_PKEY> ec = ParsePrivateKey(EVP_PKEY_EC, kExampleECKeyDER);
   ASSERT_TRUE(ec);
   EXPECT_EQ(PrintToString(ec.get(), /*indent=*/2, &EVP_PKEY_print_params),
             "  ECDSA-Parameters: (P-256)\n");
@@ -655,29 +646,23 @@ TEST(EVPExtraTest, MarshalEmptyPublicKey) {
 }
 
 TEST(EVPExtraTest, d2i_PrivateKey) {
-  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyDER,
-                              sizeof(kExampleRSAKeyDER)));
-  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_DSA, kExampleDSAKeyDER,
-                              sizeof(kExampleDSAKeyDER)));
-  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyPKCS8,
-                              sizeof(kExampleRSAKeyPKCS8)));
-  EXPECT_TRUE(
-      ParsePrivateKey(EVP_PKEY_EC, kExampleECKeyDER, sizeof(kExampleECKeyDER)));
+  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyDER));
+  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_DSA, kExampleDSAKeyDER));
+  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_RSA, kExampleRSAKeyPKCS8));
+  EXPECT_TRUE(ParsePrivateKey(EVP_PKEY_EC, kExampleECKeyDER));
 
-  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, kExampleBadECKeyDER,
-                               sizeof(kExampleBadECKeyDER)));
+  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, kExampleBadECKeyDER));
   ERR_clear_error();
 
   // Copy the input into a |malloc|'d vector to flag memory errors.
   std::vector<uint8_t> copy(
       kExampleBadECKeyDER2,
       kExampleBadECKeyDER2 + sizeof(kExampleBadECKeyDER2));
-  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, copy.data(), copy.size()));
+  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, copy));
   ERR_clear_error();
 
   // Test that an RSA key may not be imported as an EC key.
-  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, kExampleRSAKeyPKCS8,
-                               sizeof(kExampleRSAKeyPKCS8)));
+  EXPECT_FALSE(ParsePrivateKey(EVP_PKEY_EC, kExampleRSAKeyPKCS8));
   ERR_clear_error();
 }
 
