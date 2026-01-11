@@ -726,6 +726,11 @@ static int generate_prime(BIGNUM *out, int bits, const BIGNUM *e,
 // probability of about 2^-20.
 static int rsa_generate_key_impl(RSA *rsa, int bits, const BIGNUM *e_value,
                                  BN_GENCB *cb) {
+  if (bits > OPENSSL_RSA_MAX_MODULUS_BITS) {
+    OPENSSL_PUT_ERROR(RSA, RSA_R_MODULUS_TOO_LARGE);
+    return 0;
+  }
+
   // Always generate RSA keys which are a multiple of 128 bits. Round |bits|
   // down as needed.
   bits &= ~127;

@@ -1314,6 +1314,7 @@ TEST(RSATest, KeyLimits) {
 
   EXPECT_FALSE(read_private_key("crypto/rsa/test/rsa8193.pem"));
   EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa8193pub.pem"));
+  EXPECT_FALSE(generate_key(8193u));
 }
 
 #if defined(OPENSSL_THREADS)
