@@ -1284,10 +1284,10 @@ TEST(RSATest, KeyLimits) {
     return rsa;
   };
 
-  // We support RSA-512 through RSA-8192.
+  // We support RSA-512 through RSA-16384.
   //
-  // TODO(crbug.com/42290480): Raise this limit. 512-bit RSA was factored in
-  // 1999.
+  // TODO(crbug.com/42290480): Raise the lower bound. 512-bit RSA was factored
+  // in 1999.
   EXPECT_FALSE(generate_key(511u));
   EXPECT_TRUE(
       ErrorEquals(ERR_get_error(), ERR_LIB_RSA, RSA_R_KEY_SIZE_TOO_SMALL));
@@ -1304,17 +1304,31 @@ TEST(RSATest, KeyLimits) {
   ASSERT_TRUE(rsa);
   EXPECT_EQ(RSA_bits(rsa.get()), 512u);
 
+  // RSA-8192 and up take too long to generate, so skip keygen tests.
   rsa = read_private_key("crypto/rsa/test/rsa8192.pem");
   ASSERT_TRUE(rsa);
   EXPECT_EQ(RSA_bits(rsa.get()), 8192u);
   rsa = read_public_key("crypto/rsa/test/rsa8192pub.pem");
   ASSERT_TRUE(rsa);
   EXPECT_EQ(RSA_bits(rsa.get()), 8192u);
-  // RSA-8192 takes too long to generate, so skip this.
 
-  EXPECT_FALSE(read_private_key("crypto/rsa/test/rsa8193.pem"));
-  EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa8193pub.pem"));
-  EXPECT_FALSE(generate_key(8193u));
+  rsa = read_private_key("crypto/rsa/test/rsa8193.pem");
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(RSA_bits(rsa.get()), 8193u);
+  rsa = read_public_key("crypto/rsa/test/rsa8193pub.pem");
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(RSA_bits(rsa.get()), 8193u);
+
+  rsa = read_private_key("crypto/rsa/test/rsa16384.pem");
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(RSA_bits(rsa.get()), 16384u);
+  rsa = read_public_key("crypto/rsa/test/rsa16384pub.pem");
+  ASSERT_TRUE(rsa);
+  EXPECT_EQ(RSA_bits(rsa.get()), 16384u);
+
+  EXPECT_FALSE(read_private_key("crypto/rsa/test/rsa16385.pem"));
+  EXPECT_FALSE(read_public_key("crypto/rsa/test/rsa16385pub.pem"));
+  EXPECT_FALSE(generate_key(16385u));
 }
 
 #if defined(OPENSSL_THREADS)
