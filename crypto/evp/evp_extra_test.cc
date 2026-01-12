@@ -1069,6 +1069,10 @@ TEST(EVPExtraTest, Parameters) {
   UniquePtr<EVP_PKEY> rsa = LoadExampleRSAKey();
   ASSERT_TRUE(rsa);
   EXPECT_FALSE(EVP_PKEY_missing_parameters(rsa.get()));
+  UniquePtr<EVP_PKEY> rsa2 = LoadExampleRSAKey();
+  ASSERT_TRUE(rsa2);
+  // Two null parameters should compare as equal.
+  EXPECT_EQ(1, EVP_PKEY_cmp_parameters(rsa.get(), rsa2.get()));
 
   // EC keys have parameters, but it is possible to initialize an |EVP_PKEY|
   // with a completely empty |EC_KEY|.

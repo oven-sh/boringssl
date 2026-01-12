@@ -324,9 +324,9 @@ int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b) {
   if (a->ameth && a->ameth->param_cmp) {
     return a->ameth->param_cmp(a, b);
   }
-  // TODO(https://crbug.com/boringssl/536): If the algorithm doesn't use
-  // parameters, they should compare as vacuously equal.
-  return -2;
+  // If the algorithm does not use parameters, the two null value compare as
+  // vacuously equal.
+  return 1;
 }
 
 int EVP_PKEY_CTX_set_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD *md) {
