@@ -105,7 +105,7 @@ func (in *InputTarget) Pregenerate(name string) (out build.Target, tasks []Task,
 		}
 		dst = path.Join("gen", name, dst+fileSuffix)
 		args = append(slices.Clone(args), p.Args...)
-		addTask(list, &PerlasmTask{Src: p.Src, Dst: dst, Args: args})
+		addTask(list, WrapWaitable(&PerlasmTask{Src: p.Src, Dst: dst, Args: args}))
 	}
 
 	for _, p := range in.PerlasmAarch64 {
