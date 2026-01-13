@@ -270,11 +270,6 @@ static long PacketedCtrl(BIO *bio, int cmd, long num, void *ptr) {
   return ret;
 }
 
-static int PacketedNew(BIO *bio) {
-  BIO_set_init(bio, 1);
-  return 1;
-}
-
 static int PacketedFree(BIO *bio) {
   if (bio == nullptr) {
     return 0;
@@ -299,7 +294,6 @@ static const BIO_METHOD *PacketedBioMethod() {
     BSSL_CHECK(BIO_meth_set_write(ret, PacketedWrite));
     BSSL_CHECK(BIO_meth_set_read(ret, PacketedRead));
     BSSL_CHECK(BIO_meth_set_ctrl(ret, PacketedCtrl));
-    BSSL_CHECK(BIO_meth_set_create(ret, PacketedNew));
     BSSL_CHECK(BIO_meth_set_destroy(ret, PacketedFree));
     BSSL_CHECK(BIO_meth_set_callback_ctrl(ret, PacketedCallbackCtrl));
     return ret;
@@ -318,6 +312,7 @@ bssl::UniquePtr<BIO> PacketedBioCreate(
   }
   BIO_set_data(bio.get(), new PacketedBio(clock, std::move(get_timeout),
                                           std::move(set_mtu)));
+  BIO_set_init(bio.get(), 1);
   return bio;
 }
 
