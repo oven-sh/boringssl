@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -27,6 +28,7 @@
 
 #include <openssl/bio.h>
 #include <openssl/mem.h>
+#include <openssl/span.h>
 
 #include "../../crypto/internal.h"
 
@@ -71,18 +73,14 @@ PacketedBio *GetData(BIO *bio) {
 
 // ReadAll reads |len| bytes from |bio| into |out|. It returns 1 on success and
 // 0 or -1 on error.
-static int ReadAll(BIO *bio, uint8_t *out, size_t len) {
-  while (len > 0) {
-    int chunk_len = INT_MAX;
-    if (len <= INT_MAX) {
-      chunk_len = (int)len;
-    }
-    int ret = BIO_read(bio, out, chunk_len);
+static int ReadAll(BIO *bio, bssl::Span<uint8_t> out) {
+  while (!out.empty()) {
+    int ret = BIO_read(bio, out.data(),
+                       static_cast<int>(std::min(out.size(), size_t{INT_MAX})));
     if (ret <= 0) {
       return ret;
     }
-    out += ret;
-    len -= ret;
+    out = out.subspan(ret);
   }
   return 1;
 }
@@ -98,10 +96,7 @@ static int PacketedWrite(BIO *bio, const char *in, int inl) {
   // Write the header.
   uint8_t header[5];
   header[0] = kOpcodePacket;
-  header[1] = (inl >> 24) & 0xff;
-  header[2] = (inl >> 16) & 0xff;
-  header[3] = (inl >> 8) & 0xff;
-  header[4] = inl & 0xff;
+  CRYPTO_store_u32_be(header + 1, inl);
   int ret = BIO_write(next, header, sizeof(header));
   if (ret <= 0) {
     BIO_copy_next_retry(bio);
@@ -130,7 +125,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
   for (;;) {
     // Read the opcode.
     uint8_t opcode;
-    int ret = ReadAll(next, &opcode, sizeof(opcode));
+    int ret = ReadAll(next, bssl::Span(&opcode, 1));
     if (ret <= 0) {
       BIO_copy_next_retry(bio);
       return ret;
@@ -146,7 +141,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
 
       // Process the timeout.
       uint8_t buf[8];
-      ret = ReadAll(next, buf, sizeof(buf));
+      ret = ReadAll(next, buf);
       if (ret <= 0) {
         BIO_copy_next_retry(bio);
         return ret;
@@ -172,7 +167,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
 
     if (opcode == kOpcodeMTU) {
       uint8_t buf[4];
-      ret = ReadAll(next, buf, sizeof(buf));
+      ret = ReadAll(next, buf);
       if (ret <= 0) {
         BIO_copy_next_retry(bio);
         return ret;
@@ -188,7 +183,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
 
     if (opcode == kOpcodeExpectNextTimeout) {
       uint8_t buf[8];
-      ret = ReadAll(next, buf, sizeof(buf));
+      ret = ReadAll(next, buf);
       if (ret <= 0) {
         BIO_copy_next_retry(bio);
         return ret;
@@ -237,14 +232,14 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
 
     // Read the length prefix.
     uint8_t len_bytes[4];
-    ret = ReadAll(next, len_bytes, sizeof(len_bytes));
+    ret = ReadAll(next, len_bytes);
     if (ret <= 0) {
       BIO_copy_next_retry(bio);
       return ret;
     }
 
     std::vector<uint8_t> buf(CRYPTO_load_u32_be(len_bytes), 0);
-    ret = ReadAll(next, buf.data(), buf.size());
+    ret = ReadAll(next, bssl::Span(buf));
     if (ret <= 0) {
       fprintf(stderr, "Packeted BIO was truncated\n");
       return -1;
