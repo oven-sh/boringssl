@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include <functional>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -44,15 +45,9 @@ struct PacketedBio {
               std::function<bool(uint32_t)> set_mtu_arg)
       : clock(clock_arg),
         get_timeout(std::move(get_timeout_arg)),
-        set_mtu(std::move(set_mtu_arg)) {
-    OPENSSL_memset(&timeout, 0, sizeof(timeout));
-  }
+        set_mtu(std::move(set_mtu_arg)) {}
 
-  bool HasTimeout() const {
-    return timeout.tv_sec != 0 || timeout.tv_usec != 0;
-  }
-
-  timeval timeout;
+  std::optional<timeval> timeout;
   timeval *clock;
   std::function<bool(timeval *)> get_timeout;
   std::function<bool(uint32_t)> set_mtu;
@@ -144,7 +139,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
     if (opcode == kOpcodeTimeout) {
       // The caller is required to advance any pending timeouts before
       // continuing.
-      if (data->HasTimeout()) {
+      if (data->timeout.has_value()) {
         fprintf(stderr, "Unprocessed timeout!\n");
         return -1;
       }
@@ -159,8 +154,9 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
       uint64_t timeout = CRYPTO_load_u64_be(buf);
       timeout /= 1000;  // Convert nanoseconds to microseconds.
 
-      data->timeout.tv_usec = timeout % 1000000;
-      data->timeout.tv_sec = timeout / 1000000;
+      data->timeout.emplace();
+      data->timeout->tv_sec = timeout / 1000000;
+      data->timeout->tv_usec = timeout % 1000000;
 
       // Send an ACK to the peer.
       ret = BIO_write(next, &kOpcodeTimeoutAck, 1);
@@ -331,15 +327,15 @@ bool PacketedBioAdvanceClock(BIO *bio) {
     return false;
   }
 
-  if (!data->HasTimeout()) {
+  if (!data->timeout.has_value()) {
     return false;
   }
 
-  data->clock->tv_usec += data->timeout.tv_usec;
+  data->clock->tv_usec += data->timeout->tv_usec;
   data->clock->tv_sec += data->clock->tv_usec / 1000000;
   data->clock->tv_usec %= 1000000;
-  data->clock->tv_sec += data->timeout.tv_sec;
-  OPENSSL_memset(&data->timeout, 0, sizeof(data->timeout));
+  data->clock->tv_sec += data->timeout->tv_sec;
+  data->timeout = std::nullopt;
   return true;
 }
 
