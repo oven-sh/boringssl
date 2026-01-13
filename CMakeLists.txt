@@ -129,7 +129,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CLANG)
     set(C_CXX_FLAGS "${C_CXX_FLAGS} -fno-common -fvisibility=hidden")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${C_CXX_FLAGS}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} ${C_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_CXX_FLAGS}")
 elseif(MSVC)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -utf-8")
   # Without /Zc:__cplusplus, MSVC does not define the right value for
