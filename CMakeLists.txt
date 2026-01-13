@@ -30,7 +30,6 @@ if(WIN32)
 endif()
 
 include(cmake/go.cmake)
-include(cmake/paths.cmake)
 include(gen/sources.cmake)
 
 enable_language(C)
