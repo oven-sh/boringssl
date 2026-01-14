@@ -184,6 +184,14 @@ pub struct Prk {
     evp_md: *const bssl_sys::EVP_MD,
 }
 
+// Safety: `EVP_MD`s are actually thread-safe because it is a descriptor of
+// digest algorithm input and output specification plus a virtual table.
+// It will remain read-only throughout program lifetime.
+unsafe impl Sync for Prk {}
+// Safety: the `EVP_MD` descriptor is constructed once and shared through-out
+// the program lifetime.
+unsafe impl Send for Prk {}
+
 #[allow(clippy::let_unit_value, clippy::unwrap_used)]
 impl Prk {
     /// Creates a Prk from bytes.
