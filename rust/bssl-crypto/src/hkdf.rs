@@ -153,7 +153,7 @@ impl<MD: digest::Algorithm> Hkdf<MD> {
     pub fn extract(secret: &[u8], salt: Salt) -> Prk {
         let mut prk = [0u8; bssl_sys::EVP_MAX_MD_SIZE as usize];
         let mut prk_len = 0usize;
-        let evp_md = MD::get_md(sealed::Sealed).as_ptr();
+        let evp_md = MD::get_md(sealed::SealedType).as_ptr();
         unsafe {
             // Safety: `EVP_MAX_MD_SIZE` is the maximum output size of
             // `HKDF_extract` so it'll never overrun the buffer.
@@ -210,7 +210,7 @@ impl Prk {
         Some(Prk {
             prk,
             len: MD::OUTPUT_LEN,
-            evp_md: MD::get_md(sealed::Sealed).as_ptr(),
+            evp_md: MD::get_md(sealed::SealedType).as_ptr(),
         })
     }
 

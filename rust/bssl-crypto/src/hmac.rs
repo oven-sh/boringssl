@@ -278,7 +278,7 @@ fn hmac<const N: usize, MD: digest::Algorithm>(key: &[u8], data: &[u8]) -> [u8; 
     // - If NULL is returned on error we panic immediately
     let result = unsafe {
         bssl_sys::HMAC(
-            MD::get_md(sealed::Sealed).as_ptr(),
+            MD::get_md(sealed::SealedType).as_ptr(),
             key.as_ffi_void_ptr(),
             key.len(),
             data.as_ffi_ptr(),
@@ -334,7 +334,7 @@ impl<const N: usize, MD: digest::Algorithm> Hmac<N, MD> {
                 &mut ret.ctx,
                 key.as_ffi_void_ptr(),
                 key.len(),
-                MD::get_md(sealed::Sealed).as_ptr(),
+                MD::get_md(sealed::SealedType).as_ptr(),
                 ptr::null_mut(),
             )
         };
