@@ -167,7 +167,12 @@ static void sha512_224_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
 }
 
 static void sha512_224_final(EVP_MD_CTX *ctx, uint8_t *md) {
-  BCM_sha512_224_final(md, reinterpret_cast<SHA512_CTX *>(ctx->md_data));
+  // BCM_sha512_224_final writes BCM_SHA512_224_DIGEST_BUFFER_LENGTH (32) bytes
+  // but EVP_MD's md_size is BCM_SHA512_224_DIGEST_LENGTH (28).
+  // Use a temporary buffer and copy only the first 28 bytes.
+  uint8_t tmp[BCM_SHA512_224_DIGEST_BUFFER_LENGTH];
+  BCM_sha512_224_final(tmp, reinterpret_cast<SHA512_CTX *>(ctx->md_data));
+  OPENSSL_memcpy(md, tmp, BCM_SHA512_224_DIGEST_LENGTH);
 }
 
 DEFINE_METHOD_FUNCTION(EVP_MD, EVP_sha512_224) {
