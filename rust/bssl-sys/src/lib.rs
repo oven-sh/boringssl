@@ -2,7 +2,7 @@
 
 // unnecessary_transmutes, needed to work around a Rust bug, is not available in
 // older Rusts. Stable lacks any way to condition code on Rust version, so the
-// workaroud for a Rust bug below needs this additional Rust workaround.
+// workaround for a Rust bug below needs this additional Rust workaround.
 #![allow(unknown_lints)]
 
 #![allow(non_upper_case_globals)]
@@ -55,14 +55,6 @@ pub const XN_FLAG_SPC_EQ: c_ulong = bindgen::XN_FLAG_SPC_EQ as c_ulong;
 pub const XN_FLAG_DUMP_UNKNOWN_FIELDS: c_ulong = bindgen::XN_FLAG_DUMP_UNKNOWN_FIELDS as c_ulong;
 pub const XN_FLAG_RFC2253: c_ulong = bindgen::XN_FLAG_RFC2253 as c_ulong;
 pub const XN_FLAG_ONELINE: c_ulong = bindgen::XN_FLAG_ONELINE as c_ulong;
-
-// TODO(crbug.com/boringssl/596): Remove these wrappers.
-#[cfg(unsupported_inline_wrappers)]
-pub use { ERR_GET_LIB_RUST as ERR_GET_LIB,
-          ERR_GET_REASON_RUST as ERR_GET_REASON,
-          ERR_GET_FUNC_RUST as ERR_GET_FUNC,
-          CBS_init_RUST as CBS_init,
-          CBS_len_RUST as CBS_len };
 
 pub fn init() {
     // This function does nothing.

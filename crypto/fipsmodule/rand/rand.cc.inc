@@ -23,6 +23,7 @@
 #include <openssl/chacha.h>
 #include <openssl/ctrdrbg.h>
 #include <openssl/mem.h>
+#include <openssl/rand.h>
 
 #include "../../bcm_support.h"
 #include "../bcm_interface.h"
@@ -30,10 +31,12 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // It's assumed that the operating system always has an unfailing source of
-// entropy which is accessed via |CRYPTO_sysrand[_for_seed]|. (If the operating
-// system entropy source fails, it's up to |CRYPTO_sysrand| to abort the
-// process—we don't try to handle it.)
+// entropy which is accessed via |CRYPTO_sysrand|. (If the operating system
+// entropy source fails, it's up to |CRYPTO_sysrand| to abort the process—we
+// don't try to handle it.)
 //
 // In addition, the hardware may provide a low-latency RNG. Intel's rdrand
 // instruction is the canonical example of this. When a hardware RNG is
@@ -71,8 +74,8 @@ struct rand_thread_state {
 #if defined(BORINGSSL_FIPS)
   // last_block contains the previous block from |get_seed_entropy|.
   uint8_t last_block[CRNGT_BLOCK_SIZE];
-  // next and prev form a NULL-terminated, double-linked list of all states in
-  // a process.
+  // next and prev form a nullptr-terminated, double-linked list of all states
+  // in a process.
   struct rand_thread_state *next, *prev;
   // clear_drbg_lock synchronizes between uses of |drbg| and
   // |rand_thread_state_clear_all| clearing it. This lock should be uncontended
@@ -90,11 +93,11 @@ struct rand_thread_state {
 DEFINE_BSS_GET(struct rand_thread_state *, thread_states_list, nullptr)
 DEFINE_STATIC_MUTEX(thread_states_list_lock)
 
-static void rand_thread_state_clear_all(void) __attribute__((destructor));
-static void rand_thread_state_clear_all(void) {
+static void rand_thread_state_clear_all() __attribute__((destructor));
+static void rand_thread_state_clear_all() {
   CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
   for (struct rand_thread_state *cur = *thread_states_list_bss_get();
-       cur != NULL; cur = cur->next) {
+       cur != nullptr; cur = cur->next) {
     CRYPTO_MUTEX_lock_write(&cur->clear_drbg_lock);
     CTR_DRBG_clear(&cur->drbg);
   }
@@ -111,23 +114,23 @@ static void rand_thread_state_free(void *state_in) {
   struct rand_thread_state *state =
       reinterpret_cast<rand_thread_state *>(state_in);
 
-  if (state_in == NULL) {
+  if (state_in == nullptr) {
     return;
   }
 
 #if defined(BORINGSSL_FIPS)
   CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
 
-  if (state->prev != NULL) {
+  if (state->prev != nullptr) {
     state->prev->next = state->next;
   } else if (*thread_states_list_bss_get() == state) {
-    // |state->prev| may be NULL either if it is the head of the list,
+    // |state->prev| may be nullptr either if it is the head of the list,
     // or if |state| is freed before it was added to the list at all.
     // Compare against the head of the list to distinguish these cases.
     *thread_states_list_bss_get() = state->next;
   }
 
-  if (state->next != NULL) {
+  if (state->next != nullptr) {
     state->next->prev = state->prev;
   }
 
@@ -169,7 +172,7 @@ static int rdrand(uint8_t *buf, size_t len) { return 0; }
 
 #endif
 
-bcm_status BCM_rand_bytes_hwrng(uint8_t *buf, const size_t len) {
+bcm_status bssl::BCM_rand_bytes_hwrng(uint8_t *buf, const size_t len) {
   if (!have_rdrand()) {
     return bcm_status::failure;
   }
@@ -200,8 +203,9 @@ struct entropy_buffer {
 DEFINE_BSS_GET(struct entropy_buffer, entropy_buffer, {})
 DEFINE_STATIC_MUTEX(entropy_buffer_lock)
 
-bcm_infallible BCM_rand_load_entropy(const uint8_t *entropy, size_t entropy_len,
-                                     int want_additional_input) {
+bcm_infallible bssl::BCM_rand_load_entropy(const uint8_t *entropy,
+                                           size_t entropy_len,
+                                           int want_additional_input) {
   struct entropy_buffer *const buffer = entropy_buffer_bss_get();
 
   CRYPTO_MUTEX_lock_write(entropy_buffer_lock_bss_get());
@@ -301,12 +305,13 @@ static void rand_get_seed(struct rand_thread_state *state,
     }
   }
 
-  // If we used something other than system entropy then also
-  // opportunistically read from the system. This avoids solely relying on the
-  // hardware once the entropy pool has been initialized.
+  // If we used something other than system entropy then also read from the
+  // system. This avoids solely relying on the hardware.
+  // TODO(crbug.com/446280903): Once this change sticks, switch
+  // |get_seed_entropy| to draw from the OS instead of RDRAND.
   *out_additional_input_len = 0;
-  if (want_additional_input &&
-      CRYPTO_sysrand_if_available(additional_input, CTR_DRBG_SEED_LEN)) {
+  if (want_additional_input) {
+    CRYPTO_sysrand(additional_input, CTR_DRBG_SEED_LEN);
     *out_additional_input_len = CTR_DRBG_SEED_LEN;
   }
 }
@@ -322,13 +327,13 @@ static void rand_get_seed(struct rand_thread_state *state,
                           size_t *out_additional_input_len) {
   // If not in FIPS mode, we don't overread from the system entropy source and
   // we don't depend only on the hardware RDRAND.
-  CRYPTO_sysrand_for_seed(seed, CTR_DRBG_SEED_LEN);
+  CRYPTO_sysrand(seed, CTR_DRBG_SEED_LEN);
   *out_additional_input_len = 0;
 }
 
 #endif
 
-bcm_infallible BCM_rand_bytes_with_additional_data(
+bcm_infallible bssl::BCM_rand_bytes_with_additional_data(
     uint8_t *out, size_t out_len, const uint8_t user_additional_data[32]) {
   if (out_len == 0) {
     return bcm_infallible::approved;
@@ -352,13 +357,7 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
     // promised not to fork.
     if (fork_generation != 0 || fork_unsafe_buffering) {
       OPENSSL_memset(additional_data, 0, sizeof(additional_data));
-    } else if (!have_rdrand()) {
-      // No alternative so block for OS entropy.
-      CRYPTO_sysrand(additional_data, sizeof(additional_data));
-    } else if (!CRYPTO_sysrand_if_available(additional_data,
-                                            sizeof(additional_data)) &&
-               !rdrand(additional_data, sizeof(additional_data))) {
-      // RDRAND failed: block for OS entropy.
+    } else {
       CRYPTO_sysrand(additional_data, sizeof(additional_data));
     }
   }
@@ -371,10 +370,10 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
   struct rand_thread_state *state = reinterpret_cast<rand_thread_state *>(
       CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_RAND));
 
-  if (state == NULL) {
+  if (state == nullptr) {
     state = reinterpret_cast<rand_thread_state *>(
         OPENSSL_zalloc(sizeof(struct rand_thread_state)));
-    if (state == NULL ||
+    if (state == nullptr ||
         !CRYPTO_set_thread_local(OPENSSL_THREAD_LOCAL_RAND, state,
                                  rand_thread_state_free)) {
       // If the system is out of memory, use an ephemeral state on the
@@ -402,10 +401,10 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
       CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
       struct rand_thread_state **states_list = thread_states_list_bss_get();
       state->next = *states_list;
-      if (state->next != NULL) {
+      if (state->next != nullptr) {
         state->next->prev = state;
       }
-      state->prev = NULL;
+      state->prev = nullptr;
       *states_list = state;
       CRYPTO_MUTEX_unlock_write(thread_states_list_lock_bss_get());
     }
@@ -476,8 +475,14 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
   return bcm_infallible::approved;
 }
 
-bcm_infallible BCM_rand_bytes(uint8_t *out, size_t out_len) {
+bcm_infallible bssl::BCM_rand_bytes(uint8_t *out, size_t out_len) {
   static const uint8_t kZeroAdditionalData[32] = {0};
   BCM_rand_bytes_with_additional_data(out, out_len, kZeroAdditionalData);
   return bcm_infallible::approved;
+}
+
+int RAND_maybe_reseed() {
+  // Currently does nothing since we don't use jitter entropy yet and so the
+  // reseeding is quick.
+  return 0;
 }

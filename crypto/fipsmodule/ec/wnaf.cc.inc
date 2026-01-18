@@ -29,13 +29,15 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 // This file implements the wNAF-based interleaving multi-exponentiation method
 // at:
 //   http://link.springer.com/chapter/10.1007%2F3-540-45537-X_13
 //   http://www.bmoeller.de/pdf/TI-01-08.multiexp.pdf
 
-void ec_compute_wNAF(const EC_GROUP *group, int8_t *out,
-                     const EC_SCALAR *scalar, size_t bits, int w) {
+void bssl::ec_compute_wNAF(const EC_GROUP *group, int8_t *out,
+                           const EC_SCALAR *scalar, size_t bits, int w) {
   // 'int8_t' can represent integers with absolute values less than 2^7.
   assert(0 < w && w <= 7);
   assert(bits != 0);
@@ -128,10 +130,10 @@ static void lookup_precomp(const EC_GROUP *group, EC_JACOBIAN *out,
 // avoid a malloc.
 #define EC_WNAF_STACK 3
 
-int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
-                                 const EC_SCALAR *g_scalar,
-                                 const EC_JACOBIAN *points,
-                                 const EC_SCALAR *scalars, size_t num) {
+int bssl::ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
+                                       const EC_SCALAR *g_scalar,
+                                       const EC_JACOBIAN *points,
+                                       const EC_SCALAR *scalars, size_t num) {
   size_t bits = EC_GROUP_order_bits(group);
   size_t wNAF_len = bits + 1;
 
@@ -140,8 +142,8 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
   EC_JACOBIAN precomp_stack[EC_WNAF_STACK][EC_WNAF_TABLE_SIZE];
 
   // Allocated pointers, which will remain NULL unless needed.
-  EC_JACOBIAN(*precomp_alloc)[EC_WNAF_TABLE_SIZE] = NULL;
-  int8_t(*wNAF_alloc)[EC_MAX_BYTES * 8 + 1] = NULL;
+  EC_JACOBIAN(*precomp_alloc)[EC_WNAF_TABLE_SIZE] = nullptr;
+  int8_t (*wNAF_alloc)[EC_MAX_BYTES * 8 + 1] = nullptr;
 
   // These fields point either to the stack or heap buffers of the same name.
   int8_t(*wNAF)[EC_MAX_BYTES * 8 + 1];
@@ -153,12 +155,12 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
   } else {
     wNAF_alloc = reinterpret_cast<decltype(wNAF_alloc)>(
         OPENSSL_calloc(num, sizeof(wNAF_alloc[0])));
-    if (wNAF_alloc == NULL) {
+    if (wNAF_alloc == nullptr) {
       return 0;
     }
     precomp_alloc = reinterpret_cast<decltype(precomp_alloc)>(
         OPENSSL_calloc(num, sizeof(precomp_alloc[0])));
-    if (precomp_alloc == NULL) {
+    if (precomp_alloc == nullptr) {
       OPENSSL_free(wNAF_alloc);
       return 0;
     }
@@ -171,7 +173,7 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
   EC_JACOBIAN g_precomp[EC_WNAF_TABLE_SIZE];
   assert(wNAF_len <= std::size(g_wNAF));
   const EC_JACOBIAN *g = &group->generator.raw;
-  if (g_scalar != NULL) {
+  if (g_scalar != nullptr) {
     ec_compute_wNAF(group, g_wNAF, g_scalar, bits, EC_WNAF_WINDOW_BITS);
     compute_precomp(group, g_precomp, g, EC_WNAF_TABLE_SIZE);
   }
@@ -189,7 +191,7 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
       ec_GFp_mont_dbl(group, r, r);
     }
 
-    if (g_scalar != NULL && g_wNAF[k] != 0) {
+    if (g_scalar != nullptr && g_wNAF[k] != 0) {
       lookup_precomp(group, &tmp, g_precomp, g_wNAF[k]);
       if (r_is_at_infinity) {
         ec_GFp_simple_point_copy(r, &tmp);

@@ -127,7 +127,7 @@ impl PublicKey {
     ) -> Result<(), InvalidSignatureError> {
         let digest = Hash::hash_to_vec(signed_msg);
         // Safety: `get_md` always returns a valid pointer.
-        let hash_nid = unsafe { bssl_sys::EVP_MD_nid(Hash::get_md(sealed::Sealed).as_ptr()) };
+        let hash_nid = unsafe { bssl_sys::EVP_MD_nid(Hash::get_md(sealed::SealedType).as_ptr()) };
         let result = unsafe {
             // Safety: all buffers are valid and `self.0` is valid by construction.
             bssl_sys::RSA_verify(
@@ -252,7 +252,7 @@ impl PrivateKey {
     pub fn sign_pkcs1<Hash: digest::Algorithm>(&self, to_be_signed: &[u8]) -> Vec<u8> {
         let digest = Hash::hash_to_vec(to_be_signed);
         // Safety: `get_md` always returns a valid pointer.
-        let hash_nid = unsafe { bssl_sys::EVP_MD_nid(Hash::get_md(sealed::Sealed).as_ptr()) };
+        let hash_nid = unsafe { bssl_sys::EVP_MD_nid(Hash::get_md(sealed::SealedType).as_ptr()) };
         let max_output = unsafe { bssl_sys::RSA_size(self.0) } as usize;
 
         unsafe {

@@ -24,7 +24,11 @@
 
 #include "internal.h"
 
-int asn1_generalizedtime_to_tm(struct tm *tm, const ASN1_GENERALIZEDTIME *d) {
+
+using namespace bssl;
+
+int bssl::asn1_generalizedtime_to_tm(struct tm *tm,
+                                     const ASN1_GENERALIZEDTIME *d) {
   if (d->type != V_ASN1_GENERALIZEDTIME) {
     return 0;
   }
@@ -36,8 +40,8 @@ int asn1_generalizedtime_to_tm(struct tm *tm, const ASN1_GENERALIZEDTIME *d) {
   return 1;
 }
 
-int asn1_parse_generalized_time(CBS *cbs, ASN1_GENERALIZEDTIME *out,
-                                CBS_ASN1_TAG tag) {
+int bssl::asn1_parse_generalized_time(CBS *cbs, ASN1_GENERALIZEDTIME *out,
+                                      CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_GENERALIZEDTIME : tag;
   CBS child;
   if (!CBS_get_asn1(cbs, &child, tag) ||
@@ -54,18 +58,18 @@ int asn1_parse_generalized_time(CBS *cbs, ASN1_GENERALIZEDTIME *out,
 }
 
 int ASN1_GENERALIZEDTIME_check(const ASN1_GENERALIZEDTIME *d) {
-  return asn1_generalizedtime_to_tm(NULL, d);
+  return asn1_generalizedtime_to_tm(nullptr, d);
 }
 
 int ASN1_GENERALIZEDTIME_set_string(ASN1_GENERALIZEDTIME *s, const char *str) {
   size_t len = strlen(str);
   CBS cbs;
   CBS_init(&cbs, (const uint8_t *)str, len);
-  if (!CBS_parse_generalized_time(&cbs, /*out_tm=*/NULL,
+  if (!CBS_parse_generalized_time(&cbs, /*out_tm=*/nullptr,
                                   /*allow_timezone_offset=*/0)) {
     return 0;
   }
-  if (s != NULL) {
+  if (s != nullptr) {
     if (!ASN1_STRING_set(s, str, len)) {
       return 0;
     }
@@ -85,18 +89,18 @@ ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_adj(ASN1_GENERALIZEDTIME *s,
                                                long offset_sec) {
   struct tm data;
   if (!OPENSSL_posix_to_tm(posix_time, &data)) {
-    return NULL;
+    return nullptr;
   }
 
   if (offset_day || offset_sec) {
     if (!OPENSSL_gmtime_adj(&data, offset_day, offset_sec)) {
-      return NULL;
+      return nullptr;
     }
   }
 
   if (data.tm_year < 0 - 1900 || data.tm_year > 9999 - 1900) {
     OPENSSL_PUT_ERROR(ASN1, ASN1_R_ILLEGAL_TIME_VALUE);
-    return NULL;
+    return nullptr;
   }
 
   char buf[16];
@@ -107,11 +111,11 @@ ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_adj(ASN1_GENERALIZEDTIME *s,
   BSSL_CHECK(ret == static_cast<int>(sizeof(buf) - 1));
 
   int free_s = 0;
-  if (s == NULL) {
+  if (s == nullptr) {
     free_s = 1;
     s = ASN1_UTCTIME_new();
-    if (s == NULL) {
-      return NULL;
+    if (s == nullptr) {
+      return nullptr;
     }
   }
 
@@ -119,7 +123,7 @@ ASN1_GENERALIZEDTIME *ASN1_GENERALIZEDTIME_adj(ASN1_GENERALIZEDTIME *s,
     if (free_s) {
       ASN1_UTCTIME_free(s);
     }
-    return NULL;
+    return nullptr;
   }
   s->type = V_ASN1_GENERALIZEDTIME;
   return s;

@@ -26,6 +26,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 void CAST_ecb_encrypt(const uint8_t *in, uint8_t *out, const CAST_KEY *ks,
                       int enc) {
   uint32_t d[2];
@@ -200,10 +202,10 @@ void CAST_cbc_encrypt(const uint8_t *in, uint8_t *out, size_t length,
   a[n + 2] = (l >> 8) & 0xff;  \
   a[n + 1] = (l >> 16) & 0xff; \
   a[n + 0] = (l >> 24) & 0xff;
-#define S4 CAST_S_table4
-#define S5 CAST_S_table5
-#define S6 CAST_S_table6
-#define S7 CAST_S_table7
+#define S4 bssl::CAST_S_table4
+#define S5 bssl::CAST_S_table5
+#define S6 bssl::CAST_S_table6
+#define S7 bssl::CAST_S_table7
 
 void CAST_set_key(CAST_KEY *key, size_t len, const uint8_t *data) {
   uint32_t x[16];
@@ -371,8 +373,8 @@ static int cast_init_key(EVP_CIPHER_CTX *ctx, const uint8_t *key,
   return 1;
 }
 
-static int cast_ecb_cipher(EVP_CIPHER_CTX *ctx, uint8_t *out, const uint8_t *in,
-                           size_t len) {
+static int cast_ecb_cipher_update(EVP_CIPHER_CTX *ctx, uint8_t *out,
+                                  const uint8_t *in, size_t len) {
   CAST_KEY *cast_key = reinterpret_cast<CAST_KEY *>(ctx->cipher_data);
 
   while (len >= CAST_BLOCK) {
@@ -386,8 +388,8 @@ static int cast_ecb_cipher(EVP_CIPHER_CTX *ctx, uint8_t *out, const uint8_t *in,
   return 1;
 }
 
-static int cast_cbc_cipher(EVP_CIPHER_CTX *ctx, uint8_t *out, const uint8_t *in,
-                           size_t len) {
+static int cast_cbc_cipher_update(EVP_CIPHER_CTX *ctx, uint8_t *out,
+                                  const uint8_t *in, size_t len) {
   CAST_KEY *cast_key = reinterpret_cast<CAST_KEY *>(ctx->cipher_data);
   CAST_cbc_encrypt(in, out, len, cast_key, ctx->iv, ctx->encrypt);
   return 1;
@@ -401,7 +403,9 @@ static const EVP_CIPHER cast5_ecb = {
     /* ctx_size= */ sizeof(CAST_KEY),
     /* flags= */ EVP_CIPH_ECB_MODE | EVP_CIPH_VARIABLE_LENGTH,
     /* init= */ cast_init_key,
-    /* cipher= */ cast_ecb_cipher,
+    /* cipher_update= */ cast_ecb_cipher_update,
+    /* cipher_final= */ nullptr,
+    /* update_aad= */ nullptr,
     /* cleanup= */ nullptr,
     /* ctrl= */ nullptr,
 };
@@ -414,11 +418,13 @@ static const EVP_CIPHER cast5_cbc = {
     /* ctx_size= */ sizeof(CAST_KEY),
     /* flags= */ EVP_CIPH_CBC_MODE | EVP_CIPH_VARIABLE_LENGTH,
     /* init= */ cast_init_key,
-    /* cipher= */ cast_cbc_cipher,
+    /* cipher_update= */ cast_cbc_cipher_update,
+    /* cipher_final= */ nullptr,
+    /* update_aad= */ nullptr,
     /* cleanup= */ nullptr,
     /* ctrl= */ nullptr,
 };
 
-const EVP_CIPHER *EVP_cast5_ecb(void) { return &cast5_ecb; }
+const EVP_CIPHER *EVP_cast5_ecb() { return &cast5_ecb; }
 
-const EVP_CIPHER *EVP_cast5_cbc(void) { return &cast5_cbc; }
+const EVP_CIPHER *EVP_cast5_cbc() { return &cast5_cbc; }

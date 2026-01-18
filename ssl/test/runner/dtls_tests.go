@@ -175,7 +175,7 @@ func addDTLSRetransmitTests() {
 			ackFlightBasic := handleNewSessionTicket(func(c *DTLSController, prev, received []DTLSMessage, records []DTLSRecordNumberInfo) {
 				if vers.version >= VersionTLS13 {
 					// In DTLS 1.3, final flights (either handshake or post-handshake)
-					// are retransmited until ACKed. Exercise every timeout but
+					// are retransmitted until ACKed. Exercise every timeout but
 					// the last one (which would fail the connection).
 					for _, t := range useTimeouts[:len(useTimeouts)-1] {
 						c.ExpectNextTimeout(t)
@@ -405,6 +405,30 @@ func addDTLSRetransmitTests() {
 							if len(received) > 0 {
 								c.ExpectNextTimeout(useTimeouts[0])
 								c.AdvanceClock(useTimeouts[0] - 10*time.Millisecond)
+								c.ReadRetransmit()
+							}
+							c.WriteFlight(next)
+						},
+					},
+				},
+				resumeSession: true,
+				flags:         flags,
+			})
+
+			// Test attempting to handle a timeout in multiple steps.
+			testCases = append(testCases, testCase{
+				protocol: dtls,
+				name:     "DTLS-Retransmit-HandleTimeoutInSteps" + suffix,
+				config: Config{
+					MaxVersion: vers.version,
+					Bugs: ProtocolBugs{
+						WriteFlightDTLS: func(c *DTLSController, prev, received, next []DTLSMessage, records []DTLSRecordNumberInfo) {
+							if len(received) > 0 {
+								c.ExpectNextTimeout(useTimeouts[0])
+								c.AdvanceClock(0)
+								part := useTimeouts[0] / 3
+								c.AdvanceClock(part)
+								c.AdvanceClock(useTimeouts[0] - part)
 								c.ReadRetransmit()
 							}
 							c.WriteFlight(next)

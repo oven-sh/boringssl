@@ -43,7 +43,7 @@ my $xlate;
 ( $xlate="${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate) or
 die "can't locate x86_64-xlate.pl";
 
-open OUT, "| \"$^X\" \"$xlate\" $flavour \"$output\"";
+open OUT, "|-", $^X, $xlate, $flavour, $output;
 *STDOUT = *OUT;
 
 # @inp is the registers used for function inputs, in order.
@@ -185,7 +185,7 @@ $code .= <<____ if (!$win64);
 	movq	$unwind, $unwind_offset(%rsp)
 ____
 # Store our caller's state. This is needed because we modify it ourselves, and
-# also to isolate the test infrastruction from the function under test failing
+# also to isolate the test infrastructure from the function under test failing
 # to save some register.
 $code .= store_caller_state($caller_state_offset, "%rsp", sub {
   my ($off, $reg) = @_;

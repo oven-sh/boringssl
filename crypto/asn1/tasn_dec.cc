@@ -27,6 +27,9 @@
 #include "../internal.h"
 #include "internal.h"
 
+
+using namespace bssl;
+
 // Constructed types with a recursive definition (such as can be found in PKCS7)
 // could eventually exceed the stack given malicious input with excessive
 // recursion. Therefore we limit the stack depth. This is the maximum number of
@@ -96,7 +99,7 @@ unsigned long ASN1_tag2bit(int tag) {
 
 ASN1_VALUE *ASN1_item_d2i(ASN1_VALUE **pval, const unsigned char **in, long len,
                           const ASN1_ITEM *it) {
-  ASN1_VALUE *ret = NULL;
+  ASN1_VALUE *ret = nullptr;
   if (asn1_item_ex_d2i(&ret, in, len, it, /*tag=*/-1, /*aclass=*/0, /*opt=*/0,
                        /*depth=*/0) <= 0) {
     // Clean up, in case the caller left a partial object.
@@ -110,7 +113,7 @@ ASN1_VALUE *ASN1_item_d2i(ASN1_VALUE **pval, const unsigned char **in, long len,
   // with |ret|. This differs from OpenSSL slightly in that we don't support
   // object reuse. We run this on both success and failure. On failure, even
   // with object reuse, OpenSSL destroys the previous object.
-  if (pval != NULL) {
+  if (pval != nullptr) {
     ASN1_item_ex_free(pval, it);
     *pval = ret;
   }
@@ -129,8 +132,8 @@ ASN1_VALUE *ASN1_item_d2i(ASN1_VALUE **pval, const unsigned char **in, long len,
 static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
                             long len, const ASN1_ITEM *it, int tag, int aclass,
                             char opt, int depth) {
-  const ASN1_TEMPLATE *tt, *errtt = NULL;
-  const unsigned char *p = NULL, *q;
+  const ASN1_TEMPLATE *tt, *errtt = nullptr;
+  const unsigned char *p = nullptr, *q;
   unsigned char oclass;
   char cst, isopt;
   int i;
@@ -181,7 +184,8 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
 
       p = *in;
       // Just read in tag and class
-      ret = asn1_check_tlen(NULL, &otag, &oclass, NULL, &p, len, -1, 0, 1);
+      ret =
+          asn1_check_tlen(nullptr, &otag, &oclass, nullptr, &p, len, -1, 0, 1);
       if (!ret) {
         OPENSSL_PUT_ERROR(ASN1, ASN1_R_NESTED_ASN1_ERROR);
         goto err;
@@ -238,8 +242,8 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
       }
 
       const ASN1_AUX *aux = reinterpret_cast<const ASN1_AUX *>(it->funcs);
-      ASN1_aux_cb *asn1_cb = aux != NULL ? aux->asn1_cb : NULL;
-      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_PRE, pval, it, NULL)) {
+      ASN1_aux_cb *asn1_cb = aux != nullptr ? aux->asn1_cb : nullptr;
+      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_PRE, pval, it, nullptr)) {
         goto auxerr;
       }
 
@@ -289,7 +293,7 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
       }
 
       asn1_set_choice_selector(pval, i, it);
-      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_POST, pval, it, NULL)) {
+      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_POST, pval, it, nullptr)) {
         goto auxerr;
       }
       *in = p;
@@ -305,7 +309,8 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
         aclass = V_ASN1_UNIVERSAL;
       }
       // Get SEQUENCE length and update len, p
-      ret = asn1_check_tlen(&len, NULL, NULL, &cst, &p, len, tag, aclass, opt);
+      ret = asn1_check_tlen(&len, nullptr, nullptr, &cst, &p, len, tag, aclass,
+                            opt);
       if (!ret) {
         OPENSSL_PUT_ERROR(ASN1, ASN1_R_NESTED_ASN1_ERROR);
         goto err;
@@ -323,8 +328,8 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
       }
 
       const ASN1_AUX *aux = reinterpret_cast<const ASN1_AUX *>(it->funcs);
-      ASN1_aux_cb *asn1_cb = aux != NULL ? aux->asn1_cb : NULL;
-      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_PRE, pval, it, NULL)) {
+      ASN1_aux_cb *asn1_cb = aux != nullptr ? aux->asn1_cb : nullptr;
+      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_PRE, pval, it, nullptr)) {
         goto auxerr;
       }
 
@@ -334,7 +339,7 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
           const ASN1_TEMPLATE *seqtt;
           ASN1_VALUE **pseqval;
           seqtt = asn1_do_adb(pval, tt, 0);
-          if (seqtt == NULL) {
+          if (seqtt == nullptr) {
             continue;
           }
           pseqval = asn1_get_field_ptr(pval, seqtt);
@@ -347,7 +352,7 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
         const ASN1_TEMPLATE *seqtt;
         ASN1_VALUE **pseqval;
         seqtt = asn1_do_adb(pval, tt, 1);
-        if (seqtt == NULL) {
+        if (seqtt == nullptr) {
           goto err;
         }
         pseqval = asn1_get_field_ptr(pval, seqtt);
@@ -392,7 +397,7 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
       for (; i < it->tcount; tt++, i++) {
         const ASN1_TEMPLATE *seqtt;
         seqtt = asn1_do_adb(pval, tt, 1);
-        if (seqtt == NULL) {
+        if (seqtt == nullptr) {
           goto err;
         }
         if (seqtt->flags & ASN1_TFLG_OPTIONAL) {
@@ -409,7 +414,7 @@ static int asn1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
       if (!asn1_enc_save(pval, *in, p - *in, it)) {
         goto auxerr;
       }
-      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_POST, pval, it, NULL)) {
+      if (asn1_cb && !asn1_cb(ASN1_OP_D2I_POST, pval, it, nullptr)) {
         goto auxerr;
       }
       *in = p;
@@ -431,8 +436,9 @@ err:
   return 0;
 }
 
-int ASN1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in, long len,
-                     const ASN1_ITEM *it, int tag, int aclass, char opt) {
+int bssl::ASN1_item_ex_d2i(ASN1_VALUE **pval, const unsigned char **in,
+                           long len, const ASN1_ITEM *it, int tag, int aclass,
+                           char opt) {
   return asn1_item_ex_d2i(pval, in, len, it, tag, aclass, opt, /*depth=*/0);
 }
 
@@ -459,8 +465,8 @@ static int asn1_template_ex_d2i(ASN1_VALUE **val, const unsigned char **in,
     char cst;
     // Need to work out amount of data available to the inner content and
     // where it starts: so read in EXPLICIT header to get the info.
-    ret = asn1_check_tlen(&len, NULL, NULL, &cst, &p, inlen, tt->tag, aclass,
-                          opt);
+    ret = asn1_check_tlen(&len, nullptr, nullptr, &cst, &p, inlen, tt->tag,
+                          aclass, opt);
     q = p;
     if (!ret) {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_NESTED_ASN1_ERROR);
@@ -527,8 +533,8 @@ static int asn1_template_noexp_d2i(ASN1_VALUE **val, const unsigned char **in,
       }
     }
     // Get the tag
-    ret =
-        asn1_check_tlen(&len, NULL, NULL, NULL, &p, len, sktag, skaclass, opt);
+    ret = asn1_check_tlen(&len, nullptr, nullptr, nullptr, &p, len, sktag,
+                          skaclass, opt);
     if (!ret) {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_NESTED_ASN1_ERROR);
       return 0;
@@ -555,7 +561,7 @@ static int asn1_template_noexp_d2i(ASN1_VALUE **val, const unsigned char **in,
     while (len > 0) {
       ASN1_VALUE *skfield;
       const unsigned char *q = p;
-      skfield = NULL;
+      skfield = nullptr;
       if (!asn1_item_ex_d2i(&skfield, &p, len, ASN1_ITEM_ptr(tt->item),
                             /*tag=*/-1, /*aclass=*/0, /*opt=*/0, depth)) {
         ASN1_item_ex_free(&skfield, ASN1_ITEM_ptr(tt->item));
@@ -636,7 +642,7 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
                                      char opt) {
   // Historically, |it->funcs| for primitive types contained an
   // |ASN1_PRIMITIVE_FUNCS| table of callbacks.
-  assert(it->funcs == NULL);
+  assert(it->funcs == nullptr);
 
   int utype;
   assert(it->itype == ASN1_ITYPE_PRIMITIVE || it->itype == ASN1_ITYPE_MSTRING);
@@ -649,7 +655,7 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
   }
 
   // Handle ANY types.
-  if (utype == V_ASN1_ANY || utype == V_ASN1_ANY_AS_STRING) {
+  if (utype == V_ASN1_ANY) {
     if (tag >= 0) {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_ILLEGAL_TAGGED_ANY);
       return 0;
@@ -657,12 +663,10 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
     if (opt && CBS_len(cbs) == 0) {
       return -1;  // Omitted OPTIONAL value.
     }
-  }
-  if (utype == V_ASN1_ANY) {
     ASN1_TYPE *typ;
     if (!*pval) {
       typ = ASN1_TYPE_new();
-      if (typ == NULL) {
+      if (typ == nullptr) {
         return 0;
       }
       *pval = (ASN1_VALUE *)typ;
@@ -670,13 +674,6 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
       typ = (ASN1_TYPE *)*pval;
     }
     return asn1_parse_any(cbs, typ);
-  }
-  if (utype == V_ASN1_ANY_AS_STRING) {
-    ASN1_STRING *str = ensure_string(pval);
-    if (str == nullptr) {
-      return 0;
-    }
-    return asn1_parse_any_as_string(cbs, str);
   }
 
   // Convert the crypto/asn1 tag into a CBS one.
@@ -703,7 +700,7 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
   // Handle non-|ASN1_STRING| types.
   switch (utype) {
     case V_ASN1_OBJECT: {
-      bssl::UniquePtr<ASN1_OBJECT> obj(asn1_parse_object(cbs, cbs_tag));
+      UniquePtr<ASN1_OBJECT> obj(asn1_parse_object(cbs, cbs_tag));
       if (obj == nullptr) {
         return 0;
       }

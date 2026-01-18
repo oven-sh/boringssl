@@ -30,7 +30,7 @@ struct engine_st {
   ECDSA_METHOD *ecdsa_method;
 };
 
-ENGINE *ENGINE_new(void) {
+ENGINE *ENGINE_new() {
   return reinterpret_cast<ENGINE *>(OPENSSL_zalloc(sizeof(ENGINE)));
 }
 
@@ -85,7 +85,7 @@ void METHOD_unref(void *method_in) {
   struct openssl_method_common_st *method =
       reinterpret_cast<openssl_method_common_st *>(method_in);
 
-  if (method == NULL) {
+  if (method == nullptr) {
     return;
   }
   assert(method->is_static);

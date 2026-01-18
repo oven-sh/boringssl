@@ -725,7 +725,7 @@ func doExchange(test *testCase, config *Config, conn net.Conn, isResume bool, tr
 		if *flagDebug {
 			defer connDebug.WriteTo(os.Stdout)
 		}
-		if len(*transcriptDir) != 0 {
+		if *transcriptDir != "" {
 			defer func() {
 				if num == len(*transcripts) {
 					*transcripts = append(*transcripts, connDebug.Transcript())
@@ -1389,7 +1389,7 @@ func translateExpectedError(canonical string) []string {
 	}
 
 	// not specifying a canonical error will have the same effect as -loose-errors being true
-	// since the emptry string with match all error substrings.
+	// since the empty string with match all error substrings.
 	return []string{canonical}
 }
 
@@ -1445,10 +1445,10 @@ func appendCredentialFlags(flags []string, cred *Credential, prefix string, newC
 		}
 	}
 
-	if len(cred.ChainPath) != 0 {
+	if cred.ChainPath != "" {
 		flags = append(flags, prefix+"-cert-file", cred.ChainPath)
 	}
-	if len(cred.KeyPath) != 0 {
+	if cred.KeyPath != "" {
 		flags = append(flags, prefix+"-key-file", cred.KeyPath)
 	}
 	handleBase64Field("ocsp-response", cred.OCSPStaple)
@@ -1479,6 +1479,12 @@ func runTest(dispatcher *shimDispatcher, statusChan chan statusMsg, test *testCa
 			panic(r)
 		}
 	}()
+
+	// Make a copy of the testCase before modifying it in-place.
+	test = ptrTo(*test)
+	if test.resumeConfig != nil {
+		test.resumeConfig = ptrTo(*test.resumeConfig)
+	}
 
 	var flags []string
 	if len(*shimExtraFlags) > 0 {
@@ -1671,7 +1677,7 @@ func runTest(dispatcher *shimDispatcher, statusChan chan statusMsg, test *testCa
 
 	var transcriptPrefix string
 	var transcripts [][]byte
-	if len(*transcriptDir) != 0 {
+	if *transcriptDir != "" {
 		protocol := "tls"
 		if test.protocol == dtls {
 			protocol = "dtls"
@@ -1775,7 +1781,7 @@ func runTest(dispatcher *shimDispatcher, statusChan chan statusMsg, test *testCa
 	if localErr != nil {
 		localErrString = localErr.Error()
 	}
-	if len(test.expectedLocalError) != 0 {
+	if test.expectedLocalError != "" {
 		correctFailure = correctFailure && strings.Contains(localErrString, test.expectedLocalError)
 	}
 
@@ -2181,13 +2187,12 @@ func main() {
 	initKeys()
 	initCertificates()
 
-	if len(*shimConfigFile) != 0 {
+	if *shimConfigFile != "" {
 		encoded, err := os.ReadFile(*shimConfigFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Couldn't read config file %q: %s\n", *shimConfigFile, err)
 			os.Exit(1)
 		}
-
 		if err := json.Unmarshal(encoded, &shimConfig); err != nil {
 			fmt.Fprintf(os.Stderr, "Couldn't decode config file %q: %s\n", *shimConfigFile, err)
 			os.Exit(1)

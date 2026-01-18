@@ -55,7 +55,7 @@ static int read_file(char **out_ptr, size_t *out_len, const char *path) {
   int ret = 0;
   size_t cap = kReadSize, len = 0;
   char *buf = reinterpret_cast<char *>(OPENSSL_malloc(cap));
-  if (buf == NULL) {
+  if (buf == nullptr) {
     goto err;
   }
 
@@ -66,7 +66,7 @@ static int read_file(char **out_ptr, size_t *out_len, const char *path) {
         goto err;
       }
       char *new_buf = reinterpret_cast<char *>(OPENSSL_realloc(buf, new_cap));
-      if (new_buf == NULL) {
+      if (new_buf == nullptr) {
         goto err;
       }
       buf = new_buf;
@@ -86,7 +86,7 @@ static int read_file(char **out_ptr, size_t *out_len, const char *path) {
   *out_ptr = buf;
   *out_len = len;
   ret = 1;
-  buf = NULL;
+  buf = nullptr;
 
 err:
   OPENSSL_free(buf);
@@ -96,11 +96,11 @@ err:
 
 static int g_needs_hwcap2_workaround;
 
-void OPENSSL_cpuid_setup(void) {
+void OPENSSL_cpuid_setup() {
   // We ignore the return value of |read_file| and proceed with an empty
   // /proc/cpuinfo on error. If |getauxval| works, we will still detect
   // capabilities.
-  char *cpuinfo_data = NULL;
+  char *cpuinfo_data = nullptr;
   size_t cpuinfo_len = 0;
   read_file(&cpuinfo_data, &cpuinfo_len, "/proc/cpuinfo");
   STRING_PIECE cpuinfo;
@@ -163,9 +163,9 @@ void OPENSSL_cpuid_setup(void) {
   OPENSSL_free(cpuinfo_data);
 }
 
-int CRYPTO_has_broken_NEON(void) { return 0; }
+int CRYPTO_has_broken_NEON() { return 0; }
 
-int CRYPTO_needs_hwcap2_workaround(void) {
+int CRYPTO_needs_hwcap2_workaround() {
   OPENSSL_init_cpuid();
   return g_needs_hwcap2_workaround;
 }

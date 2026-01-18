@@ -44,9 +44,9 @@ void RSAZ_1024_mod_exp_avx2(BN_ULONG result[16], const BN_ULONG base_norm[16],
                             BN_ULONG k0,
                             BN_ULONG storage_words[MOD_EXP_CTIME_STORAGE_LEN]);
 
-inline int rsaz_avx2_capable(void) { return CRYPTO_is_AVX2_capable(); }
+inline int rsaz_avx2_capable() { return CRYPTO_is_AVX2_capable(); }
 
-inline int rsaz_avx2_preferred(void) {
+inline int rsaz_avx2_preferred() {
   if (CRYPTO_is_BMI1_capable() && CRYPTO_is_BMI2_capable() &&
       CRYPTO_is_ADX_capable()) {
     // If BMI1, BMI2, and ADX are available, x86_64-mont5.pl is faster. See the
@@ -105,7 +105,7 @@ void rsaz_1024_red2norm_avx2(BN_ULONG norm[16], const BN_ULONG red[40]);
 #endif  // !OPENSSL_NO_ASM && OPENSSL_X86_64
 
 #if defined(__cplusplus)
-}  // extern "C"
+}  // extern C
 #endif
 
 #endif  // OPENSSL_HEADER_CRYPTO_FIPSMODULE_BN_RSAZ_EXP_H

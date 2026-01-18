@@ -34,6 +34,8 @@ var testCurves = []struct {
 
 const bogusCurve = 0x1234
 
+const curveEqualPreferenceWithNextFlag = 0x01
+
 func isPqGroup(r CurveID) bool {
 	return r == CurveX25519Kyber768 || isMLKEMGroup(r)
 }
@@ -370,7 +372,7 @@ func addCurveTests() {
 		resumeSession: true,
 	})
 
-	// TLS 1.3 allows resuming at a differet curve. If this happens, the new
+	// TLS 1.3 allows resuming at a different curve. If this happens, the new
 	// one should be reported.
 	testCases = append(testCases, testCase{
 		name: "CurveID-Resume-Client-TLS13",
@@ -761,5 +763,26 @@ func addCurveTests() {
 			CurvePreferences: []CurveID{CurveP384},
 		},
 		shimCertificate: &ecdsaP256Certificate,
+	})
+
+	testCases = append(testCases, testCase{
+		testType: serverTest,
+		name:     "CurveTest-Server-EqualPreference-TLS13",
+		config: Config{
+			MinVersion:       VersionTLS13,
+			MaxVersion:       VersionTLS13,
+			CurvePreferences: []CurveID{CurveX25519, CurveMLKEM1024, CurveX25519MLKEM768},
+		},
+		flags: append(append(
+			[]string{
+				// Set the -cipher flag to force SSL_OP_CIPHER_SERVER_PREFERENCE.
+				"-cipher", "ALL:3DES",
+				"-expect-curve-id", strconv.Itoa(int(CurveMLKEM1024))},
+			flagCurves("-curves", []CurveID{CurveX25519MLKEM768, CurveMLKEM1024, CurveX25519})...),
+			flagInts("-curves-flags", []int{curveEqualPreferenceWithNextFlag, 0, 0})...,
+		),
+		expectations: connectionExpectations{
+			curveID: CurveMLKEM1024,
+		},
 	})
 }

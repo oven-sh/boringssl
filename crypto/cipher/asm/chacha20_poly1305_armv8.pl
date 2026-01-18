@@ -28,7 +28,7 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}../../perlasm/arm-xlate.pl" and -f $xlate) or
 die "can't locate arm-xlate.pl";
 
-open OUT,"| \"$^X\" $xlate $flavour $output";
+open OUT, "|-", $^X, $xlate, $flavour, $output;
 *STDOUT=*OUT;
 
 my ($oup,$inp,$inl,$adp,$adl,$keyp,$itr1,$itr2) = ("x0","x1","x2","x3","x4","x5","x6","x7");
@@ -869,7 +869,7 @@ $code.=<<___;
         subs $adl, $adl, #1
         b.gt .Lseal_hash_extra_load
 
-    // Hash in the final padded extra_in blcok
+    // Hash in the final padded extra_in block
 ___
     &poly_add_vec($T0);
     &poly_mul();

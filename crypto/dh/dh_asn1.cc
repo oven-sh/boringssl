@@ -25,17 +25,19 @@
 #include "../fipsmodule/dh/internal.h"
 
 
+using namespace bssl;
+
 static int parse_integer(CBS *cbs, BIGNUM **out) {
-  assert(*out == NULL);
+  assert(*out == nullptr);
   *out = BN_new();
-  if (*out == NULL) {
+  if (*out == nullptr) {
     return 0;
   }
   return BN_parse_asn1_unsigned(cbs, *out);
 }
 
 static int marshal_integer(CBB *cbb, BIGNUM *bn) {
-  if (bn == NULL) {
+  if (bn == nullptr) {
     // A DH object may be missing some components.
     OPENSSL_PUT_ERROR(DH, ERR_R_PASSED_NULL_PARAMETER);
     return 0;
@@ -44,7 +46,7 @@ static int marshal_integer(CBB *cbb, BIGNUM *bn) {
 }
 
 DH *DH_parse_parameters(CBS *cbs) {
-  bssl::UniquePtr<DH> ret(DH_new());
+  UniquePtr<DH> ret(DH_new());
   if (ret == nullptr) {
     return nullptr;
   }
@@ -95,11 +97,11 @@ int DH_marshal_parameters(CBB *cbb, const DH *dh) {
 }
 
 DH *d2i_DHparams(DH **out, const uint8_t **inp, long len) {
-  return bssl::D2IFromCBS(out, inp, len, DH_parse_parameters);
+  return D2IFromCBS(out, inp, len, DH_parse_parameters);
 }
 
 int i2d_DHparams(const DH *in, uint8_t **outp) {
-  return bssl::I2DFromCBB(
+  return I2DFromCBB(
       /*initial_capacity=*/256, outp,
       [&](CBB *cbb) -> bool { return DH_marshal_parameters(cbb, in); });
 }

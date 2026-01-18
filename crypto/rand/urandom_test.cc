@@ -24,8 +24,8 @@
 #include "../bcm_support.h"
 #include "../fipsmodule/rand/internal.h"
 #include "../internal.h"
-#include "internal.h"
 #include "getrandom_fillin.h"
+#include "internal.h"
 
 
 #if (defined(OPENSSL_X86_64) || defined(OPENSSL_AARCH64)) &&               \
@@ -41,6 +41,7 @@
 #include <sys/un.h>
 #include <sys/user.h>
 
+BSSL_NAMESPACE_BEGIN
 namespace {
 
 #if !defined(PTRACE_O_EXITKILL)
@@ -604,7 +605,9 @@ static void TestFunction() {
   RAND_bytes(&byte, sizeof(byte));
 }
 
-static bool have_fork_detection() { return CRYPTO_get_fork_generation() != 0; }
+static bool have_fork_detection() {
+  return bssl::CRYPTO_get_fork_generation() != 0;
+}
 
 static bool AppendDaemonEvents(std::vector<Event> *events, unsigned flags) {
   events->push_back(Event::Socket());
@@ -639,7 +642,6 @@ out:
 // |GetTrace| will observe the real code making.
 static std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
   std::vector<Event> ret;
-  bool getrandom_ready = false;
   bool used_daemon = false;
 
   if (have_fork_detection()) {
@@ -648,8 +650,7 @@ static std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
 
   // Probe for getrandom support
   ret.push_back(Event::GetRandom(1, GRND_NONBLOCK));
-  std::function<void()> wait_for_entropy;
-  std::function<bool(bool, size_t)> sysrand;
+  std::function<bool(size_t)> sysrand;
 
   if (flags & NO_GETRANDOM) {
     if (kIsFIPS) {
@@ -664,7 +665,7 @@ static std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
       return ret;
     }
 
-    sysrand = [&ret, flags](bool block, size_t len) {
+    sysrand = [&ret, flags](size_t len) {
       ret.push_back(Event::UrandomRead(len));
       if (flags & URANDOM_ERROR) {
         ret.push_back(Event::Abort());
@@ -678,81 +679,45 @@ static std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
       return ret;
     }
 
-    getrandom_ready = (flags & GETRANDOM_NOT_READY) == 0;
-    wait_for_entropy = [&ret, &getrandom_ready] {
-      if (getrandom_ready) {
-        return;
-      }
-
-      ret.push_back(Event::GetRandom(1, GRND_NONBLOCK));
-      ret.push_back(Event::GetRandom(1, 0));
-      getrandom_ready = true;
-    };
-    sysrand = [&ret, &wait_for_entropy](bool block, size_t len) {
-      if (block) {
-        wait_for_entropy();
-      }
-      ret.push_back(Event::GetRandom(len, block ? 0 : GRND_NONBLOCK));
+    sysrand = [&ret](size_t len) {
+      ret.push_back(Event::GetRandom(len, 0));
       return true;
     };
   }
 
-  const size_t kSeedLength = CTR_DRBG_SEED_LEN * (kIsFIPS ? 10 : 1);
+  const size_t kSeedLength =
+      CTR_DRBG_SEED_LEN * (kIsFIPS ? 10 : 1) + (kIsFIPS ? 16 : 0);
   const size_t kAdditionalDataLength = 32;
 
   if (!have_rdrand()) {
     if (!have_fork_detection()) {
-      if (!sysrand(true, kAdditionalDataLength)) {
+      if (!sysrand(kAdditionalDataLength)) {
         return ret;
       }
       used_daemon = kUsesDaemon && AppendDaemonEvents(&ret, flags);
     }
-    if (  // Initialise CRNGT.
-        (!used_daemon && !sysrand(true, kSeedLength + (kIsFIPS ? 16 : 0))) ||
-        // Personalisation draw if the daemon was used.
-        (used_daemon && !sysrand(false, CTR_DRBG_SEED_LEN)) ||
-        // Second entropy draw.
-        (!have_fork_detection() && !sysrand(true, kAdditionalDataLength))) {
+    if (// Initialise CRNGT. If the daemon is used, the OS is used for the
+        // personalisation data of length |CTR_DRBG_SEED_LEN|. Otherwise, it
+        // used for the seed itself, including FIPS overread.
+        !sysrand(used_daemon ? CTR_DRBG_SEED_LEN : kSeedLength) ||
+        // Second additional data, when other fork-safety measures have failed.
+        (!have_fork_detection() && !sysrand(kAdditionalDataLength))) {
       return ret;
     }
   } else if (
-      // First additional data. If fast RDRAND isn't available then a
-      // non-blocking OS entropy draw will be tried.
+      // First additional data, when other fork-safety measures have failed. If
+      // fast RDRAND isn't available then we use OS entropy.
       (!have_fast_rdrand() && !have_fork_detection() &&
-       !sysrand(false, kAdditionalDataLength)) ||
-      // Opportuntistic entropy draw in FIPS mode because RDRAND was used.
-      // In non-FIPS mode it's just drawn from |CRYPTO_sysrand| in a blocking
-      // way.
-      !sysrand(!kIsFIPS, CTR_DRBG_SEED_LEN) ||
-      // Second entropy draw's additional data.
+       !sysrand(kAdditionalDataLength)) ||
+      // OS entropy for the seed, or personalisation data if RDRAND was used.
+      !sysrand(CTR_DRBG_SEED_LEN) ||
+      // Second additional data, when other fork-safety measures have failed.
       (!have_fast_rdrand() && !have_fork_detection() &&
-       !sysrand(false, kAdditionalDataLength))) {
+       !sysrand(kAdditionalDataLength))) {
     return ret;
   }
 
   return ret;
-}
-
-static void CheckInvariants(const std::vector<Event> &events) {
-  // If RDRAND is available then there should be no blocking syscalls in FIPS
-  // mode.
-#if defined(BORINGSSL_FIPS)
-  if (have_rdrand()) {
-    for (const auto &event : events) {
-      switch (event.type) {
-        case Event::Syscall::kGetRandom:
-          if ((event.flags & GRND_NONBLOCK) == 0) {
-            ADD_FAILURE() << "Blocking getrandom found with RDRAND: "
-                          << ToString(events);
-          }
-          break;
-
-        default:
-          break;
-      }
-    }
-  }
-#endif
 }
 
 // Tests that |TestFunctionPRNGModel| is a correct model for the code in
@@ -793,7 +758,6 @@ TEST(URandomTest, Test) {
     TRACE_FLAG(SOCKET_READ_SHORT);
 
     const std::vector<Event> expected_trace = TestFunctionPRNGModel(flags);
-    CheckInvariants(expected_trace);
     std::vector<Event> actual_trace;
     GetTrace(&actual_trace, flags, TestFunction);
 
@@ -805,14 +769,15 @@ TEST(URandomTest, Test) {
 }
 
 }  // namespace
+BSSL_NAMESPACE_END
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   if (getenv("BORINGSSL_IGNORE_MADV_WIPEONFORK")) {
-    CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(0);
+    bssl::CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(0);
   } else {
-    CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(1);
+    bssl::CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(1);
   }
 
   return RUN_ALL_TESTS();
