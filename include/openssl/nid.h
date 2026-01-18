@@ -5508,6 +5508,11 @@ extern "C" {
 #define OBJ_ML_KEM_768 2L, 16L, 840L, 1L, 101L, 3L, 4L, 4L, 2L
 #define OBJ_ENC_ML_KEM_768 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x02
 
+#define SN_sha512_224 "SHA512-224"
+#define LN_sha512_224 "sha512-224"
+#define NID_sha512_224 971
+#define OBJ_sha512_224 2L, 16L, 840L, 1L, 101L, 3L, 4L, 2L, 5L
+
 
 #if defined(__cplusplus)
 }  // extern C

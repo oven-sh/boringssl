@@ -67,6 +67,23 @@ bcm_infallible bssl::BCM_sha512_init(SHA512_CTX *sha) {
   return bcm_infallible::approved;
 }
 
+bcm_infallible bssl::BCM_sha512_224_init(SHA512_CTX *sha) {
+  sha->h[0] = UINT64_C(0x8C3D37C819544DA2);
+  sha->h[1] = UINT64_C(0x73E1996689DCD4D6);
+  sha->h[2] = UINT64_C(0x1DFAB7AE32FF9C82);
+  sha->h[3] = UINT64_C(0x679DD514582F9FCF);
+  sha->h[4] = UINT64_C(0x0F6D2B697BD44DA8);
+  sha->h[5] = UINT64_C(0x77E36F7304C48942);
+  sha->h[6] = UINT64_C(0x3F9D85A86A1D36C8);
+  sha->h[7] = UINT64_C(0x1112E6AD91D692A1);
+
+  sha->bytes_so_far_low = 0;
+  sha->bytes_so_far_high = 0;
+  sha->num = 0;
+  sha->md_len = BCM_SHA512_224_DIGEST_LENGTH;
+  return bcm_infallible::approved;
+}
+
 bcm_infallible bssl::BCM_sha512_256_init(SHA512_CTX *sha) {
   sha->h[0] = UINT64_C(0x22312194fc2bf72c);
   sha->h[1] = UINT64_C(0x9f555fa3c84c64c2);
@@ -102,6 +119,20 @@ bcm_infallible bssl::BCM_sha384_final(uint8_t out[SHA384_DIGEST_LENGTH],
 bcm_infallible bssl::BCM_sha384_update(SHA512_CTX *sha, const void *data,
                                        size_t len) {
   return BCM_sha512_update(sha, data, len);
+}
+
+bcm_infallible bssl::BCM_sha512_224_update(SHA512_CTX *sha, const void *data,
+                                           size_t len) {
+  return BCM_sha512_update(sha, data, len);
+}
+
+bcm_infallible bssl::BCM_sha512_224_final(uint8_t out[BCM_SHA512_224_DIGEST_BUFFER_LENGTH],
+                                          SHA512_CTX *sha) {
+  // This function must be paired with |BCM_sha512_224_init|, which sets
+  // |sha->md_len| to |BCM_SHA512_224_DIGEST_LENGTH|.
+  assert(sha->md_len == BCM_SHA512_224_DIGEST_LENGTH);
+  sha512_final_impl(out, BCM_SHA512_224_DIGEST_BUFFER_LENGTH, sha);
+  return bcm_infallible::approved;
 }
 
 bcm_infallible bssl::BCM_sha512_256_update(SHA512_CTX *sha, const void *data,
