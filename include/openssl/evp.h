@@ -661,6 +661,15 @@ OPENSSL_EXPORT int EVP_PBE_scrypt(const char *password, size_t password_len,
                                   size_t max_mem, uint8_t *out_key,
                                   size_t key_len);
 
+// EVP_PBE_validate_scrypt_params can be used to validate |N|, |r|, |p|, and
+// |max_mem| parameters before calling EVP_PBE_scrypt. Returns 1 if valid, 0 if
+// invalid.
+OPENSSL_EXPORT int EVP_PBE_validate_scrypt_params(const char *password, size_t password_len,
+                                  const uint8_t *salt, size_t salt_len,
+                                  uint64_t N, uint64_t r, uint64_t p,
+                                  size_t max_mem, uint8_t *out_key,
+                                  size_t key_len);
+
 
 // Operations.
 //
