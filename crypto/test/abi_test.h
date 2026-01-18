@@ -212,7 +212,7 @@ template <typename T>
 inline crypto_word_t ToWord(T t) {
   // ABIs typically pass floats and structs differently from integers and
   // pointers. We only need to support the latter.
-  static_assert(std::is_integral<T>::value || std::is_pointer<T>::value,
+  static_assert(std::is_integral_v<T> || std::is_pointer_v<T>,
                 "parameter types must be integral or pointer types");
   // We only support types which fit in registers.
   static_assert(sizeof(T) <= sizeof(crypto_word_t),
@@ -303,7 +303,7 @@ inline crypto_word_t CheckImpl(Result *out, bool unwind, R (*func)(Args...),
 // CheckImpl implementation. It must be specialized for void returns because we
 // call |func| directly.
 template <typename R, typename... Args>
-inline std::enable_if_t<!std::is_void<R>::value, crypto_word_t> CheckImpl(
+inline std::enable_if_t<!std::is_void_v<R>, crypto_word_t> CheckImpl(
     Result *out, bool /* unwind */, R (*func)(Args...),
     typename DeductionGuard<Args>::Type... args) {
   *out = Result();
@@ -450,32 +450,32 @@ void abi_test_unwind_stop(Uncallable);
 
 // abi_test_bad_unwind_wrong_register preserves the ABI, but annotates the wrong
 // register in unwind metadata.
-void abi_test_bad_unwind_wrong_register(void);
+void abi_test_bad_unwind_wrong_register();
 
 // abi_test_bad_unwind_temporary preserves the ABI, but temporarily corrupts the
 // storage space for a saved register, breaking unwind.
-void abi_test_bad_unwind_temporary(void);
+void abi_test_bad_unwind_temporary();
 
 #if defined(OPENSSL_WINDOWS)
 // abi_test_bad_unwind_epilog preserves the ABI, and correctly annotates the
 // prolog, but the epilog does not match Win64's rules, breaking unwind during
 // the epilog.
-void abi_test_bad_unwind_epilog(void);
+void abi_test_bad_unwind_epilog();
 #endif
 #endif  // OPENSSL_X86_64
 
 #if defined(OPENSSL_X86_64) || defined(OPENSSL_X86)
 // abi_test_get_and_clear_direction_flag clears the direction flag. If the flag
 // was previously set, it returns one. Otherwise, it returns zero.
-int abi_test_get_and_clear_direction_flag(void);
+int abi_test_get_and_clear_direction_flag();
 
 // abi_test_set_direction_flag sets the direction flag. This does not conform to
 // ABI requirements and must only be called within a |CHECK_ABI| guard to avoid
 // errors later in the program.
-int abi_test_set_direction_flag(void);
+int abi_test_set_direction_flag();
 #endif  // OPENSSL_X86_64 || OPENSSL_X86
 
-}  // extern "C"
+}  // extern C
 #endif  // SUPPORTS_ABI_TEST
 
 

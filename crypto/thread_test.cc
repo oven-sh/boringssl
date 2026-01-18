@@ -30,7 +30,7 @@
 
 static unsigned g_once_init_called = 0;
 
-static void once_init(void) {
+static void once_init() {
   g_once_init_called++;
 
   // Sleep briefly so one |call_once_func| instance will call |CRYPTO_once|
@@ -82,7 +82,7 @@ static int g_test_thread_ok = 0;
 static unsigned g_destructor_called_count = 0;
 
 static void thread_local_destructor(void *arg) {
-  if (arg == NULL) {
+  if (arg == nullptr) {
     return;
   }
 
@@ -95,7 +95,7 @@ TEST(ThreadTest, ThreadLocal) {
       << "Thread-local data was non-NULL at start.";
 
   std::thread thread([] {
-    if (CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_TEST) != NULL ||
+    if (CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_TEST) != nullptr ||
         !CRYPTO_set_thread_local(OPENSSL_THREAD_LOCAL_TEST,
                                  &g_destructor_called_count,
                                  thread_local_destructor) ||

@@ -22,11 +22,14 @@
 #include <openssl/mem.h>
 
 #include "../../internal.h"
+#include "../bcm_interface.h"
 #include "../bn/internal.h"
 #include "../ec/internal.h"
 #include "../service_indicator/internal.h"
 #include "internal.h"
 
+
+using namespace bssl;
 
 // digest_to_scalar interprets |digest_len| bytes from |digest| as a scalar for
 // ECDSA.
@@ -56,12 +59,12 @@ static void digest_to_scalar(const EC_GROUP *group, EC_SCALAR *out,
                           order->width);
 }
 
-int ecdsa_verify_fixed_no_self_test(const uint8_t *digest, size_t digest_len,
-                                    const uint8_t *sig, size_t sig_len,
-                                    const EC_KEY *eckey) {
+int bssl::ecdsa_verify_fixed_no_self_test(const uint8_t *digest,
+                                          size_t digest_len, const uint8_t *sig,
+                                          size_t sig_len, const EC_KEY *eckey) {
   const EC_GROUP *group = EC_KEY_get0_group(eckey);
   const EC_POINT *pub_key = EC_KEY_get0_public_key(eckey);
-  if (group == NULL || pub_key == NULL || sig == NULL) {
+  if (group == nullptr || pub_key == nullptr || sig == nullptr) {
     OPENSSL_PUT_ERROR(ECDSA, ECDSA_R_MISSING_PARAMETERS);
     return 0;
   }
@@ -106,8 +109,9 @@ int ecdsa_verify_fixed_no_self_test(const uint8_t *digest, size_t digest_len,
   return 1;
 }
 
-int ecdsa_verify_fixed(const uint8_t *digest, size_t digest_len,
-                       const uint8_t *sig, size_t sig_len, const EC_KEY *key) {
+int bssl::ecdsa_verify_fixed(const uint8_t *digest, size_t digest_len,
+                             const uint8_t *sig, size_t sig_len,
+                             const EC_KEY *key) {
   boringssl_ensure_ecc_self_test();
 
   return ecdsa_verify_fixed_no_self_test(digest, digest_len, sig, sig_len, key);
@@ -184,7 +188,7 @@ static int ecdsa_sign_impl(const EC_GROUP *group, int *out_retry, uint8_t *sig,
   return 1;
 }
 
-int ecdsa_sign_fixed_with_nonce_for_known_answer_test(
+int bssl::ecdsa_sign_fixed_with_nonce_for_known_answer_test(
     const uint8_t *digest, size_t digest_len, uint8_t *sig, size_t *out_sig_len,
     size_t max_sig_len, const EC_KEY *eckey, const uint8_t *nonce,
     size_t nonce_len) {
@@ -194,7 +198,7 @@ int ecdsa_sign_fixed_with_nonce_for_known_answer_test(
   }
 
   const EC_GROUP *group = EC_KEY_get0_group(eckey);
-  if (group == NULL || eckey->priv_key == NULL) {
+  if (group == nullptr || eckey->priv_key == nullptr) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_PASSED_NULL_PARAMETER);
     return 0;
   }
@@ -209,9 +213,9 @@ int ecdsa_sign_fixed_with_nonce_for_known_answer_test(
                          priv_key, &k, digest, digest_len);
 }
 
-int ecdsa_sign_fixed(const uint8_t *digest, size_t digest_len, uint8_t *sig,
-                     size_t *out_sig_len, size_t max_sig_len,
-                     const EC_KEY *eckey) {
+int bssl::ecdsa_sign_fixed(const uint8_t *digest, size_t digest_len,
+                           uint8_t *sig, size_t *out_sig_len,
+                           size_t max_sig_len, const EC_KEY *eckey) {
   boringssl_ensure_ecc_self_test();
 
   if (eckey->ecdsa_meth && eckey->ecdsa_meth->sign) {
@@ -220,7 +224,7 @@ int ecdsa_sign_fixed(const uint8_t *digest, size_t digest_len, uint8_t *sig,
   }
 
   const EC_GROUP *group = EC_KEY_get0_group(eckey);
-  if (group == NULL || eckey->priv_key == NULL) {
+  if (group == nullptr || eckey->priv_key == nullptr) {
     OPENSSL_PUT_ERROR(ECDSA, ERR_R_PASSED_NULL_PARAMETER);
     return 0;
   }
@@ -229,13 +233,13 @@ int ecdsa_sign_fixed(const uint8_t *digest, size_t digest_len, uint8_t *sig,
 
   // Pass a SHA512 hash of the private key and digest as additional data
   // into the RBG. This is a hardening measure against entropy failure.
-  static_assert(BCM_SHA512_DIGEST_LENGTH >= 32,
+  static_assert(SHA512_DIGEST_LENGTH >= 32,
                 "additional_data is too large for SHA-512");
 
   FIPS_service_indicator_lock_state();
 
   SHA512_CTX sha;
-  uint8_t additional_data[BCM_SHA512_DIGEST_LENGTH];
+  uint8_t additional_data[SHA512_DIGEST_LENGTH];
   BCM_sha512_init(&sha);
   BCM_sha512_update(&sha, priv_key->words, order->width * sizeof(BN_ULONG));
   BCM_sha512_update(&sha, digest, digest_len);

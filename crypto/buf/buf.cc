@@ -22,7 +22,7 @@
 #include "../internal.h"
 
 
-BUF_MEM *BUF_MEM_new(void) {
+BUF_MEM *BUF_MEM_new() {
   return reinterpret_cast<BUF_MEM *>(OPENSSL_zalloc(sizeof(BUF_MEM)));
 }
 
@@ -53,7 +53,7 @@ int BUF_MEM_reserve(BUF_MEM *buf, size_t cap) {
 
   char *new_buf =
       reinterpret_cast<char *>(OPENSSL_realloc(buf->data, alloc_size));
-  if (new_buf == NULL) {
+  if (new_buf == nullptr) {
     return 0;
   }
 

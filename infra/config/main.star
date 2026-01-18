@@ -143,7 +143,10 @@ def ci_builder(
     """
     dimensions = dict(host["dimensions"])
     dimensions["pool"] = "luci.flex.ci"
-    caches = [swarming.cache("gocache"), swarming.cache("gopath")]
+    caches = [
+        swarming.cache("gocache", name = "boringssl_gocache"),
+        swarming.cache("gopath", name = "boringssl_gopath"),
+    ]
     if "caches" in host:
         caches += host["caches"]
     properties = dict(properties)
@@ -291,7 +294,7 @@ def both_builders(
 
 LINUX_HOST = {
     "dimensions": {
-        "os": "Ubuntu-22.04",
+        "os": "Ubuntu-24.04",
         "cpu": "x86-64",
     },
 }
@@ -301,7 +304,7 @@ MAC_ARM64_HOST = {
         "os": "Mac",
         "cpu": "arm64",
     },
-    "caches": [swarming.cache("osx_sdk")],
+    "caches": [swarming.cache("osx_sdk", name = "boringssl_osx_sdk")],
     # xcode installation can take a while, particularly when running
     # concurrently on multiple VMs on the same host. See crbug.com/1063870
     # for more context.
@@ -310,10 +313,11 @@ MAC_ARM64_HOST = {
 
 MAC_X86_64_HOST = {
     "dimensions": {
-        "os": "Mac-10.15|Mac-11",
+        # macOS 12 or later is needed as of Go 1.25.
+        "os": "Mac-12|Mac-13",
         "cpu": "x86-64",
     },
-    "caches": [swarming.cache("osx_sdk")],
+    "caches": [swarming.cache("osx_sdk", name = "boringssl_osx_sdk")],
     # xcode installation can take a while, particularly when running
     # concurrently on multiple VMs on the same host. See crbug.com/1063870
     # for more context.
@@ -325,11 +329,10 @@ WIN_HOST = {
         "os": "Windows-10",
         "cpu": "x86-64",
     },
-    "caches": [swarming.cache("win_toolchain")],
 }
 
 # The Android tests take longer to run. See https://crbug.com/900953.
-ANDROID_TIMEOUT = 60 * time.minute
+ANDROID_TIMEOUT = 90 * time.minute
 
 WALLEYE_HOST = {
     "dimensions": {
@@ -345,6 +348,17 @@ SDE_TIMEOUT = 3 * 60 * time.minute
 # properties rather than parsing names. Then we can add new configurations
 # without having to touch multiple repositories.
 
+cq_builder(
+    "presubmit",
+    LINUX_HOST,
+    recipe = "presubmit",
+    # TODO(chlily): Enable when ready.
+    cq_enabled = False,
+    properties = {
+        "repo_name": "boringssl",
+    },
+)
+
 both_builders(
     "android_aarch64",
     WALLEYE_HOST,
@@ -355,7 +369,7 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "arm64-v8a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
         },
     },
 )
@@ -370,13 +384,13 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "arm64-v8a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
             "CMAKE_BUILD_TYPE": "Release",
         },
     },
 )
 both_builders(
-    "android_aarch64_fips",
+    "android_aarch64_fips_rel",
     # The Android FIPS configuration requires a newer device.
     WALLEYE_HOST,
     category = "android|aarch64",
@@ -386,16 +400,17 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "arm64-v8a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
             # FIPS mode on Android uses shared libraries.
             "BUILD_SHARED_LIBS": "1",
+            "CMAKE_BUILD_TYPE": "RelWithAsserts",
             "FIPS": "1",
         },
     },
 )
 
 both_builders(
-    "android_aarch64_fips_noasm",
+    "android_aarch64_fips_noasm_rel",
     # The Android FIPS configuration requires a newer device.
     WALLEYE_HOST,
     category = "android|aarch64",
@@ -406,9 +421,10 @@ both_builders(
         "cmake_args": {
             "OPENSSL_NO_ASM": "1",
             "ANDROID_ABI": "arm64-v8a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
             # FIPS mode on Android uses shared libraries.
             "BUILD_SHARED_LIBS": "1",
+            "CMAKE_BUILD_TYPE": "RelWithAsserts",
             "FIPS": "1",
         },
     },
@@ -418,7 +434,7 @@ both_builders(
 # for android_aarch64_fips. Additionally, urandom_test doesn't work in shared
 # library builds, so this gives Android FIPS coverage for urandom_test.
 both_builders(
-    "android_aarch64_fips_static",
+    "android_aarch64_fips_static_rel",
     # The Android FIPS configuration requires a newer device.
     WALLEYE_HOST,
     category = "android|aarch64",
@@ -428,7 +444,8 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "arm64-v8a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
+            "CMAKE_BUILD_TYPE": "RelWithAsserts",
             "FIPS": "1",
         },
     },
@@ -444,7 +461,7 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-24",
         },
     },
 )
@@ -459,7 +476,7 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-24",
             "CMAKE_BUILD_TYPE": "Release",
             # Although Android now requires NEON support, on one builder, we
             # ignore the |__ARM_NEON| preprocessor option, to keep testing
@@ -471,7 +488,7 @@ both_builders(
     },
 )
 both_builders(
-    "android_arm_fips",
+    "android_arm_fips_rel",
     # The Android FIPS configuration requires a newer device.
     WALLEYE_HOST,
     category = "android|thumb",
@@ -481,9 +498,10 @@ both_builders(
         "android": True,
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
-            "ANDROID_PLATFORM": "android-21",
+            "ANDROID_PLATFORM": "android-24",
             # FIPS mode on Android uses shared libraries.
             "BUILD_SHARED_LIBS": "1",
+            "CMAKE_BUILD_TYPE": "RelWithAsserts",
             "FIPS": "1",
         },
     },
@@ -499,7 +517,7 @@ both_builders(
         "cmake_args": {
             "ANDROID_ABI": "armeabi-v7a",
             "ANDROID_ARM_MODE": "arm",
-            "ANDROID_PLATFORM": "android-18",
+            "ANDROID_PLATFORM": "android-24",
             "CMAKE_BUILD_TYPE": "Release",
         },
     },
@@ -515,11 +533,6 @@ both_builders(
             "ANDROID_ABI": "riscv64",
             "ANDROID_PLATFORM": "android-35",
             "CMAKE_BUILD_TYPE": "Release",
-        },
-        # The default Android NDK cannot be updated until https://crbug.com/boringssl/454 is fixed.
-        # Meanwhile, RISC-V support requires a newer NDK, thus we override for this builder.
-        "gclient_vars": {
-            "android_ndk_revision": "wC8sJjVPRDPTbaZFlki_qXTC1lWJNbJi8glUO0woJ1MC",
         },
         "run_unit_tests": False,
         "run_ssl_tests": False,
@@ -990,8 +1003,12 @@ both_builders(
     short_name = "sm",
     properties = {
         "cmake_args": {
-            "CMAKE_C_FLAGS": "-DOPENSSL_SMALL=1",
-            "CMAKE_CXX_FLAGS": "-DOPENSSL_SMALL=1",
+            # Setting CMAKE_${LANG}_FLAGS this way overrides CMake's default
+            # toolchain-level flags, so we must respecify them.
+            # TODO(davidben): Should we be specify flags differently? C(XX)FLAGS
+            # environment variable or a CMake-level OPENSSL_SMALL toggle?
+            "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS /DOPENSSL_SMALL=1",
+            "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc /DOPENSSL_SMALL=1",
         },
         "msvc_target": "x86",
     },
@@ -1067,8 +1084,12 @@ both_builders(
     short_name = "sm",
     properties = {
         "cmake_args": {
-            "CMAKE_C_FLAGS": "-DOPENSSL_SMALL=1",
-            "CMAKE_CXX_FLAGS": "-DOPENSSL_SMALL=1",
+            # Setting CMAKE_${LANG}_FLAGS this way overrides CMake's default
+            # toolchain-level flags, so we must respecify them.
+            # TODO(davidben): Should we be specify flags differently? C(XX)FLAGS
+            # environment variable or a CMake-level OPENSSL_SMALL toggle?
+            "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS /DOPENSSL_SMALL=1",
+            "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc /DOPENSSL_SMALL=1",
         },
         "msvc_target": "x64",
     },

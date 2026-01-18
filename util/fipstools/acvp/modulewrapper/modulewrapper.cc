@@ -19,10 +19,8 @@
 #include <vector>
 
 #include <assert.h>
-#include <errno.h>
 #include <limits.h>
 #include <string.h>
-#include <sys/uio.h>
 #include <unistd.h>
 #include <cstdarg>
 
@@ -42,10 +40,12 @@
 #include <openssl/err.h>
 #include <openssl/hkdf.h>
 #include <openssl/hmac.h>
+#include <openssl/mldsa.h>
 #include <openssl/obj.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 #include <openssl/span.h>
+#include <openssl/tls_prf.h>
 
 #include "../../../../crypto/fipsmodule/bcm_interface.h"
 #include "../../../../crypto/fipsmodule/ec/internal.h"
@@ -54,7 +54,7 @@
 #include "modulewrapper.h"
 
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 namespace acvp {
 
 #if defined(OPENSSL_TRUSTY)
@@ -64,212 +64,6 @@ namespace acvp {
 #else
 #define LOG_ERROR(...) fprintf(stderr, __VA_ARGS__)
 #endif  // OPENSSL_TRUSTY
-
-constexpr size_t kMaxArgLength = (1 << 20);
-
-RequestBuffer::~RequestBuffer() = default;
-
-class RequestBufferImpl : public RequestBuffer {
- public:
-  ~RequestBufferImpl() = default;
-
-  std::vector<uint8_t> buf;
-  Span<const uint8_t> args[kMaxArgs];
-};
-
-// static
-std::unique_ptr<RequestBuffer> RequestBuffer::New() {
-  return std::make_unique<RequestBufferImpl>();
-}
-
-static bool ReadAll(int fd, void *in_data, size_t data_len) {
-  uint8_t *data = reinterpret_cast<uint8_t *>(in_data);
-  size_t done = 0;
-
-  while (done < data_len) {
-    ssize_t r;
-    do {
-      r = read(fd, &data[done], data_len - done);
-    } while (r == -1 && errno == EINTR);
-
-    if (r <= 0) {
-      return false;
-    }
-
-    done += r;
-  }
-
-  return true;
-}
-
-Span<const Span<const uint8_t>> ParseArgsFromFd(int fd,
-                                                RequestBuffer *in_buffer) {
-  RequestBufferImpl *buffer = reinterpret_cast<RequestBufferImpl *>(in_buffer);
-  uint32_t nums[1 + kMaxArgs];
-  const Span<const Span<const uint8_t>> empty_span;
-
-  if (!ReadAll(fd, nums, sizeof(uint32_t) * 2)) {
-    return empty_span;
-  }
-
-  const size_t num_args = nums[0];
-  if (num_args == 0) {
-    LOG_ERROR("Invalid, zero-argument operation requested.\n");
-    return empty_span;
-  } else if (num_args > kMaxArgs) {
-    LOG_ERROR("Operation requested with %zu args, but %zu is the limit.\n",
-              num_args, kMaxArgs);
-    return empty_span;
-  }
-
-  if (num_args > 1 &&
-      !ReadAll(fd, &nums[2], sizeof(uint32_t) * (num_args - 1))) {
-    return empty_span;
-  }
-
-  size_t need = 0;
-  for (size_t i = 0; i < num_args; i++) {
-    const size_t arg_length = nums[i + 1];
-    if (i == 0 && arg_length > kMaxNameLength) {
-      LOG_ERROR("Operation with name of length %zu exceeded limit of %zu.\n",
-                arg_length, kMaxNameLength);
-      return empty_span;
-    } else if (arg_length > kMaxArgLength) {
-      LOG_ERROR(
-          "Operation with argument of length %zu exceeded limit of %zu.\n",
-          arg_length, kMaxArgLength);
-      return empty_span;
-    }
-
-    // This static_assert confirms that the following addition doesn't
-    // overflow.
-    static_assert((kMaxArgs - 1 * kMaxArgLength) + kMaxNameLength > (1 << 30),
-                  "Argument limits permit excessive messages");
-    need += arg_length;
-  }
-
-  if (need > buffer->buf.size()) {
-    size_t alloced = need + (need >> 1);
-    if (alloced < need) {
-      abort();
-    }
-    buffer->buf.resize(alloced);
-  }
-
-  if (!ReadAll(fd, buffer->buf.data(), need)) {
-    return empty_span;
-  }
-
-  size_t offset = 0;
-  for (size_t i = 0; i < num_args; i++) {
-    buffer->args[i] = Span<const uint8_t>(&buffer->buf[offset], nums[i + 1]);
-    offset += nums[i + 1];
-  }
-
-  return Span<const Span<const uint8_t>>(buffer->args, num_args);
-}
-
-// g_reply_buffer contains buffered replies which will be flushed when acvp
-// requests.
-static std::vector<uint8_t> g_reply_buffer;
-
-bool WriteReplyToBuffer(const std::vector<Span<const uint8_t>> &spans) {
-  if (spans.size() > kMaxArgs) {
-    abort();
-  }
-
-  uint8_t buf[4];
-  CRYPTO_store_u32_le(buf, spans.size());
-  g_reply_buffer.insert(g_reply_buffer.end(), buf, buf + sizeof(buf));
-  for (const auto &span : spans) {
-    CRYPTO_store_u32_le(buf, span.size());
-    g_reply_buffer.insert(g_reply_buffer.end(), buf, buf + sizeof(buf));
-  }
-  for (const auto &span : spans) {
-    g_reply_buffer.insert(g_reply_buffer.end(), span.begin(), span.end());
-  }
-
-  return true;
-}
-
-bool FlushBuffer(int fd) {
-  size_t done = 0;
-
-  while (done < g_reply_buffer.size()) {
-    ssize_t n;
-    do {
-      n = write(fd, g_reply_buffer.data() + done, g_reply_buffer.size() - done);
-    } while (n < 0 && errno == EINTR);
-
-    if (n < 0) {
-      return false;
-    }
-    done += static_cast<size_t>(n);
-  }
-
-  g_reply_buffer.clear();
-
-  return true;
-}
-
-bool WriteReplyToFd(int fd, const std::vector<Span<const uint8_t>> &spans) {
-  if (spans.size() > kMaxArgs) {
-    abort();
-  }
-
-  uint32_t nums[1 + kMaxArgs];
-  iovec iovs[kMaxArgs + 1];
-  nums[0] = spans.size();
-  iovs[0].iov_base = nums;
-  iovs[0].iov_len = sizeof(uint32_t) * (1 + spans.size());
-
-  size_t num_iov = 1;
-  for (size_t i = 0; i < spans.size(); i++) {
-    const auto &span = spans[i];
-    nums[i + 1] = span.size();
-    if (span.empty()) {
-      continue;
-    }
-
-    iovs[num_iov].iov_base = const_cast<uint8_t *>(span.data());
-    iovs[num_iov].iov_len = span.size();
-    num_iov++;
-  }
-
-  size_t iov_done = 0;
-  while (iov_done < num_iov) {
-    ssize_t r;
-    do {
-      r = writev(fd, &iovs[iov_done], num_iov - iov_done);
-    } while (r == -1 && errno == EINTR);
-
-    if (r <= 0) {
-      return false;
-    }
-
-    size_t written = r;
-    for (size_t i = iov_done; i < num_iov && written > 0; i++) {
-      iovec &iov = iovs[i];
-
-      size_t done = written;
-      if (done > iov.iov_len) {
-        done = iov.iov_len;
-      }
-
-      iov.iov_base = reinterpret_cast<uint8_t *>(iov.iov_base) + done;
-      iov.iov_len -= done;
-      written -= done;
-
-      if (iov.iov_len == 0) {
-        iov_done++;
-      }
-    }
-
-    assert(written == 0);
-  }
-
-  return true;
-}
 
 static bool GetConfig(const Span<const uint8_t> args[],
                       ReplyCallback write_reply) {
@@ -960,7 +754,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
           false
         ],
         "externalMu": [
-          false
+          false,
+          true
         ],
         "capabilities": [{
           "parameterSets": [
@@ -980,6 +775,10 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "mode": "sigVer",
         "revision": "FIPS204",
         "signatureInterfaces": ["internal"],
+        "externalMu": [
+          false,
+          true
+        ],
         "capabilities": [{
           "messageLength": [{
             "min": 8,
@@ -1020,7 +819,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "mode": "keyGen",
         "revision": "FIPS205",
         "parameterSets": [
-          "SLH-DSA-SHA2-128s"
+          "SLH-DSA-SHA2-128s",
+          "SLH-DSA-SHAKE-256f"
         ]
       },
       {
@@ -1035,7 +835,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "capabilities": [
           {
             "parameterSets": [
-              "SLH-DSA-SHA2-128s"
+              "SLH-DSA-SHA2-128s",
+              "SLH-DSA-SHAKE-256f"
             ],
             "messageLength": [
               {
@@ -1059,7 +860,8 @@ static bool GetConfig(const Span<const uint8_t> args[],
         "capabilities": [
           {
             "parameterSets": [
-              "SLH-DSA-SHA2-128s"
+              "SLH-DSA-SHA2-128s",
+              "SLH-DSA-SHAKE-256f"
             ],
             "messageLength": [
               {
@@ -1072,7 +874,7 @@ static bool GetConfig(const Span<const uint8_t> args[],
         ]
       }
     ])";
-  return write_reply({bssl::StringAsBytes(kConfig)});
+  return write_reply({StringAsBytes(kConfig)});
 }
 
 static bool Flush(const Span<const uint8_t> args[], ReplyCallback write_reply) {
@@ -1088,7 +890,7 @@ template <uint8_t *(*OneShotHash)(const uint8_t *, size_t, uint8_t *),
 static bool Hash(const Span<const uint8_t> args[], ReplyCallback write_reply) {
   uint8_t digest[DigestLength];
   OneShotHash(args[0].data(), args[0].size(), digest);
-  return write_reply({Span<const uint8_t>(digest)});
+  return write_reply({MakeConstSpan(digest)});
 }
 
 template <uint8_t *(*OneShotHash)(const uint8_t *, size_t, uint8_t *),
@@ -1368,7 +1170,7 @@ static bool AEADSeal(const Span<const uint8_t> args[],
   Span<const uint8_t> nonce = args[3];
   Span<const uint8_t> ad = args[4];
 
-  bssl::ScopedEVP_AEAD_CTX ctx;
+  ScopedEVP_AEAD_CTX ctx;
   if (!SetupFunc(ctx.get(), tag_len_span, key)) {
     return false;
   }
@@ -1399,7 +1201,7 @@ static bool AEADOpen(const Span<const uint8_t> args[],
   Span<const uint8_t> nonce = args[3];
   Span<const uint8_t> ad = args[4];
 
-  bssl::ScopedEVP_AEAD_CTX ctx;
+  ScopedEVP_AEAD_CTX ctx;
   if (!SetupFunc(ctx.get(), tag_len_span, key)) {
     return false;
   }
@@ -1550,7 +1352,7 @@ static bool TDES(const Span<const uint8_t> args[], ReplyCallback write_reply) {
               static_cast<unsigned>(args[0].size()));
     return false;
   }
-  bssl::ScopedEVP_CIPHER_CTX ctx;
+  ScopedEVP_CIPHER_CTX ctx;
   if (!EVP_CipherInit_ex(ctx.get(), cipher, nullptr, args[0].data(), nullptr,
                          Encrypt ? 1 : 0) ||
       !EVP_CIPHER_CTX_set_padding(ctx.get(), 0)) {
@@ -1574,10 +1376,10 @@ static bool TDES(const Span<const uint8_t> args[], ReplyCallback write_reply) {
       prev_prev_result = result;
     }
 
-    int out_len;
-    if (!EVP_CipherUpdate(ctx.get(), result.data(), &out_len, result.data(),
-                          result.size()) ||
-        out_len != static_cast<int>(result.size())) {
+    size_t out_len;
+    if (!EVP_CipherUpdate_ex(ctx.get(), result.data(), &out_len, result.size(),
+                             result.data(), result.size()) ||
+        out_len != result.size()) {
       return false;
     }
   }
@@ -1615,7 +1417,7 @@ static bool TDES_CBC(const Span<const uint8_t> args[],
 
   std::vector<uint8_t> result(input.size());
   std::vector<uint8_t> prev_result, prev_prev_result;
-  bssl::ScopedEVP_CIPHER_CTX ctx;
+  ScopedEVP_CIPHER_CTX ctx;
   if (!EVP_CipherInit_ex(ctx.get(), cipher, nullptr, args[0].data(), iv.data(),
                          Encrypt ? 1 : 0) ||
       !EVP_CIPHER_CTX_set_padding(ctx.get(), 0)) {
@@ -1626,13 +1428,14 @@ static bool TDES_CBC(const Span<const uint8_t> args[],
     prev_prev_result = prev_result;
     prev_result = result;
 
-    int out_len, out_len2;
+    size_t out_len, out_len2;
     if (!EVP_CipherInit_ex(ctx.get(), nullptr, nullptr, nullptr, iv.data(),
                            -1) ||
-        !EVP_CipherUpdate(ctx.get(), result.data(), &out_len, input.data(),
-                          input.size()) ||
-        !EVP_CipherFinal_ex(ctx.get(), result.data() + out_len, &out_len2) ||
-        (out_len + out_len2) != static_cast<int>(result.size())) {
+        !EVP_CipherUpdate_ex(ctx.get(), result.data(), &out_len, result.size(),
+                             input.data(), input.size()) ||
+        !EVP_CipherFinal_ex2(ctx.get(), result.data() + out_len, &out_len2,
+                             result.size() - out_len) ||
+        out_len + out_len2 != result.size()) {
       return false;
     }
 
@@ -1792,7 +1595,7 @@ static bool StringEq(Span<const uint8_t> a, const char *b) {
   return a.size() == len && memcmp(a.data(), b, len) == 0;
 }
 
-static bssl::UniquePtr<EC_KEY> ECKeyFromName(Span<const uint8_t> name) {
+static UniquePtr<EC_KEY> ECKeyFromName(Span<const uint8_t> name) {
   int nid;
   if (StringEq(name, "P-224")) {
     nid = NID_secp224r1;
@@ -1806,7 +1609,7 @@ static bssl::UniquePtr<EC_KEY> ECKeyFromName(Span<const uint8_t> name) {
     return nullptr;
   }
 
-  return bssl::UniquePtr<EC_KEY>(EC_KEY_new_by_curve_name(nid));
+  return UniquePtr<EC_KEY>(EC_KEY_new_by_curve_name(nid));
 }
 
 static std::vector<uint8_t> BIGNUMBytes(const BIGNUM *bn) {
@@ -1818,8 +1621,8 @@ static std::vector<uint8_t> BIGNUMBytes(const BIGNUM *bn) {
 
 static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> GetPublicKeyBytes(
     const EC_KEY *key) {
-  bssl::UniquePtr<BIGNUM> x(BN_new());
-  bssl::UniquePtr<BIGNUM> y(BN_new());
+  UniquePtr<BIGNUM> x(BN_new());
+  UniquePtr<BIGNUM> y(BN_new());
   if (!EC_POINT_get_affine_coordinates_GFp(EC_KEY_get0_group(key),
                                            EC_KEY_get0_public_key(key), x.get(),
                                            y.get(), /*ctx=*/nullptr)) {
@@ -1834,7 +1637,7 @@ static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> GetPublicKeyBytes(
 
 static bool ECDSAKeyGen(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
-  bssl::UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
+  UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
   if (!key || !EC_KEY_generate_key_fips(key.get())) {
     return false;
   }
@@ -1848,21 +1651,21 @@ static bool ECDSAKeyGen(const Span<const uint8_t> args[],
                       Span<const uint8_t>(pub_key.second)});
 }
 
-static bssl::UniquePtr<BIGNUM> BytesToBIGNUM(Span<const uint8_t> bytes) {
-  bssl::UniquePtr<BIGNUM> bn(BN_new());
+static UniquePtr<BIGNUM> BytesToBIGNUM(Span<const uint8_t> bytes) {
+  UniquePtr<BIGNUM> bn(BN_new());
   BN_bin2bn(bytes.data(), bytes.size(), bn.get());
   return bn;
 }
 
 static bool ECDSAKeyVer(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
-  bssl::UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
+  UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
   if (!key) {
     return false;
   }
 
-  bssl::UniquePtr<BIGNUM> x(BytesToBIGNUM(args[1]));
-  bssl::UniquePtr<BIGNUM> y(BytesToBIGNUM(args[2]));
+  UniquePtr<BIGNUM> x(BytesToBIGNUM(args[1]));
+  UniquePtr<BIGNUM> y(BytesToBIGNUM(args[2]));
 
   uint8_t reply[1];
   if (!EC_KEY_set_public_key_affine_coordinates(key.get(), x.get(), y.get()) ||
@@ -1897,8 +1700,8 @@ static const EVP_MD *HashFromName(Span<const uint8_t> name) {
 
 static bool ECDSASigGen(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
-  bssl::UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
-  bssl::UniquePtr<BIGNUM> d = BytesToBIGNUM(args[1]);
+  UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
+  UniquePtr<BIGNUM> d = BytesToBIGNUM(args[1]);
   const EVP_MD *hash = HashFromName(args[2]);
   uint8_t digest[EVP_MAX_MD_SIZE];
   unsigned digest_len;
@@ -1909,7 +1712,7 @@ static bool ECDSASigGen(const Span<const uint8_t> args[],
     return false;
   }
 
-  bssl::UniquePtr<ECDSA_SIG> sig(ECDSA_do_sign(digest, digest_len, key.get()));
+  UniquePtr<ECDSA_SIG> sig(ECDSA_do_sign(digest, digest_len, key.get()));
   if (!sig) {
     return false;
   }
@@ -1923,13 +1726,13 @@ static bool ECDSASigGen(const Span<const uint8_t> args[],
 
 static bool ECDSASigVer(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
-  bssl::UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
+  UniquePtr<EC_KEY> key = ECKeyFromName(args[0]);
   const EVP_MD *hash = HashFromName(args[1]);
   auto msg = args[2];
-  bssl::UniquePtr<BIGNUM> x(BytesToBIGNUM(args[3]));
-  bssl::UniquePtr<BIGNUM> y(BytesToBIGNUM(args[4]));
-  bssl::UniquePtr<BIGNUM> r(BytesToBIGNUM(args[5]));
-  bssl::UniquePtr<BIGNUM> s(BytesToBIGNUM(args[6]));
+  UniquePtr<BIGNUM> x(BytesToBIGNUM(args[3]));
+  UniquePtr<BIGNUM> y(BytesToBIGNUM(args[4]));
+  UniquePtr<BIGNUM> r(BytesToBIGNUM(args[5]));
+  UniquePtr<BIGNUM> s(BytesToBIGNUM(args[6]));
   ECDSA_SIG sig;
   sig.r = r.get();
   sig.s = s.get();
@@ -1989,8 +1792,8 @@ static bool CMAC_AESVerify(const Span<const uint8_t> args[],
   return write_reply({Span<const uint8_t>(&ok, sizeof(ok))});
 }
 
-static std::map<unsigned, bssl::UniquePtr<RSA>> &CachedRSAKeys() {
-  static std::map<unsigned, bssl::UniquePtr<RSA>> keys;
+static std::map<unsigned, UniquePtr<RSA>> &CachedRSAKeys() {
+  static std::map<unsigned, UniquePtr<RSA>> keys;
   return keys;
 }
 
@@ -2000,7 +1803,7 @@ static RSA *GetRSAKey(unsigned bits) {
     return it->second.get();
   }
 
-  bssl::UniquePtr<RSA> key(RSA_new());
+  UniquePtr<RSA> key(RSA_new());
   if (!RSA_generate_key_fips(key.get(), bits, nullptr)) {
     abort();
   }
@@ -2019,7 +1822,7 @@ static bool RSAKeyGen(const Span<const uint8_t> args[],
   }
   memcpy(&bits, args[0].data(), sizeof(bits));
 
-  bssl::UniquePtr<RSA> key(RSA_new());
+  UniquePtr<RSA> key(RSA_new());
   if (!RSA_generate_key_fips(key.get(), bits, nullptr)) {
     LOG_ERROR("RSA_generate_key_fips failed for modulus length %u.\n", bits);
     return false;
@@ -2088,7 +1891,7 @@ static bool RSASigVer(const Span<const uint8_t> args[],
 
   BIGNUM *n = BN_new();
   BIGNUM *e = BN_new();
-  bssl::UniquePtr<RSA> key(RSA_new());
+  UniquePtr<RSA> key(RSA_new());
   if (!BN_bin2bn(n_bytes.data(), n_bytes.size(), n) ||
       !BN_bin2bn(e_bytes.data(), e_bytes.size(), e) ||
       !RSA_set0_key(key.get(), n, e, /*d=*/nullptr)) {
@@ -2120,7 +1923,7 @@ static bool TLSKDF(const Span<const uint8_t> args[],
                    ReplyCallback write_reply) {
   const Span<const uint8_t> out_len_bytes = args[0];
   const Span<const uint8_t> secret = args[1];
-  const std::string_view label = bssl::BytesAsStringView(args[2]);
+  const Span<const uint8_t> label = args[2];
   const Span<const uint8_t> seed1 = args[3];
   const Span<const uint8_t> seed2 = args[4];
   const EVP_MD *md = MDFunc();
@@ -2143,15 +1946,15 @@ static bool TLSKDF(const Span<const uint8_t> args[],
 
 template <int Nid>
 static bool ECDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
-  bssl::UniquePtr<BIGNUM> their_x(BytesToBIGNUM(args[0]));
-  bssl::UniquePtr<BIGNUM> their_y(BytesToBIGNUM(args[1]));
+  UniquePtr<BIGNUM> their_x(BytesToBIGNUM(args[0]));
+  UniquePtr<BIGNUM> their_y(BytesToBIGNUM(args[1]));
   const Span<const uint8_t> private_key = args[2];
 
-  bssl::UniquePtr<EC_KEY> ec_key(EC_KEY_new_by_curve_name(Nid));
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<EC_KEY> ec_key(EC_KEY_new_by_curve_name(Nid));
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
 
   const EC_GROUP *const group = EC_KEY_get0_group(ec_key.get());
-  bssl::UniquePtr<EC_POINT> their_point(EC_POINT_new(group));
+  UniquePtr<EC_POINT> their_point(EC_POINT_new(group));
   if (!EC_POINT_set_affine_coordinates_GFp(
           group, their_point.get(), their_x.get(), their_y.get(), ctx.get())) {
     LOG_ERROR("Invalid peer point for ECDH.\n");
@@ -2159,13 +1962,13 @@ static bool ECDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
   }
 
   if (!private_key.empty()) {
-    bssl::UniquePtr<BIGNUM> our_k(BytesToBIGNUM(private_key));
+    UniquePtr<BIGNUM> our_k(BytesToBIGNUM(private_key));
     if (!EC_KEY_set_private_key(ec_key.get(), our_k.get())) {
       LOG_ERROR("EC_KEY_set_private_key failed.\n");
       return false;
     }
 
-    bssl::UniquePtr<EC_POINT> our_pub(EC_POINT_new(group));
+    UniquePtr<EC_POINT> our_pub(EC_POINT_new(group));
     if (!EC_POINT_mul(group, our_pub.get(), our_k.get(), nullptr, nullptr,
                       ctx.get()) ||
         !EC_KEY_set_public_key(ec_key.get(), our_pub.get())) {
@@ -2193,8 +1996,8 @@ static bool ECDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
   output.resize(static_cast<size_t>(out_len));
 
   const EC_POINT *pub = EC_KEY_get0_public_key(ec_key.get());
-  bssl::UniquePtr<BIGNUM> x(BN_new());
-  bssl::UniquePtr<BIGNUM> y(BN_new());
+  UniquePtr<BIGNUM> x(BN_new());
+  UniquePtr<BIGNUM> y(BN_new());
   if (!EC_POINT_get_affine_coordinates_GFp(group, pub, x.get(), y.get(),
                                            ctx.get())) {
     LOG_ERROR("EC_POINT_get_affine_coordinates_GFp failed.\n");
@@ -2205,14 +2008,14 @@ static bool ECDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
 }
 
 static bool FFDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
-  bssl::UniquePtr<BIGNUM> p(BytesToBIGNUM(args[0]));
-  bssl::UniquePtr<BIGNUM> q(BytesToBIGNUM(args[1]));
-  bssl::UniquePtr<BIGNUM> g(BytesToBIGNUM(args[2]));
-  bssl::UniquePtr<BIGNUM> their_pub(BytesToBIGNUM(args[3]));
+  UniquePtr<BIGNUM> p(BytesToBIGNUM(args[0]));
+  UniquePtr<BIGNUM> q(BytesToBIGNUM(args[1]));
+  UniquePtr<BIGNUM> g(BytesToBIGNUM(args[2]));
+  UniquePtr<BIGNUM> their_pub(BytesToBIGNUM(args[3]));
   const Span<const uint8_t> private_key_span = args[4];
   const Span<const uint8_t> public_key_span = args[5];
 
-  bssl::UniquePtr<DH> dh(DH_new());
+  UniquePtr<DH> dh(DH_new());
   if (!DH_set0_pqg(dh.get(), p.get(), q.get(), g.get())) {
     LOG_ERROR("DH_set0_pqg failed.\n");
     return 0;
@@ -2224,8 +2027,8 @@ static bool FFDH(const Span<const uint8_t> args[], ReplyCallback write_reply) {
   g.release();
 
   if (!private_key_span.empty()) {
-    bssl::UniquePtr<BIGNUM> private_key(BytesToBIGNUM(private_key_span));
-    bssl::UniquePtr<BIGNUM> public_key(BytesToBIGNUM(public_key_span));
+    UniquePtr<BIGNUM> private_key(BytesToBIGNUM(private_key_span));
+    UniquePtr<BIGNUM> public_key(BytesToBIGNUM(public_key_span));
 
     if (!DH_set0_key(dh.get(), public_key.get(), private_key.get())) {
       LOG_ERROR("DH_set0_key failed.\n");
@@ -2256,7 +2059,7 @@ template <typename PrivateKey, size_t PublicKeyBytes,
 static bool MLDSAKeyGen(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
   const Span<const uint8_t> seed = args[0];
-  if (seed.size() != BCM_MLDSA_SEED_BYTES) {
+  if (seed.size() != MLDSA_SEED_BYTES) {
     LOG_ERROR("Bad seed size.\n");
     return false;
   }
@@ -2285,7 +2088,9 @@ template <typename PrivateKey, size_t SignatureBytes,
           bcm_status (*SignInternal)(uint8_t *, const PrivateKey *,
                                      const uint8_t *, size_t, const uint8_t *,
                                      size_t, const uint8_t *, size_t,
-                                     const uint8_t *)>
+                                     const uint8_t *),
+          bcm_status (*SignMuInternal)(uint8_t *, const PrivateKey *,
+                                       const uint8_t *, const uint8_t *)>
 static bool MLDSASigGen(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
   CBS cbs = args[0];
@@ -2297,18 +2102,36 @@ static bool MLDSASigGen(const Span<const uint8_t> args[],
 
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> randomizer = args[2];
+  const Span<const uint8_t> context = args[3];
+  const Span<const uint8_t> mu = args[4];
 
   if (randomizer.size() != BCM_MLDSA_SIGNATURE_RANDOMIZER_BYTES) {
     LOG_ERROR("Bad randomizer size.\n");
     return false;
   }
 
+  if (!context.empty()) {
+    LOG_ERROR("ML-DSA context should be empty.\n");
+    return false;
+  }
+
+  if (mu.size() != 0 && mu.size() != MLDSA_MU_BYTES) {
+    LOG_ERROR("Bad ML-DSA mu length.\n");
+    return false;
+  }
+
   uint8_t signature[SignatureBytes];
-  if (SignInternal(signature, priv.get(), msg.data(), msg.size(),
-                   // It's not just an empty context, the context prefix
-                   // is omitted too.
-                   nullptr, 0, nullptr, 0,
-                   randomizer.data()) != bcm_status::approved) {
+  if (mu.size() != 0) {
+    if (SignMuInternal(signature, priv.get(), mu.data(), randomizer.data()) !=
+        bcm_status::approved) {
+      LOG_ERROR("ML-DSA mu-signing failed.\n");
+      return false;
+    }
+  } else if (SignInternal(signature, priv.get(), msg.data(), msg.size(),
+                          // It's not just an empty context, the context
+                          // prefix is omitted too.
+                          nullptr, 0, nullptr, 0,
+                          randomizer.data()) != bcm_status::approved) {
     LOG_ERROR("ML-DSA signing failed.\n");
     return false;
   }
@@ -2320,12 +2143,16 @@ template <typename PublicKey, size_t SignatureBytes,
           bcm_status (*ParsePublicKey)(PublicKey *, CBS *),
           bcm_status (*VerifyInternal)(const PublicKey *, const uint8_t *,
                                        const uint8_t *, size_t, const uint8_t *,
-                                       size_t, const uint8_t *, size_t)>
+                                       size_t, const uint8_t *, size_t),
+          bcm_status (*VerifyMu)(const PublicKey *, const uint8_t *,
+                                 const uint8_t *)>
 static bool MLDSASigVer(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
   const Span<const uint8_t> pub_key_bytes = args[0];
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> signature = args[2];
+  const Span<const uint8_t> context = args[3];
+  const Span<const uint8_t> mu = args[4];
 
   CBS cbs = pub_key_bytes;
   auto pub = std::make_unique<PublicKey>();
@@ -2339,11 +2166,26 @@ static bool MLDSASigVer(const Span<const uint8_t> args[],
     return false;
   }
 
-  const uint8_t ok = bcm_success(
-      VerifyInternal(pub.get(), signature.data(), msg.data(), msg.size(),
-                     // It's not just an empty context, the context
-                     // prefix is omitted too.
-                     nullptr, 0, nullptr, 0));
+  if (!context.empty()) {
+    LOG_ERROR("ML-DSA context should be empty.\n");
+    return false;
+  }
+
+  if (mu.size() != 0 && mu.size() != MLDSA_MU_BYTES) {
+    LOG_ERROR("Bad ML-DSA mu length.\n");
+    return false;
+  }
+
+  uint8_t ok;
+  if (mu.size() != 0) {
+    ok = bcm_success(VerifyMu(pub.get(), signature.data(), mu.data()));
+  } else {
+    ok = bcm_success(VerifyInternal(pub.get(), signature.data(), msg.data(),
+                                    msg.size(),
+                                    // It's not just an empty context, the
+                                    // context prefix is omitted too.
+                                    nullptr, 0, nullptr, 0));
+  }
 
   return write_reply({Span<const uint8_t>(&ok, sizeof(ok))});
 }
@@ -2354,7 +2196,7 @@ template <typename PrivateKey, size_t PublicKeyBytes,
 static bool MLKEMKeyGen(const Span<const uint8_t> args[],
                         ReplyCallback write_reply) {
   const Span<const uint8_t> seed = args[0];
-  if (seed.size() != BCM_MLKEM_SEED_BYTES) {
+  if (seed.size() != MLKEM_SEED_BYTES) {
     LOG_ERROR("Bad seed size.\n");
     return false;
   }
@@ -2396,7 +2238,7 @@ static bool MLKEMEncap(const Span<const uint8_t> args[],
   }
 
   uint8_t ciphertext[CiphertextBytes];
-  uint8_t shared_secret[BCM_MLKEM_SHARED_SECRET_BYTES];
+  uint8_t shared_secret[MLKEM_SHARED_SECRET_BYTES];
   Encap(ciphertext, shared_secret, pub.get(), entropy.data());
 
   return write_reply({ciphertext, shared_secret});
@@ -2417,7 +2259,7 @@ static bool MLKEMDecap(const Span<const uint8_t> args[],
     return false;
   }
 
-  uint8_t shared_secret[BCM_MLKEM_SHARED_SECRET_BYTES];
+  uint8_t shared_secret[MLKEM_SHARED_SECRET_BYTES];
   if (!bcm_success(Decap(shared_secret, ciphertext.data(), ciphertext.size(),
                          priv.get()))) {
     LOG_ERROR("ML-KEM decapsulation failed.\n");
@@ -2427,67 +2269,76 @@ static bool MLKEMDecap(const Span<const uint8_t> args[],
   return write_reply({shared_secret});
 }
 
+template <size_t N, size_t PublicKeyBytes, size_t PrivateKeyBytes,
+          bcm_infallible (*GenerateFromSeed)(uint8_t *, uint8_t *,
+                                             const uint8_t *)>
 static bool SLHDSAKeyGen(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> seed = args[0];
 
-  if (seed.size() != 3 * BCM_SLHDSA_SHA2_128S_N) {
+  if (seed.size() != 3 * N) {
     LOG_ERROR("Bad seed size.\n");
     return false;
   }
 
-  uint8_t public_key[BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES];
-  uint8_t private_key[BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES];
-  BCM_slhdsa_sha2_128s_generate_key_from_seed(public_key, private_key,
-                                              seed.data());
+  uint8_t public_key[PublicKeyBytes];
+  uint8_t private_key[PrivateKeyBytes];
+  GenerateFromSeed(public_key, private_key, seed.data());
 
   return write_reply({private_key, public_key});
 }
 
+template <size_t N, size_t PrivateKeyBytes, size_t SignatureBytes,
+          bcm_infallible (*SignInternal)(
+              uint8_t *, const uint8_t *, const uint8_t *, const uint8_t *,
+              size_t, const uint8_t *, size_t, const uint8_t *)>
 static bool SLHDSASigGen(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> private_key = args[0];
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> entropy_span = args[2];
 
-  if (private_key.size() != BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES) {
+  if (private_key.size() != PrivateKeyBytes) {
     LOG_ERROR("Bad private key size.\n");
     return false;
   }
 
-  uint8_t entropy[BCM_SLHDSA_SHA2_128S_N];
+  uint8_t entropy[N];
   if (!entropy_span.empty()) {
-    if (entropy_span.size() != BCM_SLHDSA_SHA2_128S_N) {
+    if (entropy_span.size() != N) {
       LOG_ERROR("Bad entropy size.\n");
       return false;
     }
-    memcpy(entropy, entropy_span.data(), entropy_span.size());
+    memcpy(entropy, entropy_span.data(), N);
   } else {
-    memcpy(entropy, private_key.data() + 32, 16);
+    memcpy(entropy, private_key.data() + 2 * N, N);
   }
 
-  uint8_t signature[BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES];
-  BCM_slhdsa_sha2_128s_sign_internal(signature, private_key.data(), nullptr,
-                                     nullptr, 0, msg.data(), msg.size(),
-                                     entropy);
+  std::vector<uint8_t> signature(SignatureBytes);
+  SignInternal(signature.data(), private_key.data(), nullptr, nullptr, 0,
+               msg.data(), msg.size(), entropy);
 
-  return write_reply({signature});
+  return write_reply({Span<const uint8_t>(signature)});
 }
 
+template <size_t PublicKeyBytes, size_t SignatureBytes,
+          bcm_status (*VerifyInternal)(const uint8_t *, size_t, const uint8_t *,
+                                       const uint8_t *, const uint8_t *, size_t,
+                                       const uint8_t *, size_t)>
 static bool SLHDSASigVer(const Span<const uint8_t> args[],
                          ReplyCallback write_reply) {
   const Span<const uint8_t> public_key = args[0];
   const Span<const uint8_t> msg = args[1];
   const Span<const uint8_t> signature = args[2];
 
-  if (public_key.size() != BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES) {
+  if (public_key.size() != PublicKeyBytes) {
     LOG_ERROR("Bad public key size.\n");
     return false;
   }
 
-  const int ok = bcm_success(BCM_slhdsa_sha2_128s_verify_internal(
-      signature.data(), signature.size(), public_key.data(), nullptr, nullptr,
-      0, msg.data(), msg.size()));
+  const int ok = bcm_success(VerifyInternal(signature.data(), signature.size(),
+                                            public_key.data(), nullptr, nullptr,
+                                            0, msg.data(), msg.size()));
 
   const uint8_t ok_byte = ok ? 1 : 0;
   return write_reply({Span<const uint8_t>(&ok_byte, 1)});
@@ -2587,64 +2438,94 @@ static constexpr struct {
     {"ECDH/P-521", 3, ECDH<NID_secp521r1>},
     {"FFDH", 6, FFDH},
     {"ML-DSA-44/keyGen", 1,
-     MLDSAKeyGen<BCM_mldsa44_private_key, BCM_MLDSA44_PUBLIC_KEY_BYTES,
+     MLDSAKeyGen<MLDSA44_private_key, MLDSA44_PUBLIC_KEY_BYTES,
                  BCM_mldsa44_generate_key_external_entropy_fips,
                  BCM_mldsa44_marshal_private_key>},
     {"ML-DSA-65/keyGen", 1,
-     MLDSAKeyGen<BCM_mldsa65_private_key, BCM_MLDSA65_PUBLIC_KEY_BYTES,
+     MLDSAKeyGen<MLDSA65_private_key, MLDSA65_PUBLIC_KEY_BYTES,
                  BCM_mldsa65_generate_key_external_entropy_fips,
                  BCM_mldsa65_marshal_private_key>},
     {"ML-DSA-87/keyGen", 1,
-     MLDSAKeyGen<BCM_mldsa87_private_key, BCM_MLDSA87_PUBLIC_KEY_BYTES,
+     MLDSAKeyGen<MLDSA87_private_key, MLDSA87_PUBLIC_KEY_BYTES,
                  BCM_mldsa87_generate_key_external_entropy_fips,
                  BCM_mldsa87_marshal_private_key>},
-    {"ML-DSA-44/sigGen", 3,
-     MLDSASigGen<BCM_mldsa44_private_key, BCM_MLDSA44_SIGNATURE_BYTES,
-                 BCM_mldsa44_parse_private_key, BCM_mldsa44_sign_internal>},
-    {"ML-DSA-65/sigGen", 3,
-     MLDSASigGen<BCM_mldsa65_private_key, BCM_MLDSA65_SIGNATURE_BYTES,
-                 BCM_mldsa65_parse_private_key, BCM_mldsa65_sign_internal>},
-    {"ML-DSA-87/sigGen", 3,
-     MLDSASigGen<BCM_mldsa87_private_key, BCM_MLDSA87_SIGNATURE_BYTES,
-                 BCM_mldsa87_parse_private_key, BCM_mldsa87_sign_internal>},
-    {"ML-DSA-44/sigVer", 3,
-     MLDSASigVer<BCM_mldsa44_public_key, BCM_MLDSA44_SIGNATURE_BYTES,
-                 BCM_mldsa44_parse_public_key, BCM_mldsa44_verify_internal>},
-    {"ML-DSA-65/sigVer", 3,
-     MLDSASigVer<BCM_mldsa65_public_key, BCM_MLDSA65_SIGNATURE_BYTES,
-                 BCM_mldsa65_parse_public_key, BCM_mldsa65_verify_internal>},
-    {"ML-DSA-87/sigVer", 3,
-     MLDSASigVer<BCM_mldsa87_public_key, BCM_MLDSA87_SIGNATURE_BYTES,
-                 BCM_mldsa87_parse_public_key, BCM_mldsa87_verify_internal>},
+    {"ML-DSA-44/sigGen", 5,
+     MLDSASigGen<MLDSA44_private_key, MLDSA44_SIGNATURE_BYTES,
+                 BCM_mldsa44_parse_private_key, BCM_mldsa44_sign_internal,
+                 BCM_mldsa44_sign_mu_internal>},
+    {"ML-DSA-65/sigGen", 5,
+     MLDSASigGen<MLDSA65_private_key, MLDSA65_SIGNATURE_BYTES,
+                 BCM_mldsa65_parse_private_key, BCM_mldsa65_sign_internal,
+                 BCM_mldsa65_sign_mu_internal>},
+    {"ML-DSA-87/sigGen", 5,
+     MLDSASigGen<MLDSA87_private_key, MLDSA87_SIGNATURE_BYTES,
+                 BCM_mldsa87_parse_private_key, BCM_mldsa87_sign_internal,
+                 BCM_mldsa87_sign_mu_internal>},
+    {"ML-DSA-44/sigVer", 5,
+     MLDSASigVer<MLDSA44_public_key, MLDSA44_SIGNATURE_BYTES,
+                 BCM_mldsa44_parse_public_key, BCM_mldsa44_verify_internal,
+                 BCM_mldsa44_verify_message_representative>},
+    {"ML-DSA-65/sigVer", 5,
+     MLDSASigVer<MLDSA65_public_key, MLDSA65_SIGNATURE_BYTES,
+                 BCM_mldsa65_parse_public_key, BCM_mldsa65_verify_internal,
+                 BCM_mldsa65_verify_message_representative>},
+    {"ML-DSA-87/sigVer", 5,
+     MLDSASigVer<MLDSA87_public_key, MLDSA87_SIGNATURE_BYTES,
+                 BCM_mldsa87_parse_public_key, BCM_mldsa87_verify_internal,
+                 BCM_mldsa87_verify_message_representative>},
     {"ML-KEM-768/keyGen", 1,
-     MLKEMKeyGen<BCM_mlkem768_private_key, BCM_MLKEM768_PUBLIC_KEY_BYTES,
+     MLKEMKeyGen<MLKEM768_private_key, MLKEM768_PUBLIC_KEY_BYTES,
                  BCM_mlkem768_generate_key_external_seed,
                  BCM_mlkem768_marshal_private_key>},
     {"ML-KEM-1024/keyGen", 1,
-     MLKEMKeyGen<BCM_mlkem1024_private_key, BCM_MLKEM1024_PUBLIC_KEY_BYTES,
+     MLKEMKeyGen<MLKEM1024_private_key, MLKEM1024_PUBLIC_KEY_BYTES,
                  BCM_mlkem1024_generate_key_external_seed,
                  BCM_mlkem1024_marshal_private_key>},
     {"ML-KEM-768/encap", 2,
-     MLKEMEncap<BCM_mlkem768_public_key, BCM_mlkem768_parse_public_key,
-                BCM_MLKEM768_CIPHERTEXT_BYTES,
+     MLKEMEncap<MLKEM768_public_key, BCM_mlkem768_parse_public_key,
+                MLKEM768_CIPHERTEXT_BYTES,
                 BCM_mlkem768_encap_external_entropy>},
     {"ML-KEM-1024/encap", 2,
-     MLKEMEncap<BCM_mlkem1024_public_key, BCM_mlkem1024_parse_public_key,
-                BCM_MLKEM1024_CIPHERTEXT_BYTES,
+     MLKEMEncap<MLKEM1024_public_key, BCM_mlkem1024_parse_public_key,
+                MLKEM1024_CIPHERTEXT_BYTES,
                 BCM_mlkem1024_encap_external_entropy>},
     {"ML-KEM-768/decap", 2,
-     MLKEMDecap<BCM_mlkem768_private_key, BCM_mlkem768_parse_private_key,
+     MLKEMDecap<MLKEM768_private_key, BCM_mlkem768_parse_private_key,
                 BCM_mlkem768_decap>},
     {"ML-KEM-1024/decap", 2,
-     MLKEMDecap<BCM_mlkem1024_private_key, BCM_mlkem1024_parse_private_key,
+     MLKEMDecap<MLKEM1024_private_key, BCM_mlkem1024_parse_private_key,
                 BCM_mlkem1024_decap>},
-    {"SLH-DSA-SHA2-128s/keyGen", 1, SLHDSAKeyGen},
-    {"SLH-DSA-SHA2-128s/sigGen", 3, SLHDSASigGen},
-    {"SLH-DSA-SHA2-128s/sigVer", 3, SLHDSASigVer},
+    {"SLH-DSA-SHA2-128s/keyGen", 1,
+     SLHDSAKeyGen<BCM_SLHDSA_SHA2_128S_N, BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES,
+                  BCM_slhdsa_sha2_128s_generate_key_from_seed>},
+    {"SLH-DSA-SHA2-128s/sigGen", 3,
+     SLHDSASigGen<BCM_SLHDSA_SHA2_128S_N,
+                  BCM_SLHDSA_SHA2_128S_PRIVATE_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES,
+                  BCM_slhdsa_sha2_128s_sign_internal>},
+    {"SLH-DSA-SHA2-128s/sigVer", 3,
+     SLHDSASigVer<BCM_SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHA2_128S_SIGNATURE_BYTES,
+                  BCM_slhdsa_sha2_128s_verify_internal>},
+    {"SLH-DSA-SHAKE-256f/keyGen", 1,
+     SLHDSAKeyGen<BCM_SLHDSA_SHAKE_256F_N,
+                  BCM_SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_PRIVATE_KEY_BYTES,
+                  BCM_slhdsa_shake_256f_generate_key_from_seed>},
+    {"SLH-DSA-SHAKE-256f/sigGen", 3,
+     SLHDSASigGen<BCM_SLHDSA_SHAKE_256F_N,
+                  BCM_SLHDSA_SHAKE_256F_PRIVATE_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_SIGNATURE_BYTES,
+                  BCM_slhdsa_shake_256f_sign_internal>},
+    {"SLH-DSA-SHAKE-256f/sigVer", 3,
+     SLHDSASigVer<BCM_SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES,
+                  BCM_SLHDSA_SHAKE_256F_SIGNATURE_BYTES,
+                  BCM_slhdsa_shake_256f_verify_internal>},
 };
 
 Handler FindHandler(Span<const Span<const uint8_t>> args) {
-  auto algorithm = bssl::BytesAsStringView(args[0]);
+  auto algorithm = BytesAsStringView(args[0]);
   for (const auto &func : kFunctions) {
     if (algorithm == func.name) {
       if (args.size() - 1 != func.num_expected_args) {
@@ -2662,4 +2543,4 @@ Handler FindHandler(Span<const Span<const uint8_t>> args) {
 }
 
 }  // namespace acvp
-}  // namespace bssl
+BSSL_NAMESPACE_END

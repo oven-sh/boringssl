@@ -25,13 +25,13 @@
 #include <string.h>
 
 static BOOL CALLBACK call_once_init(INIT_ONCE *once, void *arg, void **out) {
-  void (**init)(void) = (void (**)(void))arg;
+  void (**init)() = (void (**)())arg;
   (**init)();
   return TRUE;
 }
 
-void CRYPTO_once(CRYPTO_once_t *once, void (*init)(void)) {
-  if (!InitOnceExecuteOnce(once, call_once_init, &init, NULL)) {
+void CRYPTO_once(CRYPTO_once_t *once, void (*init)()) {
+  if (!InitOnceExecuteOnce(once, call_once_init, &init, nullptr)) {
     abort();
   }
 }
@@ -63,7 +63,7 @@ static CRYPTO_once_t g_thread_local_init_once = CRYPTO_ONCE_INIT;
 static DWORD g_thread_local_key;
 static int g_thread_local_failed;
 
-static void thread_local_init(void) {
+static void thread_local_init() {
   g_thread_local_key = TlsAlloc();
   g_thread_local_failed = (g_thread_local_key == TLS_OUT_OF_INDEXES);
 }
@@ -85,7 +85,7 @@ static void NTAPI thread_local_destructor(PVOID module, DWORD reason,
   }
 
   void **pointers = (void **)TlsGetValue(g_thread_local_key);
-  if (pointers == NULL) {
+  if (pointers == nullptr) {
     return;
   }
 
@@ -96,7 +96,7 @@ static void NTAPI thread_local_destructor(PVOID module, DWORD reason,
   ReleaseSRWLockExclusive(&g_destructors_lock);
 
   for (unsigned i = 0; i < NUM_OPENSSL_THREAD_LOCALS; i++) {
-    if (destructors[i] != NULL) {
+    if (destructors[i] != nullptr) {
       destructors[i](pointers[i]);
     }
   }
@@ -172,7 +172,7 @@ PIMAGE_TLS_CALLBACK p_thread_callback_boringssl = thread_local_destructor;
 
 #endif  // _WIN64
 
-static void **get_thread_locals(void) {
+static void **get_thread_locals() {
   // |TlsGetValue| clears the last error even on success, so that callers may
   // distinguish it successfully returning NULL or failing. It is documented to
   // never fail if the argument is a valid index from |TlsAlloc|, so we do not
@@ -193,12 +193,12 @@ static void **get_thread_locals(void) {
 void *CRYPTO_get_thread_local(thread_local_data_t index) {
   CRYPTO_once(&g_thread_local_init_once, thread_local_init);
   if (g_thread_local_failed) {
-    return NULL;
+    return nullptr;
   }
 
   void **pointers = get_thread_locals();
-  if (pointers == NULL) {
-    return NULL;
+  if (pointers == nullptr) {
+    return nullptr;
   }
   return pointers[index];
 }
@@ -212,10 +212,10 @@ int CRYPTO_set_thread_local(thread_local_data_t index, void *value,
   }
 
   void **pointers = get_thread_locals();
-  if (pointers == NULL) {
+  if (pointers == nullptr) {
     pointers = reinterpret_cast<void **>(
         malloc(sizeof(void *) * NUM_OPENSSL_THREAD_LOCALS));
-    if (pointers == NULL) {
+    if (pointers == nullptr) {
       destructor(value);
       return 0;
     }

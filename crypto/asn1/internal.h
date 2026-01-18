@@ -20,10 +20,8 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
 
+BSSL_NAMESPACE_BEGIN
 
 // Wrapper functions for time functions.
 
@@ -57,6 +55,8 @@ OPENSSL_EXPORT int OPENSSL_gmtime_diff(int *out_days, int *out_secs,
 #define ASN1_OBJECT_FLAG_DYNAMIC_STRINGS 0x04  // internal use
 #define ASN1_OBJECT_FLAG_DYNAMIC_DATA 0x08     // internal use
 
+BSSL_NAMESPACE_END
+
 // An asn1_object_st (aka |ASN1_OBJECT|) represents an ASN.1 OBJECT IDENTIFIER.
 // Note: Mutating an |ASN1_OBJECT| is only permitted when initializing it. The
 // library maintains a table of static |ASN1_OBJECT|s, which may be referenced
@@ -71,7 +71,9 @@ struct asn1_object_st {
   int flags;                  // Should we free this one
 };
 
-ASN1_OBJECT *ASN1_OBJECT_new(void);
+BSSL_NAMESPACE_BEGIN
+
+ASN1_OBJECT *ASN1_OBJECT_new();
 
 // asn1_parse_object parses a DER-encoded ASN.1 OBJECT IDENTIFIER from |cbs| and
 // write the result to |out|. If |tag| is non-zero, the value is implicitly
@@ -194,6 +196,10 @@ int asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out);
 // result to |out|. It returns one on success and zeron on error.
 int asn1_marshal_any(CBB *out, const ASN1_TYPE *in);
 
+// asn1_marshal_any_string marshals |in| as a DER-encoded ASN.1 value and writes
+// the result to |out|. It returns one on success and zeron on error.
+int asn1_marshal_any_string(CBB *out, const ASN1_STRING *in);
+
 
 // Support structures for the template-based encoder.
 
@@ -283,7 +289,7 @@ typedef struct {
 OPENSSL_EXPORT void asn1_get_string_table_for_testing(
     const ASN1_STRING_TABLE **out_ptr, size_t *out_len);
 
-typedef ASN1_VALUE *ASN1_new_func(void);
+typedef ASN1_VALUE *ASN1_new_func();
 typedef void ASN1_free_func(ASN1_VALUE *a);
 typedef ASN1_VALUE *ASN1_d2i_func(ASN1_VALUE **a, const unsigned char **in,
                                   long length);
@@ -314,8 +320,8 @@ typedef struct ASN1_EXTERN_FUNCS_st {
   ASN1_ex_i2d *asn1_ex_i2d;
 } ASN1_EXTERN_FUNCS;
 
-#define IMPLEMENT_EXTERN_ASN1_SIMPLE(name, new_func, free_func, parse_func,    \
-                                     i2d_func)                                 \
+#define IMPLEMENT_EXTERN_ASN1_SIMPLE(name, new_func, free_func, tag,           \
+                                     parse_func, i2d_func)                     \
   static int name##_new_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {           \
     *pval = (ASN1_VALUE *)new_func();                                          \
     return *pval != nullptr;                                                   \
@@ -328,7 +334,7 @@ typedef struct ASN1_EXTERN_FUNCS_st {
                                                                                \
   static int name##_parse_cb(ASN1_VALUE **pval, CBS *cbs, const ASN1_ITEM *it, \
                              int opt) {                                        \
-    if (opt && !CBS_peek_asn1_tag(cbs, CBS_ASN1_SEQUENCE)) {                   \
+    if (opt && !CBS_peek_asn1_tag(cbs, (tag))) {                               \
       return 1;                                                                \
     }                                                                          \
                                                                                \
@@ -361,14 +367,6 @@ DECLARE_ASN1_ITEM(DIRECTORYSTRING)
 // 5280) and C type is |ASN1_STRING*|.
 DECLARE_ASN1_ITEM(DISPLAYTEXT)
 
-// ASN1_ANY_AS_STRING is an |ASN1_ITEM| with ASN.1 type ANY and C type
-// |ASN1_STRING*|. Types which are not represented with |ASN1_STRING|, such as
-// |ASN1_OBJECT|, are represented with type |V_ASN1_OTHER|.
-DECLARE_ASN1_ITEM(ASN1_ANY_AS_STRING)
-
-
-#if defined(__cplusplus)
-}  // extern C
-#endif
+BSSL_NAMESPACE_END
 
 #endif  // OPENSSL_HEADER_CRYPTO_ASN1_INTERNAL_H

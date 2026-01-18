@@ -402,10 +402,10 @@ static void fe4_cswap(uint64_t out1[4], uint64_t out2[4], fiat_uint1 arg1, const
   out2[3] = x8;
 }
 
-// The following functions are adaped from crypto/curve25519/curve25519.c
+// The following functions are adapted from crypto/curve25519/curve25519.c
 // It would be desirable to share the code, but with the current field
 // implementations both 4-limb and 5-limb versions of the curve-level code need
-// to be included in builds targetting an unknown variant of x86_64.
+// to be included in builds targeting an unknown variant of x86_64.
 
 __attribute__((target("adx,bmi2")))
 static void fe4_invert(fe4 out, const fe4 z) {
@@ -618,9 +618,9 @@ static inline void table_select_4(ge_precomp_4 *t, const int pos,
 #if defined(__clang__)
   __asm__("" : "+m" (t_bytes) : /*no inputs*/);
 #endif
-  static_assert(sizeof(t_bytes) == sizeof(k25519Precomp[pos][0]), "");
+  static_assert(sizeof(t_bytes) == sizeof(bssl::k25519Precomp[pos][0]), "");
   for (int i = 0; i < 8; i++) {
-    constant_time_conditional_memxor(t_bytes, k25519Precomp[pos][i],
+    constant_time_conditional_memxor(t_bytes, bssl::k25519Precomp[pos][i],
                                      sizeof(t_bytes),
                                      constant_time_eq_w(babs, 1 + i));
   }

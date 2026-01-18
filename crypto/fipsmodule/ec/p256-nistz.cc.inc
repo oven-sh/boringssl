@@ -37,6 +37,9 @@
 #include "internal.h"
 #include "p256-nistz.h"
 
+
+using namespace bssl;
+
 #if !defined(OPENSSL_NO_ASM) &&                              \
     (defined(OPENSSL_X86_64) || defined(OPENSSL_AARCH64)) && \
     !defined(OPENSSL_SMALL)
@@ -293,8 +296,8 @@ static void ecp_nistz256_mod_inverse_sqr_mont(BN_ULONG r[P256_LIMBS],
 static void ecp_nistz256_windowed_mul(const EC_GROUP *group, P256_POINT *r,
                                       const EC_JACOBIAN *p,
                                       const EC_SCALAR *p_scalar) {
-  assert(p != NULL);
-  assert(p_scalar != NULL);
+  assert(p != nullptr);
+  assert(p_scalar != nullptr);
   assert(group->field.N.width == P256_LIMBS);
 
   static const size_t kWindowSize = 5;
@@ -464,7 +467,7 @@ static void ecp_nistz256_points_mul_public(const EC_GROUP *group,
                                            const EC_SCALAR *g_scalar,
                                            const EC_JACOBIAN *p_,
                                            const EC_SCALAR *p_scalar) {
-  assert(p_ != NULL && p_scalar != NULL && g_scalar != NULL);
+  assert(p_ != nullptr && p_scalar != nullptr && g_scalar != nullptr);
 
   alignas(32) P256_POINT p;
   uint8_t p_str[33];
@@ -536,11 +539,11 @@ static int ecp_nistz256_get_affine(const EC_GROUP *group,
   assert(group->field.N.width == P256_LIMBS);
   ecp_nistz256_mod_inverse_sqr_mont(z_inv2, point->Z.words);
 
-  if (x != NULL) {
+  if (x != nullptr) {
     ecp_nistz256_mul_mont(x->words, z_inv2, point->X.words);
   }
 
-  if (y != NULL) {
+  if (y != nullptr) {
     ecp_nistz256_sqr_mont(z_inv2, z_inv2);                            // z^-4
     ecp_nistz256_mul_mont(y->words, point->Y.words, point->Z.words);  // y * z
     ecp_nistz256_mul_mont(y->words, y->words, z_inv2);  // y * z^-3
@@ -715,6 +718,8 @@ static int ecp_nistz256_cmp_x_coordinate(const EC_GROUP *group,
   return 0;
 }
 
+BSSL_NAMESPACE_BEGIN
+
 DEFINE_METHOD_FUNCTION(EC_METHOD, EC_GFp_nistz256_method) {
   out->point_get_affine_coordinates = ecp_nistz256_get_affine;
   out->add = ecp_nistz256_add;
@@ -735,6 +740,8 @@ DEFINE_METHOD_FUNCTION(EC_METHOD, EC_GFp_nistz256_method) {
       ecp_nistz256_scalar_to_montgomery_inv_vartime;
   out->cmp_x_coordinate = ecp_nistz256_cmp_x_coordinate;
 }
+
+BSSL_NAMESPACE_END
 
 #endif /* !defined(OPENSSL_NO_ASM) &&                              \
           (defined(OPENSSL_X86_64) || defined(OPENSSL_AARCH64)) && \

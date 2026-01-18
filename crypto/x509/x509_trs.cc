@@ -21,6 +21,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 typedef struct x509_trust_st X509_TRUST;
 
 struct x509_trust_st {
@@ -48,7 +50,7 @@ static const X509_TRUST *X509_TRUST_get0(int id) {
       return &t;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 int X509_check_trust(X509 *x, int id, int flags) {
@@ -61,10 +63,10 @@ int X509_check_trust(X509 *x, int id, int flags) {
     if (rv != X509_TRUST_UNTRUSTED) {
       return rv;
     }
-    return trust_compat(NULL, x);
+    return trust_compat(nullptr, x);
   }
   const X509_TRUST *pt = X509_TRUST_get0(id);
-  if (pt == NULL) {
+  if (pt == nullptr) {
     // Unknown trust IDs are silently reintrepreted as NIDs. This is unreachable
     // from the certificate verifier itself, but wpa_supplicant relies on it.
     // Note this relies on commonly-used NIDs and trust IDs not colliding.
@@ -73,8 +75,8 @@ int X509_check_trust(X509 *x, int id, int flags) {
   return pt->check_trust(pt, x);
 }
 
-int X509_is_valid_trust_id(int trust) {
-  return X509_TRUST_get0(trust) != NULL;
+int bssl::X509_is_valid_trust_id(int trust) {
+  return X509_TRUST_get0(trust) != nullptr;
 }
 
 static int trust_1oidany(const X509_TRUST *trust, X509 *x) {

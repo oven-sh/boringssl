@@ -29,10 +29,12 @@
 #include "internal.h"
 
 
-DH *DH_new(void) {
+using namespace bssl;
+
+DH *DH_new() {
   DH *dh = reinterpret_cast<DH *>(OPENSSL_zalloc(sizeof(DH)));
-  if (dh == NULL) {
-    return NULL;
+  if (dh == nullptr) {
+    return nullptr;
   }
 
   CRYPTO_MUTEX_init(&dh->method_mont_p_lock);
@@ -41,7 +43,7 @@ DH *DH_new(void) {
 }
 
 void DH_free(DH *dh) {
-  if (dh == NULL) {
+  if (dh == nullptr) {
     return;
   }
 
@@ -74,21 +76,21 @@ const BIGNUM *DH_get0_g(const DH *dh) { return dh->g; }
 
 void DH_get0_key(const DH *dh, const BIGNUM **out_pub_key,
                  const BIGNUM **out_priv_key) {
-  if (out_pub_key != NULL) {
+  if (out_pub_key != nullptr) {
     *out_pub_key = dh->pub_key;
   }
-  if (out_priv_key != NULL) {
+  if (out_priv_key != nullptr) {
     *out_priv_key = dh->priv_key;
   }
 }
 
 int DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key) {
-  if (pub_key != NULL) {
+  if (pub_key != nullptr) {
     BN_free(dh->pub_key);
     dh->pub_key = pub_key;
   }
 
-  if (priv_key != NULL) {
+  if (priv_key != nullptr) {
     BN_free(dh->priv_key);
     dh->priv_key = priv_key;
   }
@@ -98,40 +100,41 @@ int DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key) {
 
 void DH_get0_pqg(const DH *dh, const BIGNUM **out_p, const BIGNUM **out_q,
                  const BIGNUM **out_g) {
-  if (out_p != NULL) {
+  if (out_p != nullptr) {
     *out_p = dh->p;
   }
-  if (out_q != NULL) {
+  if (out_q != nullptr) {
     *out_q = dh->q;
   }
-  if (out_g != NULL) {
+  if (out_g != nullptr) {
     *out_g = dh->g;
   }
 }
 
 int DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g) {
-  if ((dh->p == NULL && p == NULL) || (dh->g == NULL && g == NULL)) {
+  if ((dh->p == nullptr && p == nullptr) ||
+      (dh->g == nullptr && g == nullptr)) {
     return 0;
   }
 
-  if (p != NULL) {
+  if (p != nullptr) {
     BN_free(dh->p);
     dh->p = p;
   }
 
-  if (q != NULL) {
+  if (q != nullptr) {
     BN_free(dh->q);
     dh->q = q;
   }
 
-  if (g != NULL) {
+  if (g != nullptr) {
     BN_free(dh->g);
     dh->g = g;
   }
 
   // Invalidate the cached Montgomery parameters.
   BN_MONT_CTX_free(dh->method_mont_p);
-  dh->method_mont_p = NULL;
+  dh->method_mont_p = nullptr;
   return 1;
 }
 
@@ -151,7 +154,7 @@ int DH_generate_key(DH *dh) {
   bool generate_new_key = false;
   BIGNUM *pub_key = nullptr, *priv_key = nullptr;
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     goto err;
   }
@@ -202,7 +205,7 @@ int DH_generate_key(DH *dh) {
       // clamp |dh->priv_length| before invoking the algorithm.
 
       // Compute M = min(2^N, q).
-      bssl::UniquePtr<BIGNUM> priv_key_limit(BN_new());
+      UniquePtr<BIGNUM> priv_key_limit(BN_new());
       if (priv_key_limit == nullptr) {
         goto err;
       }
@@ -254,7 +257,7 @@ static int dh_compute_key(DH *dh, BIGNUM *out_shared_key,
     return 0;
   }
 
-  if (dh->priv_key == NULL) {
+  if (dh->priv_key == nullptr) {
     OPENSSL_PUT_ERROR(DH, DH_R_NO_PRIVATE_VALUE);
     return 0;
   }
@@ -265,7 +268,7 @@ static int dh_compute_key(DH *dh, BIGNUM *out_shared_key,
     return 0;
   }
 
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *p_minus_1 = BN_CTX_get(ctx);
   if (!p_minus_1 ||
       !BN_MONT_CTX_set_locked(&dh->method_mont_p, &dh->method_mont_p_lock,
@@ -290,13 +293,13 @@ static int dh_compute_key(DH *dh, BIGNUM *out_shared_key,
   return 1;
 }
 
-int dh_compute_key_padded_no_self_test(unsigned char *out,
-                                       const BIGNUM *peers_key, DH *dh) {
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+int bssl::dh_compute_key_padded_no_self_test(unsigned char *out,
+                                             const BIGNUM *peers_key, DH *dh) {
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     return -1;
   }
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   int dh_size = DH_size(dh);
   BIGNUM *shared_key = BN_CTX_get(ctx.get());
   if (shared_key == nullptr ||
@@ -316,11 +319,11 @@ int DH_compute_key_padded(unsigned char *out, const BIGNUM *peers_key, DH *dh) {
 int DH_compute_key(unsigned char *out, const BIGNUM *peers_key, DH *dh) {
   boringssl_ensure_ffdh_self_test();
 
-  bssl::UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     return -1;
   }
-  bssl::BN_CTXScope scope(ctx.get());
+  BN_CTXScope scope(ctx.get());
   BIGNUM *shared_key = BN_CTX_get(ctx.get());
   if (shared_key == nullptr ||
       !dh_compute_key(dh, shared_key, peers_key, ctx.get())) {
@@ -354,7 +357,8 @@ int DH_compute_key_hashed(DH *dh, uint8_t *out, size_t *out_len,
       // Also, padded output avoids side-channels, so is always strongly
       // advisable.
       DH_compute_key_padded(shared_bytes, peers_key, dh) != (int)dh_len ||
-      !EVP_Digest(shared_bytes, dh_len, out, &out_len_unsigned, digest, NULL) ||
+      !EVP_Digest(shared_bytes, dh_len, out, &out_len_unsigned, digest,
+                  nullptr) ||
       out_len_unsigned != digest_len) {
     goto err;
   }
@@ -377,7 +381,7 @@ int DH_up_ref(DH *dh) {
   return 1;
 }
 
-DH *DH_get_rfc7919_2048(void) {
+DH *DH_get_rfc7919_2048() {
   // This is the prime from https://tools.ietf.org/html/rfc7919#appendix-A.1,
   // which is specifically approved for FIPS in appendix D of SP 800-56Ar3.
   static const BN_ULONG kFFDHE2048Data[] = {
@@ -399,10 +403,10 @@ DH *DH_get_rfc7919_2048(void) {
       TOBN(0xadf85458, 0xa2bb4a9a), TOBN(0xffffffff, 0xffffffff),
   };
 
-  bssl::UniquePtr<BIGNUM> ffdhe2048_p(BN_new());
-  bssl::UniquePtr<BIGNUM> ffdhe2048_q(BN_new());
-  bssl::UniquePtr<BIGNUM> ffdhe2048_g(BN_new());
-  bssl::UniquePtr<DH> dh(DH_new());
+  UniquePtr<BIGNUM> ffdhe2048_p(BN_new());
+  UniquePtr<BIGNUM> ffdhe2048_q(BN_new());
+  UniquePtr<BIGNUM> ffdhe2048_g(BN_new());
+  UniquePtr<DH> dh(DH_new());
   if (!ffdhe2048_p || !ffdhe2048_q || !ffdhe2048_g || !dh) {
     return nullptr;
   }

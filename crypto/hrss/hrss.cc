@@ -38,6 +38,9 @@
 #include <arm_neon.h>
 #endif
 
+
+using namespace bssl;
+
 // This is an implementation of [HRSS], but with a KEM transformation based on
 // [SXY]. The primary references are:
 
@@ -49,7 +52,6 @@
 // https://assets.onboardsecurity.com/static/downloads/NTRU/resources/NTRUTech014.pdf
 // NTRUCOMP: https://eprint.iacr.org/2018/1174
 // SAFEGCD: https://gcd.cr.yp.to/papers.html#safegcd
-
 
 // Vector operations.
 //
@@ -64,10 +66,11 @@
 #if defined(OPENSSL_SSE2) && (defined(__clang__) || !defined(_MSC_VER))
 
 #define HRSS_HAVE_VECTOR_UNIT
+
 typedef __m128i vec_t;
 
 // vec_capable returns one iff the current platform supports SSE2.
-static int vec_capable(void) { return 1; }
+static int vec_capable() { return 1; }
 
 // vec_add performs a pair-wise addition of four uint16s from |a| and |b|.
 static inline vec_t vec_add(vec_t a, vec_t b) { return _mm_add_epi16(a, b); }
@@ -192,7 +195,7 @@ typedef uint16x8_t vec_t;
 // These functions perform the same actions as the SSE2 function of the same
 // name, above.
 
-static int vec_capable(void) { return CRYPTO_is_NEON_capable(); }
+static int vec_capable() { return CRYPTO_is_NEON_capable(); }
 
 static inline vec_t vec_add(vec_t a, vec_t b) { return a + b; }
 
@@ -647,8 +650,8 @@ static void poly3_mul_aux(const struct poly3_span *out,
 }
 
 // HRSS_poly3_mul sets |*out| to |x|×|y| mod Φ(N).
-void HRSS_poly3_mul(struct poly3 *out, const struct poly3 *x,
-                    const struct poly3 *y) {
+void bssl::HRSS_poly3_mul(struct poly3 *out, const struct poly3 *x,
+                          const struct poly3 *y) {
   crypto_word_t prod_s[WORDS_PER_POLY * 2];
   crypto_word_t prod_a[WORDS_PER_POLY * 2];
   crypto_word_t scratch_s[WORDS_PER_POLY * 2 + 2];
@@ -753,7 +756,7 @@ static void poly3_invert_vec(struct poly3 *out, const struct poly3 *in) {
     const crypto_word_t delta_is_non_zero = ~constant_time_is_zero_w(delta);
     const vec_t g_has_constant_term = vec_broadcast_bit(g_a[0]);
     const vec_t mask_w = {
-        static_cast<std::remove_reference<decltype(mask_w[0])>::type>(
+        static_cast<std::remove_reference_t<decltype(mask_w[0])>>(
             delta_is_non_negative & delta_is_non_zero)};
     const vec_t mask = vec_broadcast_bit(mask_w) & g_has_constant_term;
 
@@ -782,7 +785,7 @@ static void poly3_invert_vec(struct poly3 *out, const struct poly3 *in) {
 
 // HRSS_poly3_invert sets |*out| to |in|^-1, i.e. such that |out|×|in| == 1 mod
 // Φ(N).
-void HRSS_poly3_invert(struct poly3 *out, const struct poly3 *in) {
+void bssl::HRSS_poly3_invert(struct poly3 *out, const struct poly3 *in) {
   // The vector version of this function seems slightly slower on AArch64, but
   // is useful on ARMv7 and x86-64.
 #if defined(HRSS_HAVE_VECTOR_UNIT) && !defined(OPENSSL_AARCH64)
@@ -1637,7 +1640,7 @@ static int poly_unmarshal(struct poly *out, const uint8_t in[POLY_BYTES]) {
     return 0;
   }
 
-  // Set the final coefficient as specifed in [HRSSNIST] 1.9.2 step 6.
+  // Set the final coefficient as specified in [HRSSNIST] 1.9.2 step 6.
   uint32_t sum = 0;
   for (size_t i = 0; i < N - 1; i++) {
     sum += out->v[i];
@@ -1885,8 +1888,8 @@ static struct private_key *private_key_from_external(
 static void *malloc_align32(void **out_ptr, size_t size) {
   void *ptr = OPENSSL_malloc(size + 31);
   if (!ptr) {
-    *out_ptr = NULL;
-    return NULL;
+    *out_ptr = nullptr;
+    return nullptr;
   }
 
   *out_ptr = ptr;

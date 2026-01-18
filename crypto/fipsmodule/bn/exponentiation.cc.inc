@@ -25,6 +25,9 @@
 #include "internal.h"
 #include "rsaz_exp.h"
 
+
+using namespace bssl;
+
 #if defined(OPENSSL_BN_ASM_MONT5)
 
 // bn_mul_mont_gather5 multiples loads index |power| of |table|, multiplies it
@@ -151,15 +154,15 @@ int BN_mod_exp_mont(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
 
   BIGNUM *val[TABLE_SIZE];
 
-  bssl::BN_CTXScope scope(ctx);
+  BN_CTXScope scope(ctx);
   BIGNUM *r = BN_CTX_get(ctx);
   val[0] = BN_CTX_get(ctx);
-  if (r == NULL || val[0] == NULL) {
+  if (r == nullptr || val[0] == nullptr) {
     return 0;
   }
 
   // Allocate a montgomery context if it was not supplied by the caller.
-  bssl::UniquePtr<BN_MONT_CTX> new_mont;
+  UniquePtr<BN_MONT_CTX> new_mont;
   if (mont == nullptr) {
     new_mont.reset(BN_MONT_CTX_new_consttime(m, ctx));
     if (new_mont == nullptr) {
@@ -178,12 +181,12 @@ int BN_mod_exp_mont(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
   }
   if (window > 1) {
     BIGNUM *d = BN_CTX_get(ctx);
-    if (d == NULL || !BN_mod_mul_montgomery(d, val[0], val[0], mont, ctx)) {
+    if (d == nullptr || !BN_mod_mul_montgomery(d, val[0], val[0], mont, ctx)) {
       return 0;
     }
     for (int i = 1; i < 1 << (window - 1); i++) {
       val[i] = BN_CTX_get(ctx);
-      if (val[i] == NULL ||
+      if (val[i] == nullptr ||
           !BN_mod_mul_montgomery(val[i], val[i - 1], d, mont, ctx)) {
         return 0;
       }
@@ -249,9 +252,9 @@ int BN_mod_exp_mont(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
   return BN_from_montgomery(rr, r, mont, ctx);
 }
 
-void bn_mod_exp_mont_small(BN_ULONG *r, const BN_ULONG *a, size_t num,
-                           const BN_ULONG *p, size_t num_p,
-                           const BN_MONT_CTX *mont) {
+void bssl::bn_mod_exp_mont_small(BN_ULONG *r, const BN_ULONG *a, size_t num,
+                                 const BN_ULONG *p, size_t num_p,
+                                 const BN_MONT_CTX *mont) {
   if (num != (size_t)mont->N.width || num > BN_SMALL_MAX_WORDS ||
       num_p > SIZE_MAX / BN_BITS2) {
     abort();
@@ -341,9 +344,10 @@ void bn_mod_exp_mont_small(BN_ULONG *r, const BN_ULONG *a, size_t num,
   OPENSSL_cleanse(val, sizeof(val));
 }
 
-void bn_mod_inverse0_prime_mont_small(BN_ULONG *r, const BN_ULONG *a,
-                                      size_t num, const BN_MONT_CTX *mont) {
-  if (num != (size_t)mont->N.width || num > BN_SMALL_MAX_WORDS) {
+void bssl::bn_mod_inverse0_prime_mont_small(BN_ULONG *r, const BN_ULONG *a,
+                                            size_t num,
+                                            const BN_MONT_CTX *mont) {
+  if (num != (size_t)mont->N.width || num > BN_SMALL_MAX_WORDS || num == 0) {
     abort();
   }
 
@@ -414,9 +418,9 @@ int BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
                               const BN_MONT_CTX *mont) {
   int i, ret = 0, wvalue;
 
-  void *powerbuf_free = NULL;
+  void *powerbuf_free = nullptr;
   size_t powerbuf_len = 0;
-  BN_ULONG *powerbuf = NULL;
+  BN_ULONG *powerbuf = nullptr;
 
   if (!BN_is_odd(m)) {
     OPENSSL_PUT_ERROR(BN, BN_R_CALLED_WITH_EVEN_MODULUS);
@@ -448,7 +452,7 @@ int BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
 
   // Allocate a montgomery context if it was not supplied by the caller.
   int top, num_powers, window;
-  bssl::UniquePtr<BN_MONT_CTX> new_mont;
+  UniquePtr<BN_MONT_CTX> new_mont;
   if (mont == nullptr) {
     new_mont.reset(BN_MONT_CTX_new_consttime(m, ctx));
     if (new_mont == nullptr) {
@@ -516,11 +520,11 @@ int BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
     powerbuf = storage;
   }
   // |storage| is more than large enough to handle 1024-bit inputs.
-  assert(powerbuf != NULL || top * BN_BITS2 > 1024);
+  assert(powerbuf != nullptr || top * BN_BITS2 > 1024);
 #endif
-  if (powerbuf == NULL) {
+  if (powerbuf == nullptr) {
     powerbuf_free = OPENSSL_malloc(powerbuf_len + MOD_EXP_CTIME_ALIGN);
-    if (powerbuf_free == NULL) {
+    if (powerbuf_free == nullptr) {
       goto err;
     }
     powerbuf = reinterpret_cast<BN_ULONG *>(
@@ -731,7 +735,7 @@ int BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
   ret = 1;
 
 err:
-  if (powerbuf != NULL && powerbuf_free == NULL) {
+  if (powerbuf != nullptr && powerbuf_free == nullptr) {
     OPENSSL_cleanse(powerbuf, powerbuf_len);
   }
   OPENSSL_free(powerbuf_free);

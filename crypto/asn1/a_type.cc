@@ -24,24 +24,26 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 int ASN1_TYPE_get(const ASN1_TYPE *a) {
   switch (a->type) {
     case V_ASN1_NULL:
     case V_ASN1_BOOLEAN:
       return a->type;
     case V_ASN1_OBJECT:
-      return a->value.object != NULL ? a->type : 0;
+      return a->value.object != nullptr ? a->type : 0;
     default:
-      return a->value.asn1_string != NULL ? a->type : 0;
+      return a->value.asn1_string != nullptr ? a->type : 0;
   }
 }
 
-const void *asn1_type_value_as_pointer(const ASN1_TYPE *a) {
+const void *bssl::asn1_type_value_as_pointer(const ASN1_TYPE *a) {
   switch (a->type) {
     case V_ASN1_NULL:
-      return NULL;
+      return nullptr;
     case V_ASN1_BOOLEAN:
-      return a->value.boolean ? (void *)0xff : NULL;
+      return a->value.boolean ? (void *)0xff : nullptr;
     case V_ASN1_OBJECT:
       return a->value.object;
     default:
@@ -49,7 +51,7 @@ const void *asn1_type_value_as_pointer(const ASN1_TYPE *a) {
   }
 }
 
-void asn1_type_set0_string(ASN1_TYPE *a, ASN1_STRING *str) {
+void bssl::asn1_type_set0_string(ASN1_TYPE *a, ASN1_STRING *str) {
   // |ASN1_STRING| types are almost the same as |ASN1_TYPE| types, except that
   // the negative flag is not reflected into |ASN1_TYPE|.
   int type = str->type;
@@ -66,21 +68,21 @@ void asn1_type_set0_string(ASN1_TYPE *a, ASN1_STRING *str) {
   ASN1_TYPE_set(a, type, str);
 }
 
-void asn1_type_cleanup(ASN1_TYPE *a) {
+void bssl::asn1_type_cleanup(ASN1_TYPE *a) {
   switch (a->type) {
     case V_ASN1_NULL:
-      a->value.ptr = NULL;
+      a->value.ptr = nullptr;
       break;
     case V_ASN1_BOOLEAN:
       a->value.boolean = ASN1_BOOLEAN_NONE;
       break;
     case V_ASN1_OBJECT:
       ASN1_OBJECT_free(a->value.object);
-      a->value.object = NULL;
+      a->value.object = nullptr;
       break;
     default:
       ASN1_STRING_free(a->value.asn1_string);
-      a->value.asn1_string = NULL;
+      a->value.asn1_string = nullptr;
       break;
   }
 }
@@ -90,7 +92,7 @@ void ASN1_TYPE_set(ASN1_TYPE *a, int type, void *value) {
   a->type = type;
   switch (type) {
     case V_ASN1_NULL:
-      a->value.ptr = NULL;
+      a->value.ptr = nullptr;
       break;
     case V_ASN1_BOOLEAN:
       a->value.boolean = value ? ASN1_BOOLEAN_TRUE : ASN1_BOOLEAN_FALSE;
@@ -172,7 +174,7 @@ int ASN1_TYPE_cmp(const ASN1_TYPE *a, const ASN1_TYPE *b) {
   return result;
 }
 
-int asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
+int bssl::asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
   CBS_ASN1_TAG tag;
   CBS elem;
   size_t header_len;
@@ -183,7 +185,7 @@ int asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
 
   // Handle the non-string types.
   if (tag == CBS_ASN1_OBJECT) {
-    bssl::UniquePtr<ASN1_OBJECT> obj(asn1_parse_object(&elem, /*tag=*/0));
+    UniquePtr<ASN1_OBJECT> obj(asn1_parse_object(&elem, /*tag=*/0));
     if (obj == nullptr) {
       return 0;
     }
@@ -211,7 +213,7 @@ int asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
   }
 
   // All other cases are handled identically to the string-based ANY parser.
-  bssl::UniquePtr<ASN1_STRING> str(ASN1_STRING_new());
+  UniquePtr<ASN1_STRING> str(ASN1_STRING_new());
   if (str == nullptr || !asn1_parse_any_as_string(&elem, str.get())) {
     return 0;
   }
@@ -219,7 +221,7 @@ int asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
   return 1;
 }
 
-int asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
+int bssl::asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
   CBS_ASN1_TAG tag;
   CBS elem;
   size_t header_len;
@@ -346,7 +348,10 @@ int asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
   }
 }
 
-int asn1_marshal_any(CBB *out, const ASN1_TYPE *in) {
+static int asn1_marshal_string_with_type(CBB *out, const ASN1_STRING *in,
+                                         int type);
+
+int bssl::asn1_marshal_any(CBB *out, const ASN1_TYPE *in) {
   switch (in->type) {
     case V_ASN1_OBJECT:
       return asn1_marshal_object(out, in->value.object, /*tag=*/0);
@@ -356,10 +361,7 @@ int asn1_marshal_any(CBB *out, const ASN1_TYPE *in) {
       return CBB_add_asn1_bool(out, in->value.boolean != ASN1_BOOLEAN_FALSE);
     case V_ASN1_INTEGER:
     case V_ASN1_ENUMERATED:
-      return asn1_marshal_integer(out, in->value.integer,
-                                  static_cast<CBS_ASN1_TAG>(in->type));
     case V_ASN1_BIT_STRING:
-      return asn1_marshal_bit_string(out, in->value.bit_string, /*tag=*/0);
     case V_ASN1_OCTET_STRING:
     case V_ASN1_NUMERICSTRING:
     case V_ASN1_PRINTABLESTRING:
@@ -374,17 +376,60 @@ int asn1_marshal_any(CBB *out, const ASN1_TYPE *in) {
     case V_ASN1_UNIVERSALSTRING:
     case V_ASN1_BMPSTRING:
     case V_ASN1_UTF8STRING:
-      return asn1_marshal_octet_string(out, in->value.asn1_string,
-                                       static_cast<CBS_ASN1_TAG>(in->type));
     case V_ASN1_SEQUENCE:
     case V_ASN1_SET:
     case V_ASN1_OTHER:
-      // These three types store the whole TLV as contents.
-      return CBB_add_bytes(out, ASN1_STRING_get0_data(in->value.asn1_string),
-                           ASN1_STRING_length(in->value.asn1_string));
+      // If |in->type| and the underlying |ASN1_STRING| type don't match, use
+      // |in->type|. See b/446993031.
+      return asn1_marshal_string_with_type(out, in->value.asn1_string,
+                                           in->type);
     default:
       // |ASN1_TYPE|s can have type -1 when default-constructed.
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_WRONG_TYPE);
       return 0;
   }
+}
+
+static int asn1_marshal_string_with_type(CBB *out, const ASN1_STRING *in,
+                                         int type) {
+  switch (type) {
+    case V_ASN1_INTEGER:
+    case V_ASN1_NEG_INTEGER:
+      return asn1_marshal_integer(out, in, CBS_ASN1_INTEGER);
+    case V_ASN1_ENUMERATED:
+    case V_ASN1_NEG_ENUMERATED:
+      return asn1_marshal_integer(out, in, CBS_ASN1_ENUMERATED);
+    case V_ASN1_BIT_STRING:
+      return asn1_marshal_bit_string(out, in, /*tag=*/0);
+    case V_ASN1_OCTET_STRING:
+    case V_ASN1_NUMERICSTRING:
+    case V_ASN1_PRINTABLESTRING:
+    case V_ASN1_T61STRING:
+    case V_ASN1_VIDEOTEXSTRING:
+    case V_ASN1_IA5STRING:
+    case V_ASN1_UTCTIME:
+    case V_ASN1_GENERALIZEDTIME:
+    case V_ASN1_GRAPHICSTRING:
+    case V_ASN1_VISIBLESTRING:
+    case V_ASN1_GENERALSTRING:
+    case V_ASN1_UNIVERSALSTRING:
+    case V_ASN1_BMPSTRING:
+    case V_ASN1_UTF8STRING:
+      return asn1_marshal_octet_string(out, in,
+                                       static_cast<CBS_ASN1_TAG>(in->type));
+    case V_ASN1_SEQUENCE:
+    case V_ASN1_SET:
+    case V_ASN1_OTHER:
+      // These three types store the whole TLV as contents.
+      return CBB_add_bytes(out, ASN1_STRING_get0_data(in),
+                           ASN1_STRING_length(in));
+    default:
+      // |ASN1_TYPE|s can have type -1 when default-constructed.
+      OPENSSL_PUT_ERROR(ASN1, ASN1_R_WRONG_TYPE);
+      return 0;
+  }
+}
+
+int bssl::asn1_marshal_any_string(CBB *out, const ASN1_STRING *in) {
+  return asn1_marshal_string_with_type(out, in, in->type);
 }
