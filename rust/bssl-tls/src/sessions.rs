@@ -17,11 +17,11 @@
 use alloc::vec::Vec;
 use core::ptr::{
     NonNull,
-    null,
     null_mut, //
 };
 
 use crate::{
+    call_slice_getter,
     config::ProtocolVersion,
     context::TlsContext,
     errors::Error,
@@ -76,21 +76,6 @@ impl Clone for TlsSession {
         }
         Self(self.0)
     }
-}
-
-macro_rules! call_slice_getter {
-    ($fn:path, $obj:expr) => {{
-        let mut data = null();
-        let mut len = 0;
-        unsafe {
-            // Safety: `obj`, `data` and `len` are all valid.
-            $fn($obj, &raw mut data, &raw mut len);
-        }
-        unsafe {
-            // Safety: data and len are returned by BoringSSL and are valid.
-            sanitize_slice(data, len)
-        }
-    }};
 }
 
 impl TlsSession {

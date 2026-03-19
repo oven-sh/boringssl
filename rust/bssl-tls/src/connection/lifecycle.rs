@@ -165,8 +165,7 @@ where
 impl<R> TlsConnection<R, TlsMode> {
     /// Inspect if the connection is suspended for which reason, after invocation of I/O methods.
     pub fn take_pending_reason(&mut self) -> Option<TlsRetryReason> {
-        let methods = self.get_connection_methods();
-        methods.take_pending_reason()
+        self.get_connection_methods().take_pending_reason()
     }
 }
 

@@ -52,8 +52,7 @@ where
             // Safety: the `bio` pointer has been sanitised and `self.0` is still valid.
             bssl_sys::SSL_set_bio(self.ptr(), bio.ptr(), bio.ptr());
         }
-        let methods = self.get_connection_methods();
-        methods.bio = Some(bio);
+        self.get_connection_methods().bio = Some(bio);
         Ok(self)
     }
 
@@ -74,8 +73,7 @@ where
             // Safety: the `bio` pointer has been sanitised and `self.0` is still valid.
             bssl_sys::SSL_set_bio(self.ptr(), bio.ptr(), bio.ptr());
         }
-        let methods = self.get_connection_methods();
-        methods.bio = Some(bio);
+        self.get_connection_methods().bio = Some(bio);
         Ok(self)
     }
 

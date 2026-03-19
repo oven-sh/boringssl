@@ -153,7 +153,6 @@ where
         }
     }
 
-    #[allow(unused)]
     fn get_context_methods(&mut self) -> &mut methods::RustContextMethods<M> {
         let methods = unsafe {
             // Safety: the validity of the handle `self.0` is witnessed by `self`.

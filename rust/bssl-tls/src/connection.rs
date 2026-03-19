@@ -107,6 +107,14 @@ where
         }
     }
 
+    fn get_connection_methods(&mut self) -> &mut methods::RustConnectionMethods<M> {
+        unsafe {
+            // Safety: the validity of the handle `self.0` is witnessed by
+            // `self`.
+            get_connection_methods(self.ptr())
+        }
+    }
+
     /// Disable session creation.
     pub fn disable_session(&mut self) -> &mut Self {
         let ptr = self.ptr();
@@ -211,8 +219,7 @@ where
         } else {
             *waker_data = Some(waker.clone());
         }
-        let methods = self.get_connection_methods();
-        methods.set_waker(waker);
+        self.get_connection_methods().set_waker(waker);
     }
 }
 

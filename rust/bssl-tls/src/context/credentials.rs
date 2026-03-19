@@ -30,7 +30,9 @@ use crate::{
     credentials::{
         CertificateVerificationMode,
         SignatureAlgorithm,
-        TlsCredential, //
+        TlsCredential,
+        VerifyCertificate,
+        cert_cb, //
     },
     errors::Error,
     ffi::slice_into_ffi_raw_parts,
@@ -79,9 +81,54 @@ where
     ) -> &mut Self {
         let conn = self.ptr();
         unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_CTX_set_verify(conn, mode as _, None);
+        }
+        self
+    }
+
+    /// Set certificate verification mode and custom verifier.
+    ///
+    /// # Setting custom certificate verifier
+    ///
+    /// See [`VerifyCertificate`] for how to implement a custom verifier.
+    ///
+    /// # Client certificate verification for servers, mutual TLS
+    ///
+    /// Server can choose to request a certificate from the client by setting `mode` to
+    /// - [`CertificateVerificationMode::PeerCertRequested`] which may still let handshake complete
+    ///   if the certificate request by the server is not fulfilled.
+    /// - [`CertificateVerificationMode::PeerCertMandatory`] which will abort handshake if
+    ///   the request is not fulfilled.
+    pub fn with_certificate_verifier<V>(
+        &mut self,
+        mode: CertificateVerificationMode,
+        verifier: V,
+    ) -> &mut Self
+    where
+        V: VerifyCertificate + 'static,
+    {
+        let conn = self.ptr();
+        unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_CTX_set_custom_verify(
+                conn,
+                mode as _,
+                Some(cert_cb::<super::methods::RustContextMethods<M>>),
+            );
+        }
+        self.get_context_methods().verify_certificate_methods = Some(Box::new(verifier) as _);
+        self
+    }
+
+    /// Remove custom certificate verifier.
+    pub fn without_certificate_verifier(&mut self, mode: CertificateVerificationMode) -> &mut Self {
+        let conn = self.ptr();
+        unsafe {
             // Safety: we only uninstall the vtable.
             bssl_sys::SSL_CTX_set_custom_verify(conn, mode as _, None);
         }
+        self.get_context_methods().verify_certificate_methods = None;
         self
     }
 
