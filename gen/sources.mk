@@ -82,6 +82,7 @@ boringssl_bcm_internal_headers := \
   crypto/fipsmodule/mldsa/mldsa.cc.inc \
   crypto/fipsmodule/mlkem/fips_known_values.inc \
   crypto/fipsmodule/mlkem/mlkem.cc.inc \
+  crypto/fipsmodule/rand/android_entropy_client.cc.inc \
   crypto/fipsmodule/rand/ctrdrbg.cc.inc \
   crypto/fipsmodule/rand/rand.cc.inc \
   crypto/fipsmodule/rsa/padding.cc.inc \
@@ -428,7 +429,6 @@ boringssl_crypto_sources := \
   crypto/rand/forkunsafe.cc \
   crypto/rand/getentropy.cc \
   crypto/rand/ios.cc \
-  crypto/rand/passive.cc \
   crypto/rand/rand.cc \
   crypto/rand/trusty.cc \
   crypto/rand/urandom.cc \
