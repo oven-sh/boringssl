@@ -23,6 +23,8 @@ use crate::{
     errors::Error,
 };
 
+// TODO(@xfding): this function will come useful for Windows tests.
+#[allow(unused)]
 fn dumb_dtls_server_client() -> Result<
     (
         TlsConnection<Server, DtlsMode>,
@@ -100,4 +102,57 @@ async fn async_dtls_over_fd() -> Result<(), Error> {
     client_conn.set_io(client_sock).unwrap();
 
     async_ping_pong(server_conn, client_conn).await
+}
+
+#[test]
+fn test_async_dtls() -> Result<(), Error> {
+    use crate::io::IoStatus;
+    use crate::tests::{TEST_DATA, create_mock_datagram};
+
+    let (mut server_conn, mut client_conn) = dumb_dtls_server_client()?;
+
+    let (client_socket, server_socket, mut executor) = create_mock_datagram();
+
+    server_conn.set_io(server_socket)?;
+    client_conn.set_io(client_socket)?;
+
+    let test_future = async {
+        let server_handshake =
+            async { server_conn.in_handshake().unwrap().async_handshake().await };
+        let client_handshake =
+            async { client_conn.in_handshake().unwrap().async_handshake().await };
+
+        futures::future::try_join(server_handshake, client_handshake).await?;
+
+        let server_data = async {
+            let mut buf = [0u8; TEST_DATA.len()];
+            let mut read_bytes = 0;
+            while read_bytes < TEST_DATA.len() {
+                match server_conn
+                    .as_pin_mut()
+                    .async_read(&mut buf[read_bytes..])
+                    .await?
+                {
+                    IoStatus::Ok(n) => read_bytes += n,
+                    IoStatus::EndOfStream => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(&buf, TEST_DATA);
+            Ok::<(), Error>(())
+        };
+
+        let client_data = async {
+            client_conn.as_pin_mut().async_write(TEST_DATA).await?;
+            Ok::<(), Error>(())
+        };
+
+        futures::future::try_join(server_data, client_data).await?;
+
+        Ok::<(), Error>(())
+    };
+
+    executor.run(test_future)?;
+
+    Ok(())
 }
