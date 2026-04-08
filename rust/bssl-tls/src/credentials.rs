@@ -76,9 +76,13 @@ pub struct TlsCredentialBuilder<Mode>(NonNull<bssl_sys::SSL_CREDENTIAL>, Phantom
 /// X.509 credential
 pub enum X509Mode {}
 
+/// Raw Public Key credential
+pub enum RawPublicKeyMode {}
+
 pub(crate) trait NeedsPrivateKey {}
 
 impl NeedsPrivateKey for X509Mode {}
+impl NeedsPrivateKey for RawPublicKeyMode {}
 
 // Safety: At this type state, the credential handle is exclusively owned.
 unsafe impl<M> Send for TlsCredentialBuilder<M> {}
@@ -121,6 +125,27 @@ impl TlsCredentialBuilder<X509Mode> {
             NonNull::new(unsafe {
                 // Safety: this call has no side-effect other than allocation.
                 bssl_sys::SSL_CREDENTIAL_new_x509()
+            })
+            .expect("allocation failure"),
+            PhantomData,
+        );
+        this.set_ex_data()
+    }
+}
+
+impl TlsCredentialBuilder<RawPublicKeyMode> {
+    /// Construct raw public key credential instance.
+    ///
+    /// TLS connection may use this credential to perform authentication per [RFC 7250].
+    ///
+    /// [RFC 7250]: <https://tools.ietf.org/html/rfc7250>
+    pub fn new_raw_public_key(mut key: PrivateKey) -> Self {
+        let this = Self(
+            NonNull::new(unsafe {
+                // Safety:
+                // - the `PrivateKey` type already contains both public and private key parts.
+                // - the constructor call also claims the ownership of the key.
+                bssl_sys::SSL_CREDENTIAL_new_raw_public_key(key.as_mut_ptr())
             })
             .expect("allocation failure"),
             PhantomData,
@@ -828,6 +853,21 @@ pub(crate) unsafe extern "C" fn cert_cb<M: VerifyCertificateMethods>(
             }
         }
     })
+}
+
+bssl_macros::bssl_enum! {
+    /// [IANA] designation of TLS certificate types.
+    ///
+    /// [IANA]: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#tls-extensiontype-values-3
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+    pub enum CertificateType: u8 {
+        /// X.509 certificate type.
+        X509 = bssl_sys::TLSEXT_cert_type_x509 as u8,
+        /// Raw Public Key certificate type per [RFC 7250].
+        ///
+        /// [RFC 7250]: https://datatracker.ietf.org/doc/html/rfc7250
+        Rpk = bssl_sys::TLSEXT_cert_type_rpk as u8,
+    }
 }
 
 bssl_macros::bssl_enum! {

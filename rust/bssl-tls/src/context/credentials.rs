@@ -28,6 +28,7 @@ use crate::{
         SupportedMode, //
     },
     credentials::{
+        CertificateType,
         CertificateVerificationMode,
         SignatureAlgorithm,
         TlsCredential,
@@ -139,6 +140,40 @@ where
             // - the validity of the handle `self.0` is witnessed by `self`.
             // - the method will bump the refcount of the credential for ownership.
             bssl_sys::SSL_CTX_add1_credential(self.ptr(), credential.ptr())
+        });
+        Ok(self)
+    }
+
+    /// Set the list of accepted peer certificate types.
+    pub fn with_accepted_peer_cert_types(
+        &mut self,
+        types: &[CertificateType],
+    ) -> Result<&mut Self, Error> {
+        let (ptr, len) = slice_into_ffi_raw_parts(types);
+        check_lib_error!(unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL_CTX` handle.
+            // - `ptr` is a valid pointer to an array of `i32` representing certificate types.
+            // - `len` is the number of elements in the array.
+            // - The function copies the data, so the pointer only needs to be valid for the call.
+            bssl_sys::SSL_CTX_set1_accepted_peer_cert_types(self.ptr(), ptr as *const _, len)
+        });
+        Ok(self)
+    }
+
+    /// Set the list of available client certificate types.
+    pub fn with_available_client_cert_types(
+        &mut self,
+        types: &[CertificateType],
+    ) -> Result<&mut Self, Error> {
+        let (ptr, len) = slice_into_ffi_raw_parts(types);
+        check_lib_error!(unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL_CTX` handle.
+            // - `ptr` is a valid pointer to an array of `i32` representing certificate types.
+            // - `len` is the number of elements in the array.
+            // - The function copies the data, so the pointer only needs to be valid for the call.
+            bssl_sys::SSL_CTX_set1_available_client_cert_types(self.ptr(), ptr as *const _, len)
         });
         Ok(self)
     }

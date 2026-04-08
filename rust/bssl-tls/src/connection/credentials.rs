@@ -31,6 +31,7 @@ use crate::{
     check_lib_error,
     config::ConfigurationError,
     connection::{
+        TlsConnection,
         TlsConnectionBuilder,
         lifecycle::{
             EstablishedTlsConnection,
@@ -38,6 +39,7 @@ use crate::{
         }, //
     }, //
     credentials::{
+        CertificateType,
         CertificateVerificationMode,
         SignatureAlgorithm,
         TlsCredential,
@@ -105,6 +107,28 @@ where
         }
         self.get_connection_methods().verify_certificate_methods = None;
         self
+    }
+}
+
+impl<M> TlsConnectionBuilder<Client, M>
+where
+    M: HasTlsConnectionMethod,
+{
+    /// Set the list of available client certificate types.
+    pub fn with_available_client_cert_types(
+        &mut self,
+        types: &[CertificateType],
+    ) -> Result<&mut Self, Error> {
+        let (ptr, len) = slice_into_ffi_raw_parts(types);
+        check_lib_error!(unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL` handle.
+            // - `ptr` is a valid pointer to an array of `i32` representing certificate types.
+            // - `len` is the number of elements in the array.
+            // - The function copies the data, so the pointer only needs to be valid for the call.
+            bssl_sys::SSL_set1_available_client_cert_types(self.ptr(), ptr as *const _, len)
+        });
+        Ok(self)
     }
 }
 
@@ -302,5 +326,43 @@ impl<'a, R, M> EstablishedTlsConnection<'a, R, M> {
             )
         });
         Ok(())
+    }
+}
+
+impl<R, M> TlsConnection<R, M> {
+    /// Get the peer's [`CertificateType`].
+    pub fn get_peer_certificate_type(&self) -> Option<CertificateType> {
+        let ty = unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL` handle.
+            bssl_sys::SSL_get_peer_cert_type(self.ptr())
+        };
+        ty.try_into().ok().and_then(|ty: u8| ty.try_into().ok())
+    }
+
+    /// Get the peer's raw public key as DER-encoded SubjectPublicKeyInfo.
+    pub fn get_peer_raw_public_key(&self) -> Option<Vec<u8>> {
+        let pkey = unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL` handle.
+            // - `pkey` does not escape the current function frame.
+            bssl_sys::SSL_get0_peer_rpk(self.ptr())
+        };
+        if pkey.is_null() {
+            return None;
+        }
+
+        let buffer = bssl_crypto::cbb_to_buffer(64, |cbb| {
+            assert_eq!(
+                unsafe {
+                    // Safety:
+                    // - `cbb` is a valid pointer to `CBB` provided by `cbb_to_buffer`.
+                    // - `pkey` is a valid pointer to `EVP_PKEY`.
+                    bssl_sys::EVP_marshal_public_key(cbb, pkey)
+                },
+                1
+            );
+        });
+        Some(buffer.as_ref().to_vec())
     }
 }
