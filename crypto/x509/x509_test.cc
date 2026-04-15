@@ -2314,10 +2314,47 @@ TEST(X509Test, NameConstraints) {
       {GEN_URI, "foo://:not-a-url", "not-a-url",
        X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
       {GEN_URI, "foo://", "not-a-url", X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      // Reject URIs with userinfo.
+      {GEN_URI, "foo://username:password@example.com/whatever", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://username@example.com/whatever", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://@example.com/whatever", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://misleading.com:443@example.com/whatever",
+       "misleading.com", X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://misleading.com:443@", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      // Reject IP addresses.
+      {GEN_URI, "foo://123.45.67.89", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://0xde.0xad.0xbe.0xef", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://example.com.0x", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://example.com.0xca", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://[1234:5678:90ab::1]", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      // Don't reject domain names whose final component consists of hex digits.
+      {GEN_URI, "foo://0xde.0xad.0xbe.ef", ".0xbe.ef", X509_V_OK},
+      // Port number, if present, must contain only digits.
+      {GEN_URI, "foo://example.com:a443", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      // Empty host is a syntax error.
+      {GEN_URI, "foo://", "example.com", X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo:///whatever", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://:443", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://.:443", "example.com",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
       // Hosts are an exact match.
       {GEN_URI, "foo://example.com", "example.com", X509_V_OK},
       {GEN_URI, "foo://example.com:443", "example.com", X509_V_OK},
       {GEN_URI, "foo://example.com/whatever", "example.com", X509_V_OK},
+      {GEN_URI, "foo://example.com?query", "example.com", X509_V_OK},
+      {GEN_URI, "foo://example.com#fragment", "example.com", X509_V_OK},
       {GEN_URI, "foo://bar.example.com", "example.com",
        X509_V_ERR_PERMITTED_VIOLATION},
       {GEN_URI, "foo://bar.example.com:443", "example.com",
@@ -2358,6 +2395,27 @@ TEST(X509Test, NameConstraints) {
        X509_V_ERR_PERMITTED_VIOLATION},
       {GEN_URI, "foo://example.com/whatever", ".xample.com",
        X509_V_ERR_PERMITTED_VIOLATION},
+      // Allow a single trailing dot representing the DNS common root.
+      {GEN_URI, "foo://bar.example.com.", ".example.com", X509_V_OK},
+      {GEN_URI, "foo://bar.example.com.", ".example.com.", X509_V_OK},
+      {GEN_URI, "foo://bar.example.com", ".example.com.", X509_V_OK},
+      {GEN_URI, "foo://bar.example.com.:443", ".example.com.", X509_V_OK},
+      {GEN_URI, "foo://bar.example.com", "bar.example.com.", X509_V_OK},
+      // Multiple trailing dots, or empty labels, are not allowed.
+      {GEN_URI, "foo://bar.example.com..", ".example.com.",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://bar..example.com.", ".example.com.",
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_URI, "foo://bar.example.com.", ".example.com..",
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_URI, "foo://bar.example.com.", ".example..com.",
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      // Test name constraint parsing. The URI name constraint should be a valid
+      // FQDN.
+      {GEN_URI, "foo://example.com", "..example.com",
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_URI, "foo://example.com:443", "example.com:443",
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
   };
   for (const auto &t : kTests) {
     SCOPED_TRACE(t.type);
