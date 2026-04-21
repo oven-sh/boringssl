@@ -263,6 +263,12 @@ int CRYPTO_BUFFER_up_ref(CRYPTO_BUFFER *buf) {
   return 1;
 }
 
+CRYPTO_BUFFER *CRYPTO_BUFFER_dup_ref(const CRYPTO_BUFFER *buf) {
+  auto *buf_ = const_cast<CRYPTO_BUFFER *>(buf);
+  FromOpaque(buf_)->UpRefInternal();
+  return buf_;
+}
+
 const uint8_t *CRYPTO_BUFFER_data(const CRYPTO_BUFFER *buf) {
   return FromOpaque(buf)->data_;
 }

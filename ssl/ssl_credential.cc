@@ -127,11 +127,6 @@ SSLCredential::~SSLCredential() {
   CRYPTO_free_ex_data(&g_ex_data_class, &ex_data);
 }
 
-static CRYPTO_BUFFER *buffer_up_ref(const CRYPTO_BUFFER *buffer) {
-  CRYPTO_BUFFER_up_ref(const_cast<CRYPTO_BUFFER *>(buffer));
-  return const_cast<CRYPTO_BUFFER *>(buffer);
-}
-
 UniquePtr<SSLCredential> SSLCredential::Dup() const {
   assert(type == SSLCredentialType::kX509);
   UniquePtr<SSLCredential> ret = MakeUnique<SSLCredential>(type);
@@ -147,8 +142,8 @@ UniquePtr<SSLCredential> SSLCredential::Dup() const {
   }
 
   if (chain) {
-    ret->chain.reset(sk_CRYPTO_BUFFER_deep_copy(chain.get(), buffer_up_ref,
-                                                CRYPTO_BUFFER_free));
+    ret->chain.reset(sk_CRYPTO_BUFFER_deep_copy(
+        chain.get(), CRYPTO_BUFFER_dup_ref, CRYPTO_BUFFER_free));
     if (!ret->chain) {
       return nullptr;
     }
