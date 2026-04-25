@@ -9934,7 +9934,7 @@ TEST(X509Test, GetEmail) {
   EXPECT_EQ(nullptr, X509_REQ_get1_email(req.get()));
 
   // Prepare many emails.
-  constexpr size_t kCount = 100;
+  constexpr size_t kCount = 5000;
   UniquePtr<X509_NAME> subject(X509_NAME_new());
   ASSERT_TRUE(subject);
   UniquePtr<GENERAL_NAMES> sans(GENERAL_NAMES_new());
@@ -10030,7 +10030,7 @@ TEST(X509Test, GetOCSP) {
   EXPECT_EQ(nullptr, X509_get1_ocsp(cert.get()));
 
   // Make a certificate with many OCSP URIs.
-  constexpr size_t kCount = 100;
+  constexpr size_t kCount = 5000;
   UniquePtr<AUTHORITY_INFO_ACCESS> aia(AUTHORITY_INFO_ACCESS_new());
   ASSERT_TRUE(aia);
   std::vector<std::string> expected;

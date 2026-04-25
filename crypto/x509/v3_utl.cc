@@ -24,6 +24,7 @@
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/obj.h>
+#include <openssl/stack.h>
 #include <openssl/x509.h>
 
 #include "../conf/internal.h"
@@ -538,6 +539,7 @@ STACK_OF(OPENSSL_STRING) *X509_get1_ocsp(const X509 *x) {
     }
   }
   AUTHORITY_INFO_ACCESS_free(info);
+  sk_OPENSSL_STRING_sort_and_dedup(ret, str_free);
   return ret;
 }
 
@@ -578,6 +580,7 @@ static STACK_OF(OPENSSL_STRING) *get_email(const X509_NAME *name,
       return nullptr;
     }
   }
+  sk_OPENSSL_STRING_sort_and_dedup(ret, str_free);
   return ret;
 }
 
@@ -609,13 +612,6 @@ static int append_ia5(STACK_OF(OPENSSL_STRING) **sk,
   emtmp = OPENSSL_strndup((char *)email->data, email->length);
   if (emtmp == nullptr) {
     goto err;
-  }
-
-  // Don't add duplicates
-  sk_OPENSSL_STRING_sort(*sk);
-  if (sk_OPENSSL_STRING_find(*sk, nullptr, emtmp)) {
-    OPENSSL_free(emtmp);
-    return 1;
   }
   if (!sk_OPENSSL_STRING_push(*sk, emtmp)) {
     goto err;
