@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <utility>
+
 #include <openssl/asn1t.h>
 #include <openssl/conf.h>
 #include <openssl/err.h>
@@ -89,16 +91,13 @@ IMPLEMENT_ASN1_ALLOC_FUNCTIONS(NAME_CONSTRAINTS)
 static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
                                   const X509V3_CTX *ctx,
                                   const STACK_OF(CONF_VALUE) *nval) {
-  STACK_OF(GENERAL_SUBTREE) **ptree = nullptr;
-  NAME_CONSTRAINTS *ncons = nullptr;
-  GENERAL_SUBTREE *sub = nullptr;
-  ncons = NAME_CONSTRAINTS_new();
+  UniquePtr<NAME_CONSTRAINTS> ncons(NAME_CONSTRAINTS_new());
   if (!ncons) {
-    goto err;
+    return nullptr;
   }
-  for (size_t i = 0; i < sk_CONF_VALUE_num(nval); i++) {
-    const CONF_VALUE *val = sk_CONF_VALUE_value(nval, i);
+  for (const CONF_VALUE *val : nval) {
     CONF_VALUE tval;
+    STACK_OF(GENERAL_SUBTREE) **ptree = nullptr;
     if (!strncmp(val->name, "permitted", 9) && val->name[9]) {
       ptree = &ncons->permittedSubtrees;
       tval.name = val->name + 10;
@@ -107,28 +106,23 @@ static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
       tval.name = val->name + 9;
     } else {
       OPENSSL_PUT_ERROR(X509V3, X509V3_R_INVALID_SYNTAX);
-      goto err;
+      return nullptr;
     }
     tval.value = val->value;
-    sub = GENERAL_SUBTREE_new();
-    if (!v2i_GENERAL_NAME_ex(sub->base, method, ctx, &tval, 1)) {
-      goto err;
+    UniquePtr<GENERAL_SUBTREE> sub(GENERAL_SUBTREE_new());
+    if (sub == nullptr ||
+        !v2i_GENERAL_NAME_ex(sub->base, method, ctx, &tval, 1)) {
+      return nullptr;
     }
     if (!*ptree) {
       *ptree = sk_GENERAL_SUBTREE_new_null();
     }
-    if (!*ptree || !sk_GENERAL_SUBTREE_push(*ptree, sub)) {
-      goto err;
+    if (!*ptree || !PushToStack(*ptree, std::move(sub))) {
+      return nullptr;
     }
-    sub = nullptr;
   }
 
-  return ncons;
-
-err:
-  NAME_CONSTRAINTS_free(ncons);
-  GENERAL_SUBTREE_free(sub);
-  return nullptr;
+  return ncons.release();
 }
 
 static int i2r_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method, void *a,
