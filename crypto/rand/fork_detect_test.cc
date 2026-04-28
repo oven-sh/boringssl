@@ -15,11 +15,13 @@
 #include <openssl/base.h>
 
 #include "../bcm_support.h"
+#include "internal.h"
 
 // TSAN cannot cope with this test and complains that "starting new threads
 // after multi-threaded fork is not supported".
 #if defined(OPENSSL_FORK_DETECTION) && !defined(OPENSSL_TSAN) && \
     !defined(OPENSSL_IOS)
+
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -35,6 +37,8 @@
 #endif
 
 #include <gtest/gtest.h>
+
+#include <openssl/mem.h>
 
 
 BSSL_NAMESPACE_BEGIN
@@ -70,20 +74,7 @@ static void CheckGenerationAtLeastInChild(const char *name,
   }
 }
 
-// ForkInChild forks a child which runs |f|. If the child exits unsuccessfully,
-// this function will also exit unsuccessfully.
-static void ForkInChild(std::function<void()> f) {
-  fflush(stderr);  // Avoid duplicating any buffered output.
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    perror("fork");
-    _exit(1);
-  } else if (pid == 0) {
-    f();
-    _exit(0);
-  }
-
+static void WaitForChildOrDie(pid_t pid) {
   // Wait for the child and pass its exit code up.
   int status;
   if (WaitpidEINTR(pid, &status, 0) < 0) {
@@ -98,6 +89,68 @@ static void ForkInChild(std::function<void()> f) {
     // Pass the failure up.
     _exit(WEXITSTATUS(status));
   }
+}
+
+// ForkInChild forks a child which runs |f|. If the child exits unsuccessfully,
+// this function will also exit unsuccessfully.
+static void ForkInChild(std::function<void()> f) {
+  fflush(stderr);  // Avoid duplicating any buffered output.
+  const pid_t pid = fork();
+  if (pid < 0) {
+    perror("fork");
+    _exit(1);
+  }
+  if (pid == 0) {
+    f();
+    _exit(0);
+  }
+  WaitForChildOrDie(pid);
+}
+
+// Many systems provide an alternate API to create a child process and run code
+// in it.
+static bool AlternateForkInChild(std::function<void()> f) {
+  fflush(stderr);  // Avoid duplicating any buffered output.
+#if defined(OPENSSL_LINUX)
+  // On Linux, clone() can make new processes, too (even by default).
+  void *temp_stack = OPENSSL_malloc(65536);
+  void *stack_top = static_cast<char *>(temp_stack) + 65536;
+  pid_t pid = clone(
+      +[](void *fp) {
+        (*static_cast<std::function<void()> *>(fp))();
+        return 0;
+      },
+      stack_top, SIGCHLD, &f);
+  OPENSSL_free(temp_stack);
+  WaitForChildOrDie(pid);
+  return true;
+#elif defined(OPENSSL_FREEBSD)
+  // On FreeBSD, rfork() can be used to simulate fork().
+  const pid_t pid = rfork(RFFDG | RFPROC);
+  if (pid < 0) {
+    perror("fork");
+    _exit(1);
+  }
+  if (pid == 0) {
+    f();
+    _exit(0);
+  }
+  WaitForChildOrDie(pid);
+  return true;
+#else
+  // No alternate methods known.
+  return false;
+#endif
+}
+
+
+TEST(ForkDetect, OSSupport) {
+  uint64_t start = CRYPTO_get_fork_generation();
+  EXPECT_NE(start, uint64_t{0})
+      << "Fork detection not supported, but support is configured to be "
+         "expected on this platform in crypto/rand/internal.h. Typically this "
+         "means your OS or kernel is too old. Expect reduced performance, but "
+         "no security impact.";
 }
 
 TEST(ForkDetect, Test) {
@@ -172,6 +225,24 @@ TEST(ForkDetect, Test) {
       << "Error in waitpid: " << strerror(errno);
   ASSERT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status)) << "Error in child process";
+
+  // We still observe |start|.
+  EXPECT_EQ(start, CRYPTO_get_fork_generation());
+}
+
+TEST(ForkDetect, TestAlternateFork) {
+  uint64_t start = CRYPTO_get_fork_generation();
+  if (start == 0) {
+    GTEST_SKIP() << "Fork detection not supported. Skipping test.\n";
+  }
+
+  // The fork generation should be stable.
+  EXPECT_EQ(start, CRYPTO_get_fork_generation());
+
+  if (!AlternateForkInChild(
+          [&] { CheckGenerationAtLeastInChild("Child", start + 1); })) {
+    GTEST_SKIP() << "No alternate fork method detected. Skipping test.\n";
+  }
 
   // We still observe |start|.
   EXPECT_EQ(start, CRYPTO_get_fork_generation());
