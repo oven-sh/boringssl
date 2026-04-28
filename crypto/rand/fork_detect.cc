@@ -73,9 +73,7 @@ static void init_fork_detect() {
     return;
   }
 
-  auto *const atomic = reinterpret_cast<Atomic<uint32_t> *>(addr);
-  atomic->store(1);
-  g_fork_detect_addr = atomic;
+  g_fork_detect_addr = new (addr) Atomic<uint32_t>(1);
   g_fork_generation = 1;
 }
 
