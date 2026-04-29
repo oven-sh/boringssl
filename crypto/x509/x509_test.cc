@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -35,6 +36,7 @@
 #include <openssl/evp.h>
 #include <openssl/mldsa.h>
 #include <openssl/nid.h>
+#include <openssl/obj.h>
 #include <openssl/pem.h>
 #include <openssl/pool.h>
 #include <openssl/span.h>

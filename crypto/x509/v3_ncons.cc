@@ -19,13 +19,16 @@
 
 #include <utility>
 
+#include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/base.h>
+#include <openssl/bio.h>
 #include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/obj.h>
 #include <openssl/span.h>
+#include <openssl/stack.h>
 #include <openssl/x509.h>
 
 #include "../internal.h"

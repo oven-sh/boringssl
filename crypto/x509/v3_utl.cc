@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <utility>
+
 #include <openssl/bn.h>
 #include <openssl/bytestring.h>
 #include <openssl/conf.h>

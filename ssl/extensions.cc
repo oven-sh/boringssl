@@ -36,6 +36,7 @@
 #include <openssl/hpke.h>
 #include <openssl/mem.h>
 #include <openssl/nid.h>
+#include <openssl/pool.h>
 #include <openssl/rand.h>
 
 #include "../crypto/bytestring/internal.h"
