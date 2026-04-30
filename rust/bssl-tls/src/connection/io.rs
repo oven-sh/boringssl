@@ -26,6 +26,7 @@ use core::{
 };
 
 use crate::{
+    ReceiveBuffer,
     connection::{
         lifecycle::ShutdownStatus,
         methods::HasTlsConnectionMethod, //
@@ -41,7 +42,6 @@ use crate::{
     },
     ffi::slice_into_ffi_raw_parts,
     io::IoStatus, //
-    ReceiveBuffer,
 };
 
 use super::TlsConnectionRef;

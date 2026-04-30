@@ -31,10 +31,10 @@ use crate::{
     alerts::AlertDescription,
     check_tls_error,
     connection::{
-        methods::HasTlsConnectionMethod, //
         Client,
         Server,
         TlsConnectionRef,
+        methods::HasTlsConnectionMethod, //
     },
     context::{
         HasBasicIo,

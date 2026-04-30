@@ -19,8 +19,11 @@ use bssl_crypto::FfiSlice as _;
 use crate::{
     check_lib_error,
     config::ConfigurationError,
-    context::{SupportedMode, TlsContextBuilder},
-    errors::Error,
+    context::{
+        SupportedMode,
+        TlsContextBuilder, //
+    },
+    errors::Error, //
 };
 
 /// # Sessions
