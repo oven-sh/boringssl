@@ -74,36 +74,6 @@ fn dtls() {
     sync_ping_pong(server_conn, client_conn).unwrap();
 }
 
-#[cfg(all(unix, feature = "tokio_net"))]
-#[tokio::test]
-async fn async_dtls() -> Result<(), Error> {
-    use crate::tests::async_ping_pong;
-
-    let (mut server_conn, mut client_conn) = dumb_dtls_server_client().unwrap();
-    let (server_sock, client_sock) = tokio::net::UnixDatagram::pair().unwrap();
-    server_conn.set_io(server_sock).unwrap();
-    client_conn.set_io(client_sock).unwrap();
-
-    async_ping_pong(server_conn, client_conn).await
-}
-
-#[cfg(all(feature = "tokio_net", unix))]
-#[tokio::test]
-async fn async_dtls_over_fd() -> Result<(), Error> {
-    use crate::{io::unix::StdDatagram, tests::async_ping_pong};
-
-    let (mut server_conn, mut client_conn) = dumb_dtls_server_client().unwrap();
-    let (server_sock, client_sock) = std::os::unix::net::UnixDatagram::pair().unwrap();
-    server_sock.set_nonblocking(true).unwrap();
-    client_sock.set_nonblocking(true).unwrap();
-    let server_sock = StdDatagram::new_with_tokio(server_sock).unwrap();
-    let client_sock = StdDatagram::new_with_tokio(client_sock).unwrap();
-    server_conn.set_io(server_sock).unwrap();
-    client_conn.set_io(client_sock).unwrap();
-
-    async_ping_pong(server_conn, client_conn).await
-}
-
 #[test]
 fn test_async_dtls() -> Result<(), Error> {
     use crate::io::IoStatus;

@@ -135,63 +135,6 @@ fn sync_ping_pong<
     Ok(())
 }
 
-#[cfg(feature = "tokio_io")]
-async fn async_ping_pong<
-    M: crate::connection::methods::HasTlsConnectionMethod
-        + crate::context::SupportedMode
-        + crate::context::HasBasicIo
-        + 'static,
->(
-    mut server_conn: TlsConnection<Server, M>,
-    mut client_conn: TlsConnection<Client, M>,
-) -> Result<(), Error> {
-    use std::time::Duration;
-
-    let task = tokio::spawn(async move {
-        server_conn
-            .in_handshake()
-            .unwrap()
-            .async_handshake()
-            .await?;
-
-        let mut message = [0; 21];
-        assert!(matches!(
-            server_conn.as_pin_mut().async_read(&mut message).await?,
-            IoStatus::Ok(21)
-        ));
-        assert_eq!(message, *b"BoringSSL is awesome!");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        server_conn
-            .as_pin_mut()
-            .async_write(b"Oh yeah definitely!")
-            .await?;
-        server_conn.as_pin_mut().async_shutdown().await?;
-        Ok::<_, Error>(())
-    });
-
-    client_conn
-        .in_handshake()
-        .unwrap()
-        .async_handshake()
-        .await?;
-    client_conn
-        .as_pin_mut()
-        .async_write(b"BoringSSL is awesome!")
-        .await?;
-    let mut message = [0; 19];
-    assert!(matches!(
-        client_conn.as_pin_mut().async_read(&mut message).await?,
-        IoStatus::Ok(19)
-    ));
-    assert_eq!(message, *b"Oh yeah definitely!");
-    assert!(matches!(
-        client_conn.as_pin_mut().async_shutdown().await,
-        Ok(_) | Err(Error::Io(crate::errors::IoError::EndOfStream))
-    ));
-    task.await.unwrap()?;
-    Ok(())
-}
-
 pub const TEST_DATA: &[u8] = b"BoringSSL is awesome!";
 
 /// A mocked pipe that will never close or emit EOF.

@@ -41,11 +41,6 @@ use crate::io::stdio::{
     DatagramSocket,
     PollFor, //
 };
-use crate::io::sync_io::translate_stdio_err;
-#[cfg(feature = "tokio_net")]
-pub use crate::io::tokio::TokioIo;
-#[cfg(feature = "tokio_net")]
-pub use tokio_impl::TokioOverFd;
 
 use super::{
     AbstractReader,
@@ -53,9 +48,6 @@ use super::{
     AbstractSocketResult,
     AbstractWriter, //
 };
-
-#[cfg(feature = "tokio_net")]
-mod tokio_impl;
 
 // ============
 // Datagrams
