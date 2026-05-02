@@ -22,8 +22,8 @@ use crate::{
     check_tls_error,
     config::ConfigurationError,
     connection::{
+        TlsConnection,
         TlsConnectionBuilder,
-        TlsConnectionRef,
         methods::HasTlsConnectionMethod, //
     },
     context::HasBasicIo,
@@ -39,7 +39,7 @@ use crate::{
 /// # Transport configurations
 ///
 /// These are the methods to configure the underlying IO drivers and transport configurations.
-impl<R, M> TlsConnectionRef<R, M>
+impl<R, M> TlsConnection<R, M>
 where
     M: HasBasicIo + HasTlsConnectionMethod,
 {

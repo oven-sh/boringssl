@@ -18,14 +18,7 @@ use alloc::boxed::Box;
 use core::{
     ffi::c_int,
     marker::PhantomData,
-    mem::{
-        forget,
-        transmute, //
-    },
-    ops::{
-        Deref,
-        DerefMut, //
-    },
+    mem::forget,
     ptr::NonNull,
     task::Waker, //
 };
@@ -140,6 +133,7 @@ where
 /// `Mode` is expected to be either [`TlsMode`] or [`QuicMode`].
 /// These generics will govern the capabilities that respective TLS connection role can access,
 // NOTE: any method that involves I/O must require exclusive access, enforced by requiring `&mut`.
+#[repr(transparent)]
 pub struct TlsConnection<Role, Mode = TlsMode> {
     ptr: NonNull<bssl_sys::SSL>,
     _p: PhantomData<fn() -> (Role, Mode)>,
@@ -158,35 +152,7 @@ impl<R, M> Drop for TlsConnection<R, M> {
     }
 }
 
-/// Tls Connection Reference
-// NOTE: Do not expose access to this type by-value!
-#[repr(transparent)]
-pub struct TlsConnectionRef<R, M = TlsMode>(NonNull<bssl_sys::SSL>, PhantomData<fn() -> (R, M)>);
-
-impl<R, M> Deref for TlsConnection<R, M> {
-    type Target = TlsConnectionRef<R, M>;
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            // Safety: `TlsConnectionRef` is a transparent wrapper around `NonNull<bssl_sys::SSL>`.
-            transmute(&self.ptr)
-        }
-    }
-}
-
-impl<R, M> DerefMut for TlsConnection<R, M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            // Safety: `TlsConnectionRef` is a transparent wrapper around `NonNull<bssl_sys::SSL>`.
-            transmute(&mut self.ptr)
-        }
-    }
-}
-
-/// Safety: all internal states of `bssl_sys::SSL` that this connection are either exclusively owned
-/// or reference-counted but immutable, including `SSL_SESSION`s and `SSL_CTX`s.
-unsafe impl<R, M> Send for TlsConnectionRef<R, M> {}
-
-impl<R, M> TlsConnectionRef<R, M> {
+impl<R, M> TlsConnection<R, M> {
     /// Call this method whenever I/O is performed on the connection.
     pub(crate) fn categorise_error_for_io(&self, rc: c_int) -> Result<IoStatus, Error> {
         let reason = unsafe {
@@ -208,7 +174,7 @@ impl<R, M> TlsConnectionRef<R, M> {
 
 // TODO(@xfding): there seems to be some type inference regression, drop the turbofish when it is
 // resolved.
-impl<R, M> TlsConnectionRef<R, M>
+impl<R, M> TlsConnection<R, M>
 where
     M: methods::HasTlsConnectionMethod,
 {
@@ -226,7 +192,7 @@ where
     }
 }
 
-impl<R, M> TlsConnectionRef<R, M>
+impl<R, M> TlsConnection<R, M>
 where
     M: methods::HasTlsConnectionMethod,
 {
@@ -236,7 +202,7 @@ where
             // Safety:
             // - `self.ptr()` is a valid `SSL` handle created from `from_ssl` in this crate.
             // - The data was previously initialized as `Box<Option<Waker>>`.
-            waker_data_ref_from_ssl(self.0)
+            waker_data_ref_from_ssl(self.ptr)
         };
         if let Some(other_waker) = waker_data
             && waker.will_wake(other_waker)
@@ -288,9 +254,9 @@ unsafe fn get_connection_methods_ref<'a, M: methods::HasTlsConnectionMethod>(
     }
 }
 
-impl<R, M> TlsConnectionRef<R, M> {
+impl<R, M> TlsConnection<R, M> {
     pub(crate) fn ptr(&self) -> *mut bssl_sys::SSL {
-        self.0.as_ptr()
+        self.ptr.as_ptr()
     }
 
     /// Check if the connection is DTLS.
