@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use alloc::sync::Arc;
+use core::ptr::null_mut;
 
 use bssl_x509::{
     params::CertificateVerificationParams,
@@ -44,21 +44,23 @@ where
 {
     /// Set the certificate cache.
     ///
-    /// This certificate cache will be used
-    pub fn with_certificate_cache(&mut self, cache: Option<Arc<CertificateCache>>) -> &mut Self {
+    /// This [`CertificateCache`] can be shared across multiple contexts and their associated
+    /// connections.
+    /// The cache is recommended for use to reduce memory footprint arising from the X.509-based
+    /// authentication.
+    pub fn with_certificate_cache(&mut self, cache: Option<&CertificateCache>) -> &mut Self {
         let ctx = self.ptr();
-        if let Some(cache) = &cache {
+        if let Some(cache) = cache {
             unsafe {
                 // Safety: `CertificateCache` is `Send + Sync`
-                bssl_sys::SSL_CTX_set0_buffer_pool(ctx, cache.ptr() as _);
+                bssl_sys::SSL_CTX_set1_buffer_pool(ctx, cache.ptr());
             }
         } else {
             unsafe {
                 // Safety: we just detach the buffer pool before any active pointer into it is created.
-                bssl_sys::SSL_CTX_set0_buffer_pool(ctx, core::ptr::null_mut());
+                bssl_sys::SSL_CTX_set1_buffer_pool(ctx, null_mut());
             }
         }
-        self.cert_cache = cache;
         self
     }
 

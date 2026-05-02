@@ -14,10 +14,7 @@
 
 //! TLS Connection
 
-use alloc::{
-    boxed::Box,
-    sync::Arc, //
-};
+use alloc::boxed::Box;
 use core::{
     ffi::c_int,
     marker::PhantomData,
@@ -34,9 +31,12 @@ use core::{
 };
 
 use crate::{
-    config::{ConnectionMode, ProtocolVersion},
+    config::{
+        ConnectionMode,
+        ProtocolVersion, //
+    },
     connection::methods::waker_data_ref_from_ssl,
-    context::{CertificateCache, TlsMode},
+    context::TlsMode,
     errors::{
         Error,
         TlsRetryReason, //
@@ -59,7 +59,6 @@ pub enum Client {}
 /// A TLS connection builder.
 pub struct TlsConnectionBuilder<Role, Mode = TlsMode> {
     ptr: NonNull<bssl_sys::SSL>,
-    cert_cache: Option<Arc<CertificateCache>>,
     _p: PhantomData<fn() -> (Role, Mode)>,
 }
 
@@ -85,21 +84,16 @@ where
     M: methods::HasTlsConnectionMethod,
 {
     /// Finalise the connection, so that a handshake can be run.
-    pub fn build(mut self) -> TlsConnection<R, M> {
+    pub fn build(self) -> TlsConnection<R, M> {
         let ptr = self.ptr;
-        let cert_cache = self.cert_cache.take();
         forget(self);
         TlsConnection {
             ptr,
-            _cert_cache: cert_cache,
             _p: PhantomData,
         }
     }
 
-    pub(crate) fn from_ssl(
-        ptr: NonNull<bssl_sys::SSL>,
-        cert_cache: Option<Arc<CertificateCache>>,
-    ) -> Self {
+    pub(crate) fn from_ssl(ptr: NonNull<bssl_sys::SSL>) -> Self {
         let idx = M::registration();
         let data = Box::into_raw(Box::new(methods::RustConnectionMethods::<M>::new())) as _;
         unsafe {
@@ -116,7 +110,6 @@ where
         }
         Self {
             ptr,
-            cert_cache,
             _p: PhantomData,
         }
     }
@@ -149,7 +142,6 @@ where
 // NOTE: any method that involves I/O must require exclusive access, enforced by requiring `&mut`.
 pub struct TlsConnection<Role, Mode = TlsMode> {
     ptr: NonNull<bssl_sys::SSL>,
-    _cert_cache: Option<Arc<CertificateCache>>,
     _p: PhantomData<fn() -> (Role, Mode)>,
 }
 
