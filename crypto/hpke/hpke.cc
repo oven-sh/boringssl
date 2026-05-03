@@ -985,6 +985,11 @@ const EVP_HPKE_KDF *EVP_hpke_hkdf_sha256() {
   return &kKDF;
 }
 
+const EVP_HPKE_KDF *EVP_hpke_hkdf_sha384() {
+  static const EVP_HPKE_KDF kKDF = {EVP_HPKE_HKDF_SHA384, &EVP_sha384};
+  return &kKDF;
+}
+
 uint16_t EVP_HPKE_KDF_id(const EVP_HPKE_KDF *kdf) { return kdf->id; }
 
 const EVP_MD *EVP_HPKE_KDF_hkdf_md(const EVP_HPKE_KDF *kdf) {

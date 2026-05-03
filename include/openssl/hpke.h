@@ -85,9 +85,12 @@ OPENSSL_EXPORT size_t EVP_HPKE_KEM_enc_len(const EVP_HPKE_KEM *kem);
 
 // The following constants are KDF identifiers.
 #define EVP_HPKE_HKDF_SHA256 0x0001
+#define EVP_HPKE_HKDF_SHA384 0x0002
 
-// The following functions are KDF algorithms which may be used with HPKE.
+// The following functions are KDF algorithms which may be used with HPKE. If
+// unsure, use |EVP_hpke_hkdf_sha256|.
 OPENSSL_EXPORT const EVP_HPKE_KDF *EVP_hpke_hkdf_sha256(void);
+OPENSSL_EXPORT const EVP_HPKE_KDF *EVP_hpke_hkdf_sha384(void);
 
 // EVP_HPKE_KDF_id returns the HPKE KDF identifier for |kdf|.
 OPENSSL_EXPORT uint16_t EVP_HPKE_KDF_id(const EVP_HPKE_KDF *kdf);
