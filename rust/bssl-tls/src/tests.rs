@@ -179,6 +179,9 @@ impl AbstractReader for MockSocket<MockPipe> {
 
         let mut pipe = self.read_pipe.lock().unwrap();
         let mut read = 0;
+        if buf.is_empty() {
+            return AbstractSocketResult::Ok(0);
+        }
         while read < buf.len() {
             let Some(b) = pipe.buf.pop_front() else {
                 break;
@@ -187,12 +190,14 @@ impl AbstractReader for MockSocket<MockPipe> {
             read += 1;
         }
 
-        // TODO(@xfding)
         if read == 0 {
             if let Some(waker) = cx.as_ref().map(|c| c.waker().clone()) {
                 pipe.data_waker = Some(waker);
-                return AbstractSocketResult::Retry;
             }
+            // TODO(@xfding): this is correct for async sockets, but sync sockets should block until
+            // arrival of new data.
+            // We will need a condvar for this behaviour.
+            return AbstractSocketResult::Retry;
         }
         // Reset for next operation
         state.need_yield = true;
