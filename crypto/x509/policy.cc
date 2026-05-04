@@ -246,7 +246,7 @@ bool process_certificate_policies(const X509 *x509, X509PolicyLevel *level,
       if (!is_any_policy(policy->policyid) &&
           level->Find(policy->policyid) == nullptr) {
         auto node = X509PolicyNode::Create(policy->policyid);
-        if (!node || !new_nodes.Push(*std::move(node))) {
+        if (!node.has_value() || !new_nodes.Push(*std::move(node))) {
           return false;
         }
       }
@@ -599,7 +599,7 @@ int X509_policy_check(const STACK_OF(X509) *certs,
 
     // In all but the first iteration, the previous iteration will have prepared
     // "expected_policy_set" for us as a staging level.
-    if (!level) {
+    if (!level.has_value()) {
       assert(i == num_certs - 2);
       level.emplace();
       level->set_has_any_policy(true);
@@ -630,7 +630,7 @@ int X509_policy_check(const STACK_OF(X509) *certs,
     if (i != 0) {
       // RFC 5280, section 6.1.4, steps (a) and (b).
       level = process_policy_mappings(cert, &levels.back(), policy_mapping > 0);
-      if (!level) {
+      if (!level.has_value()) {
         *out_current_cert = cert;
         return X509_V_ERR_INVALID_POLICY_EXTENSION;
       }
