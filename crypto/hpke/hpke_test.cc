@@ -100,9 +100,9 @@ class HPKETestVector {
     ASSERT_TRUE(EVP_HPKE_KEY_init(base_key.get(), kem, secret_key_r_.data(),
                                   secret_key_r_.size()));
 
-    enum class CopyMode { kOriginal, kCopy, kMove };
-    for (CopyMode copy :
-         {CopyMode::kOriginal, CopyMode::kCopy, CopyMode::kMove}) {
+    enum class CopyMode { kOriginal, kCopy, kMove, kDerive };
+    for (CopyMode copy : {CopyMode::kOriginal, CopyMode::kCopy, CopyMode::kMove,
+                          CopyMode::kDerive}) {
       SCOPED_TRACE(static_cast<int>(copy));
       const EVP_HPKE_KEY *key = base_key.get();
       ScopedEVP_HPKE_KEY key_copy;
@@ -115,6 +115,11 @@ class HPKETestVector {
           break;
         case CopyMode::kMove:
           EVP_HPKE_KEY_move(key_copy.get(), base_key.get());
+          key = key_copy.get();
+          break;
+        case CopyMode::kDerive:
+          ASSERT_TRUE(EVP_HPKE_KEY_derive(key_copy.get(), kem, ikm_r_.data(),
+                                          ikm_r_.size()));
           key = key_copy.get();
           break;
       }

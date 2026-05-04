@@ -168,6 +168,13 @@ OPENSSL_EXPORT int EVP_HPKE_KEY_init(EVP_HPKE_KEY *key, const EVP_HPKE_KEM *kem,
 OPENSSL_EXPORT int EVP_HPKE_KEY_generate(EVP_HPKE_KEY *key,
                                          const EVP_HPKE_KEM *kem);
 
+// EVP_HPKE_KEY_derive deterministically derives a key from |ikm| for use with
+// |kem| and initializes |key| with the result. It returns one on success and
+// zero on error. This corresponds to the DeriveKeyPair operation in RFC 9180.
+OPENSSL_EXPORT int EVP_HPKE_KEY_derive(EVP_HPKE_KEY *key,
+                                       const EVP_HPKE_KEM *kem,
+                                       const uint8_t *ikm, size_t ikm_len);
+
 // EVP_HPKE_KEY_kem returns the HPKE KEM used by |key|.
 OPENSSL_EXPORT const EVP_HPKE_KEM *EVP_HPKE_KEY_kem(const EVP_HPKE_KEY *key);
 
