@@ -334,7 +334,7 @@ const (
 	signatureMLDSA65 signatureAlgorithm = 0x0905
 	signatureMLDSA87 signatureAlgorithm = 0x0906
 
-	// draft-ietf-tls-tls13-pkcs1-00
+	// RFC 9963
 	signatureRSAPKCS1WithSHA256Legacy signatureAlgorithm = 0x0420
 
 	// signatureRSAPKCS1WithMD5AndSHA1 is the internal value BoringSSL uses to
