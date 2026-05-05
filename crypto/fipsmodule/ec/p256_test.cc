@@ -15,18 +15,15 @@
 #if !defined(BORINGSSL_SHARED_LIBRARY)  // These tests use p256_internal.h
 
 #include <openssl/base.h>
-
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/mem.h>
 #include <openssl/nid.h>
 
-#include "internal.h"
-
 #include "../../internal.h"
 #include "../../test/abi_test.h"
 #include "../../test/file_test.h"
-
+#include "internal.h"
 #include "p256_internal.h"
 
 BSSL_NAMESPACE_BEGIN
@@ -132,7 +129,6 @@ static inline void point_add_affine(P256_POINT ret, P256_POINT a,
 static inline void point_double(P256_POINT ret, P256_POINT a) {
   p256_point_double((uintptr_t)ret, (uintptr_t)a);
 }
-
 
 static bool GetFieldElement(FileTest *t, BN_ULONG out[P256_LIMBS],
                             const char *name) {
@@ -557,4 +553,4 @@ TEST(P256Test, TestVectors) {
 }  // namespace
 BSSL_NAMESPACE_END
 
-#endif // !defined(BORINGSSL_SHARED_LIBRARY)
+#endif  // !defined(BORINGSSL_SHARED_LIBRARY)
