@@ -146,10 +146,6 @@ lTU7GxRvRinKa52GnUNLqxkmTTcFegGMevICfN7JUaUTDiEQGGJ6jNw=
 
 #[test]
 fn psk_tls13_handshake() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
-
     let key = b"test-key-test-key-test-key-test-key";
     let identity = b"test-identity";
     let context = b"test-context";
