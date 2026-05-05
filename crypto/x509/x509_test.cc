@@ -3923,6 +3923,51 @@ TEST(X509Test, CommonNameFallback) {
                         "foo.host1.test"));
 }
 
+// Test that it is possible to set host flags on the store and hosts on the
+// individual verify operation.
+TEST(X509Test, SeparateHostFlagsAndHosts) {
+  UniquePtr<X509> root = CertFromPEM(kSANTypesRoot);
+  ASSERT_TRUE(root);
+  UniquePtr<X509> without_sans = CertFromPEM(kCommonNameWithoutSANs);
+  ASSERT_TRUE(without_sans);
+  std::string_view host = "foo.host1.test";
+
+  UniquePtr<X509_STORE> store(X509_STORE_new());
+  ASSERT_TRUE(store);
+  ASSERT_TRUE(X509_STORE_add_cert(store.get(), root.get()));
+
+  // By default, we allow the common name fallback. This is just to establish a
+  // baseline. If this fails (e.g. if we turn off the common name fallback by
+  // default), this test will need to be updated with a different flag.
+  {
+    UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+    ASSERT_TRUE(ctx);
+    ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), without_sans.get(),
+                                    nullptr));
+    ASSERT_TRUE(X509_VERIFY_PARAM_set1_host(
+        X509_STORE_CTX_get0_param(ctx.get()), host.data(), host.size()));
+    X509_STORE_CTX_set_time_posix(ctx.get(), /*flags=*/0, kReferenceTime);
+    EXPECT_EQ(1, X509_verify_cert(ctx.get()));
+    EXPECT_EQ(X509_V_OK, X509_STORE_CTX_get_error(ctx.get()));
+  }
+
+  // Disabling the common name fallback on the store should work.
+  X509_VERIFY_PARAM_set_hostflags(X509_STORE_get0_param(store.get()),
+                                  X509_CHECK_FLAG_NEVER_CHECK_SUBJECT);
+  {
+    UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+    ASSERT_TRUE(ctx);
+    ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), without_sans.get(),
+                                    nullptr));
+    ASSERT_TRUE(X509_VERIFY_PARAM_set1_host(
+        X509_STORE_CTX_get0_param(ctx.get()), host.data(), host.size()));
+    X509_STORE_CTX_set_time_posix(ctx.get(), /*flags=*/0, kReferenceTime);
+    EXPECT_EQ(0, X509_verify_cert(ctx.get()));
+    EXPECT_EQ(X509_V_ERR_HOSTNAME_MISMATCH,
+              X509_STORE_CTX_get_error(ctx.get()));
+  }
+}
+
 TEST(X509Test, LooksLikeDNSName) {
   static const char *kValid[] = {
       "example.com",  "eXample123-.com", "*.example.com",
