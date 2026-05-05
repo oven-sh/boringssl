@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <openssl/base.h>
 #include <openssl/ssl.h>
 
 #include <assert.h>
@@ -406,6 +407,14 @@ void SSL_CREDENTIAL_up_ref(SSL_CREDENTIAL *cred) {
   FromOpaque(cred)->UpRefInternal();
 }
 
+SSL_CREDENTIAL *SSL_CREDENTIAL_dup_ref(const SSL_CREDENTIAL *cred) {
+  // Safety: we do not mutate the internal state of |cred| other than the
+  // ref-count atomic variable.
+  auto *cred_impl = FromOpaque(const_cast<SSL_CREDENTIAL *>(cred));
+  cred_impl->UpRefInternal();
+  return const_cast<SSL_CREDENTIAL *>(cred);
+}
+
 void SSL_CREDENTIAL_free(SSL_CREDENTIAL *cred) {
   if (cred != nullptr) {
     FromOpaque(cred)->DecRefInternal();
@@ -649,7 +658,7 @@ SSL_CREDENTIAL *SSL_CREDENTIAL_new_spake2plusv1_server(
   return cred.release();
 }
 
-int SSL_CTX_add1_credential(SSL_CTX *ctx, SSL_CREDENTIAL *cred) {
+int SSL_CTX_add1_credential(SSL_CTX *ctx, const SSL_CREDENTIAL *cred) {
   auto *cred_impl = FromOpaque(cred);
   if (!cred_impl->IsComplete()) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
@@ -658,7 +667,7 @@ int SSL_CTX_add1_credential(SSL_CTX *ctx, SSL_CREDENTIAL *cred) {
   return ctx->cert->credentials.Push(UpRef(cred_impl));
 }
 
-int SSL_add1_credential(SSL *ssl, SSL_CREDENTIAL *cred) {
+int SSL_add1_credential(SSL *ssl, const SSL_CREDENTIAL *cred) {
   auto *cred_impl = FromOpaque(cred);
   if (ssl->config == nullptr) {
     return 0;

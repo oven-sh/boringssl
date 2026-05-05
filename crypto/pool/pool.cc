@@ -95,7 +95,7 @@ int CRYPTO_BUFFER_POOL_up_ref(CRYPTO_BUFFER_POOL *pool) {
   return 1;
 }
 
-void CryptoBuffer::UpRefInternal() {
+void CryptoBuffer::UpRefInternal() const {
   // This is safe in the case that |buf->pool| is NULL because it's just
   // standard reference counting in that case.
   //

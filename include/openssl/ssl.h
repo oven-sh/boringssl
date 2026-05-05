@@ -794,6 +794,16 @@ OPENSSL_EXPORT SSL_CREDENTIAL *SSL_CREDENTIAL_new_x509(void);
 // SSL_CREDENTIAL_up_ref increments the reference count of |cred|.
 OPENSSL_EXPORT void SSL_CREDENTIAL_up_ref(SSL_CREDENTIAL *cred);
 
+// SSL_CREDENTIAL_dup_ref increments the reference count of |cred| and returns
+// |cred|. The caller must call |SSL_CREDENTIAL_free| on the result to release
+// the reference.
+//
+// WARNING: Although the result is non-const for use with |SSL_CREDENTIAL_free|,
+// it is still shared with other parts of the application that share the same
+// object. Avoid mutating shared |SSL_CREDENTIAL|s.
+OPENSSL_EXPORT SSL_CREDENTIAL *SSL_CREDENTIAL_dup_ref(
+    const SSL_CREDENTIAL *cred);
+
 // SSL_CREDENTIAL_free decrements the reference count of |cred|. If it reaches
 // zero, all data referenced by |cred| and |cred| itself are released.
 OPENSSL_EXPORT void SSL_CREDENTIAL_free(SSL_CREDENTIAL *cred);
@@ -891,7 +901,8 @@ OPENSSL_EXPORT void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred,
 //
 // After calling this function, it is an error to modify |cred|. Doing so may
 // result in inconsistent handshake behavior or race conditions.
-OPENSSL_EXPORT int SSL_CTX_add1_credential(SSL_CTX *ctx, SSL_CREDENTIAL *cred);
+OPENSSL_EXPORT int SSL_CTX_add1_credential(SSL_CTX *ctx,
+                                           const SSL_CREDENTIAL *cred);
 
 // SSL_add1_credential appends |cred| to |ssl|'s credential list. It returns one
 // on success and zero on error. The credential list is maintained in order of
@@ -899,7 +910,7 @@ OPENSSL_EXPORT int SSL_CTX_add1_credential(SSL_CTX *ctx, SSL_CREDENTIAL *cred);
 //
 // After calling this function, it is an error to modify |cred|. Doing so may
 // result in inconsistent handshake behavior or race conditions.
-OPENSSL_EXPORT int SSL_add1_credential(SSL *ssl, SSL_CREDENTIAL *cred);
+OPENSSL_EXPORT int SSL_add1_credential(SSL *ssl, const SSL_CREDENTIAL *cred);
 
 // SSL_certs_clear removes all credentials configured on |ssl|. It also removes
 // the certificate chain and private key on the legacy credential.
