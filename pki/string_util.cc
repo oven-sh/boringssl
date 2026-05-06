@@ -91,14 +91,6 @@ std::string HexEncode(Span<const uint8_t> data) {
   return out.str();
 }
 
-// TODO(bbe) get rid of this once extracted to boringssl. Everything else
-// in third_party uses std::to_string
-std::string NumberToDecimalString(int i) {
-  std::ostringstream out;
-  out << std::dec << i;
-  return out.str();
-}
-
 std::vector<std::string_view> SplitString(std::string_view str,
                                           char split_char) {
   std::vector<std::string_view> out;

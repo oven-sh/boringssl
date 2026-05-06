@@ -60,9 +60,6 @@ OPENSSL_EXPORT bool EndsWith(std::string_view str, std::string_view suffix);
 // Returns a hexadecimal string encoding |data|.
 OPENSSL_EXPORT std::string HexEncode(Span<const uint8_t> data);
 
-// Returns a decimal string representation of |i|.
-OPENSSL_EXPORT std::string NumberToDecimalString(int i);
-
 // Splits |str| on |split_char| returning the list of resulting strings.
 OPENSSL_EXPORT std::vector<std::string_view> SplitString(std::string_view str,
                                                          char split_char);
