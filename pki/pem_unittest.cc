@@ -59,6 +59,52 @@ TEST(PEMTokenizerTest, CarriageReturnLineFeeds) {
   EXPECT_FALSE(tokenizer.GetNext());
 }
 
+TEST(PEMTokenizerTest, WhitespaceAroundLines) {
+  const char data[] =
+      "-----BEGIN EXPECTED-BLOCK-----\n"
+      " \tTWF0Y2 \t\n \t\n \thlc0FjY2VwdGVkQmxvY2tUeXBl \t\n"
+      "-----END EXPECTED-BLOCK-----\n";
+  std::string_view string_piece(data);
+  std::vector<std::string> accepted_types;
+  accepted_types.push_back("EXPECTED-BLOCK");
+
+  PEMTokenizer tokenizer(string_piece, accepted_types);
+  EXPECT_TRUE(tokenizer.GetNext());
+
+  EXPECT_EQ("EXPECTED-BLOCK", tokenizer.block_type());
+  EXPECT_EQ("MatchesAcceptedBlockType", tokenizer.data());
+
+  EXPECT_FALSE(tokenizer.GetNext());
+}
+
+TEST(PEMTokenizerTest, WhitespaceWithinLines) {
+  // TODO(davidben): crypto/pem accepts this. Should we? It accepts it because
+  // |EVP_ENCODE_CTX| silently skips over whitespace.
+  const char data[] =
+      "-----BEGIN EXPECTED-BLOCK-----\n"
+      "TWF0Y2    hlc0FjY2VwdGVkQmxvY2tUeXBl\n"
+      "-----END EXPECTED-BLOCK-----\n";
+  std::string_view string_piece(data);
+  std::vector<std::string> accepted_types;
+  accepted_types.push_back("EXPECTED-BLOCK");
+
+  PEMTokenizer tokenizer(string_piece, accepted_types);
+  EXPECT_FALSE(tokenizer.GetNext());
+}
+
+TEST(PEMTokenizerTest, InvalidBase64) {
+  const char data[] =
+      "-----BEGIN EXPECTED-BLOCK-----\n"
+      "??????\n"
+      "-----END EXPECTED-BLOCK-----\n";
+  std::string_view string_piece(data);
+  std::vector<std::string> accepted_types;
+  accepted_types.push_back("EXPECTED-BLOCK");
+
+  PEMTokenizer tokenizer(string_piece, accepted_types);
+  EXPECT_FALSE(tokenizer.GetNext());
+}
+
 TEST(PEMTokenizerTest, NoAcceptedBlockTypes) {
   const char data[] =
       "-----BEGIN UNEXPECTED-BLOCK-----\n"
