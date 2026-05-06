@@ -15,8 +15,6 @@
 #include "string_util.h"
 
 #include <algorithm>
-#include <iomanip>
-#include <sstream>
 #include <string>
 
 #include <openssl/base64.h>
@@ -83,12 +81,14 @@ bool StartsWith(std::string_view str, std::string_view prefix) {
 }
 
 std::string HexEncode(Span<const uint8_t> data) {
-  std::ostringstream out;
+  std::string ret;
+  ret.reserve(data.size() * 2);
   for (uint8_t b : data) {
-    out << std::hex << std::setfill('0') << std::setw(2) << std::uppercase
-        << int{b};
+    static const char kHex[] = "0123456789ABCDEF";
+    ret.push_back(kHex[b >> 4]);
+    ret.push_back(kHex[b & 0xf]);
   }
-  return out.str();
+  return ret;
 }
 
 std::vector<std::string_view> SplitString(std::string_view str,
