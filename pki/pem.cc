@@ -81,10 +81,18 @@ bool PEMTokenizer::GetNext() {
       pos_ = footer_pos + it->footer.size();
       block_type_ = it->type;
 
+      // Remove whitespace from the base64 data.
       std::string_view encoded =
           str_.substr(data_begin, footer_pos - data_begin);
-      if (!string_util::Base64Decode(
-              string_util::CollapseWhitespaceASCII(encoded, true), &data_)) {
+      std::string trimmed;
+      trimmed.reserve(encoded.size());
+      for (char c : encoded) {
+        if (c != '\n' && c != '\r' && c != ' ' && c != '\t') {
+          trimmed.push_back(c);
+        }
+      }
+
+      if (!string_util::Base64Decode(trimmed, &data_)) {
         // The most likely cause for a decode failure is a datatype that
         // includes PEM headers, which are not supported.
         break;

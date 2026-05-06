@@ -125,62 +125,6 @@ std::vector<std::string_view> SplitString(std::string_view str,
   return out;
 }
 
-static bool IsUnicodeWhitespace(char c) {
-  return c == 9 || c == 10 || c == 11 || c == 12 || c == 13 || c == ' ';
-}
-
-std::string CollapseWhitespaceASCII(std::string_view text,
-                                    bool trim_sequences_with_line_breaks) {
-  std::string result;
-  result.resize(text.size());
-
-  // Set flags to pretend we're already in a trimmed whitespace sequence, so we
-  // will trim any leading whitespace.
-  bool in_whitespace = true;
-  bool already_trimmed = true;
-
-  size_t chars_written = 0;
-  for (auto i = text.begin(); i != text.end(); ++i) {
-    if (IsUnicodeWhitespace(*i)) {
-      if (!in_whitespace) {
-        // Reduce all whitespace sequences to a single space.
-        in_whitespace = true;
-        // Can't overflow because |chars_written| is incremented at most once
-        // per |text| character.
-        result[chars_written++] = L' ';
-      }
-      if (trim_sequences_with_line_breaks && !already_trimmed &&
-          ((*i == '\n') || (*i == '\r'))) {
-        // Whitespace sequences containing CR or LF are eliminated entirely.
-        already_trimmed = true;
-        // Can't underflow because getting here requires |already_trimmed| to
-        // be false, which is only ever set when |chars_written| is
-        // incremented.
-        --chars_written;
-      }
-    } else {
-      // Non-whitespace characters are copied straight across.
-      in_whitespace = false;
-      already_trimmed = false;
-      // Can't overflow because |chars_written| is incremented at most once per
-      // |text| character.
-      result[chars_written++] = *i;
-    }
-  }
-
-  if (in_whitespace && !already_trimmed) {
-    // Any trailing whitespace is eliminated.
-    //
-    // Can't underflow because getting here requires |already_trimmed| to
-    // be false, which is only ever set when |chars_written| is
-    // incremented.
-    --chars_written;
-  }
-
-  result.resize(chars_written);
-  return result;
-}
-
 bool Base64Encode(const std::string_view &input, std::string *output) {
   size_t len;
   if (!EVP_EncodedLength(&len, input.size())) {
