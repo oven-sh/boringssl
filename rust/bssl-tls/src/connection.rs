@@ -178,6 +178,30 @@ impl<R, M> TlsConnection<R, M> {
         }
         res
     }
+
+    /// Get a handle of the connection object.
+    ///
+    /// # Safety
+    /// - `self` must outlive all uses of the returned handle;
+    /// - this handle must be used with functions from the BoringSSL library this crate is linked
+    ///   to; otherwise, it is **undefined behaviour**.
+    pub unsafe fn as_mut_ptr(&self) -> *mut bssl_sys::SSL {
+        self.ptr.as_ptr()
+    }
+
+    /// Reconstitute a borrow of the connection object.
+    ///
+    /// # Safety
+    /// - the handle `ptr` must be sourced originally from [`TlsConnection::as_mut_ptr`]
+    ///   of this crate.
+    /// - the handle `*ptr` must not be aliased and accessed across threads until the borrow is
+    ///   expired; otherwise, it is **undefined behaviour**.
+    pub unsafe fn from_mut_ptr(ptr: &mut *mut bssl_sys::SSL) -> &mut Self {
+        unsafe {
+            // Safety: `TlsConnection` is a thin wrapper around `*mut bssl_sys::SSL`
+            core::mem::transmute(ptr)
+        }
+    }
 }
 
 // TODO(@xfding): there seems to be some type inference regression, drop the turbofish when it is
