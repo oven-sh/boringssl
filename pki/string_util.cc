@@ -139,30 +139,41 @@ std::string CollapseWhitespaceASCII(std::string_view text,
   bool in_whitespace = true;
   bool already_trimmed = true;
 
-  int chars_written = 0;
+  size_t chars_written = 0;
   for (auto i = text.begin(); i != text.end(); ++i) {
     if (IsUnicodeWhitespace(*i)) {
       if (!in_whitespace) {
         // Reduce all whitespace sequences to a single space.
         in_whitespace = true;
+        // Can't overflow because |chars_written| is incremented at most once
+        // per |text| character.
         result[chars_written++] = L' ';
       }
       if (trim_sequences_with_line_breaks && !already_trimmed &&
           ((*i == '\n') || (*i == '\r'))) {
         // Whitespace sequences containing CR or LF are eliminated entirely.
         already_trimmed = true;
+        // Can't underflow because getting here requires |already_trimmed| to
+        // be false, which is only ever set when |chars_written| is
+        // incremented.
         --chars_written;
       }
     } else {
       // Non-whitespace characters are copied straight across.
       in_whitespace = false;
       already_trimmed = false;
+      // Can't overflow because |chars_written| is incremented at most once per
+      // |text| character.
       result[chars_written++] = *i;
     }
   }
 
   if (in_whitespace && !already_trimmed) {
     // Any trailing whitespace is eliminated.
+    //
+    // Can't underflow because getting here requires |already_trimmed| to
+    // be false, which is only ever set when |chars_written| is
+    // incremented.
     --chars_written;
   }
 
