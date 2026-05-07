@@ -628,6 +628,14 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
         return false;
       }
       size_t new_len = out_len + i;
+      if (new_len > INT_MAX / 2) {
+        // Arbitrarily limit PEM data to INT_MAX / 2 bytes, which "ought to be
+        // enough for anyone". Hardens against possible integer overflows
+        // downstream.
+        OPENSSL_PUT_ERROR(PEM, ERR_R_OVERFLOW);
+        failed = true;
+        return false;
+      }
       if (!BUF_MEM_grow(out, new_len + 1)) {
         OPENSSL_PUT_ERROR(PEM, ERR_R_MALLOC_FAILURE);
         failed = true;

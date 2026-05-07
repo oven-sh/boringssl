@@ -16,6 +16,7 @@
 #include "string_util.h"
 
 #include <array>
+#include <limits>
 #include <string_view>
 
 namespace {
@@ -80,6 +81,14 @@ bool PEMTokenizer::GetNext() {
       std::string_view::size_type data_begin = pos_ + it->header.size();
       pos_ = footer_pos + it->footer.size();
       block_type_ = it->type;
+
+      // Arbitrarily limit PEM data to INT_MAX / 2 bytes, which "ought to be
+      // enough for anyone". Hardens against possible integer overflows
+      // downstream.
+      if (footer_pos - data_begin > static_cast<std::string_view::size_type>(
+                                        std::numeric_limits<int>::max() / 2)) {
+        return false;
+      }
 
       // Remove whitespace from the base64 data.
       std::string_view encoded =
