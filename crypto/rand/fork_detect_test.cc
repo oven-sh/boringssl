@@ -30,10 +30,16 @@
 #include <unistd.h>
 
 #include <functional>
+#include <tuple>
 
 #if defined(OPENSSL_THREADS)
 #include <thread>
 #include <vector>
+#endif
+
+#if defined(OPENSSL_LINUX)
+#include <stdlib.h>
+#include <sys/utsname.h>
 #endif
 
 #include <gtest/gtest.h>
@@ -146,6 +152,21 @@ static bool AlternateForkInChild(std::function<void()> f) {
 
 TEST(ForkDetect, OSSupport) {
   uint64_t start = CRYPTO_get_fork_generation();
+#if defined(OPENSSL_LINUX)
+  if (start == 0) {
+    struct utsname u;
+    if (uname(&u) == 0) {
+      const char *dot = strchr(u.release, '.');
+      if (dot != nullptr) {
+        auto version = std::tuple(atoi(u.release), atoi(dot + 1));
+        if (version < std::tuple(4, 14)) {
+          GTEST_SKIP() << "Fork detection not supported on Linux " << u.release
+                       << " which is < 4.14. Skipping test.\n";
+        }
+      }
+    }
+  }
+#endif
   EXPECT_NE(start, uint64_t{0})
       << "Fork detection not supported, but support is configured to be "
          "expected on this platform in crypto/rand/internal.h. Typically this "
