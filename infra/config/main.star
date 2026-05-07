@@ -1250,6 +1250,19 @@ both_builders(
         "msvc_target": "x86",
     },
 )
+
+both_builders(
+    "win32_vs2022",
+    WIN_HOST,
+    cq_enabled = False,
+    short_name = "vs22",
+    properties = {
+        "msvc_target": "x86",
+        "gclient_vars": {
+            "windows_sdk_version": "uploaded:2024-01-11",
+        },
+    },
+)
 both_builders(
     "win32_rel",
     WIN_HOST,
@@ -1364,6 +1377,19 @@ both_builders(
     cq_compile_only = WIN_HOST,  # Reduce CQ cycle times.
     properties = {
         "msvc_target": "x64",
+    },
+)
+
+both_builders(
+    "win64_vs2022",
+    WIN_HOST,
+    cq_enabled = False,
+    short_name = "vs22",
+    properties = {
+        "msvc_target": "x64",
+        "gclient_vars": {
+            "windows_sdk_version": "uploaded:2024-01-11",
+        },
     },
 )
 
