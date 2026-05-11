@@ -39,6 +39,7 @@
 
 #if defined(OPENSSL_LINUX)
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <sys/utsname.h>
 #endif
 
@@ -164,6 +165,27 @@ TEST(ForkDetect, OSSupport) {
                        << " which is < 4.14. Skipping test.\n";
         }
       }
+    }
+
+    // Qemu claims support for any unsupported MADV_ flags, so the production
+    // code currently always disables reliance on MADV_WIPEONFORK when on qemu.
+    // Detect this situation explicitly here too so the test does not fail.
+    long page_size = sysconf(_SC_PAGESIZE);
+    ASSERT_GT(page_size, 0) << "System does not provide its page size. Expect "
+                               "reduced performance, but no security impact.";
+    void *addr =
+        mmap(nullptr, static_cast<size_t>(page_size), PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    ASSERT_NE(addr, nullptr)
+        << "mmap() cannot produce a private anonymous mapping. Expect reduced "
+           "performance, but no security impact.";
+    int madvise_broken = madvise(addr, page_size, -1) == 0;
+    munmap(addr, page_size);
+    if (madvise_broken) {
+      GTEST_SKIP()
+          << "System claims support for madvise() with invalid flags (typical "
+             "of qemu), which means return values are unreliable. Expect even "
+             "more reduced performance at runtime.\n";
     }
   }
 #endif
