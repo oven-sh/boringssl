@@ -451,9 +451,10 @@ static int p256_private_key_from_seed(uint8_t out_priv[P256_PRIVATE_KEY_LEN],
       return 0;
     }
 
-    // This checks that the scalar is less than the order.
+    // |ec_scalar_from_bytes| checks that the scalar is less than the order.
     if (ec_scalar_from_bytes(group, &private_scalar, out_priv,
-                             P256_PRIVATE_KEY_LEN)) {
+                             P256_PRIVATE_KEY_LEN) &&
+        !ec_scalar_is_zero(group, &private_scalar)) {
       return 1;
     }
   }
@@ -526,10 +527,10 @@ static int p256_encap_with_seed(const EVP_HPKE_KEM *kem,
     return 0;
   }
   uint8_t private_key[P256_PRIVATE_KEY_LEN];
-  if (!p256_private_key_from_seed(private_key, seed, seed_len)) {
+  if (!p256_private_key_from_seed(private_key, seed, seed_len) ||
+      !p256_public_from_private(out_enc, private_key)) {
     return 0;
   }
-  p256_public_from_private(out_enc, private_key);
 
   uint8_t dh[P256_SHARED_KEY_LEN];
   if (peer_public_key_len != P256_PUBLIC_VALUE_LEN ||
@@ -591,10 +592,10 @@ static int p256_auth_encap_with_seed(
     return 0;
   }
   uint8_t private_key[P256_PRIVATE_KEY_LEN];
-  if (!p256_private_key_from_seed(private_key, seed, seed_len)) {
+  if (!p256_private_key_from_seed(private_key, seed, seed_len) ||
+      !p256_public_from_private(out_enc, private_key)) {
     return 0;
   }
-  p256_public_from_private(out_enc, private_key);
 
   uint8_t dh[2 * P256_SHARED_KEY_LEN];
   if (peer_public_key_len != P256_PUBLIC_VALUE_LEN ||
