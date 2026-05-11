@@ -377,60 +377,77 @@ inline void scalar_mult(scalar *out, const scalar *lhs, const scalar *rhs) {
 //
 // FIPS 204, Algorithm 41 (`NTT`).
 inline void scalar_ntt(scalar *s) {
-  // Step: 1, 2, 4, 8, ..., 128
-  // Offset: 128, 64, 32, 16, ..., 1
-  int offset = kDegree;
-  for (int step = 1; step < kDegree; step <<= 1) {
-    offset >>= 1;
-    int k = 0;
-    for (int i = 0; i < step; i++) {
-      assert(k == 2 * offset * i);
-      const uint32_t step_root = kNTTRootsMontgomery[step + i];
-      for (int j = k; j < k + offset; j++) {
-        uint32_t even = s->c[j];
-        // `reduce_montgomery` works on values up to kPrime*R and R > 2*kPrime.
-        // `step_root` < kPrime because it's static data.
-        // `s->c[...]` is < kPrime by the invariants of that struct.
-        uint32_t odd =
-            reduce_montgomery((uint64_t)step_root * (uint64_t)s->c[j + offset]);
-        s->c[j] = reduce_once(odd + even);
-        s->c[j + offset] = mod_sub(even, odd);
-      }
-      k += 2 * offset;
-    }
+  // Manually unrolled loop to maximize vectorization.
+#define ITER(step, offset)                                              \
+  {                                                                     \
+    int k = 0;                                                          \
+    for (int i = 0; i < step; i++) {                                    \
+      const uint32_t step_root = kNTTRootsMontgomery[step + i];         \
+      for (int j = k; j < k + offset; j++) {                            \
+        uint32_t even = s->c[j];                                        \
+        /* `reduce_montgomery` works on values up to kPrime*R and R     \
+         * 2*kPrime. `step_root` < kPrime because it's static data.     \
+         * `s->c[...]` is < kPrime by the invariants of that struct. */ \
+        uint32_t odd = reduce_montgomery((uint64_t)step_root *          \
+                                         (uint64_t)s->c[j + offset]);   \
+        s->c[j] = reduce_once(odd + even);                              \
+        s->c[j + offset] = mod_sub(even, odd);                          \
+      }                                                                 \
+      k += 2 * offset;                                                  \
+    }                                                                   \
   }
+
+  ITER(1, 128)
+  ITER(2, 64)
+  ITER(4, 32)
+  ITER(8, 16)
+  ITER(16, 8)
+  ITER(32, 4)
+  ITER(64, 2)
+  ITER(128, 1)
+  static_assert(kDegree == 256);
+#undef ITER
 }
 
 // In place inverse number theoretic transform of a given scalar.
 //
 // FIPS 204, Algorithm 42 (`NTT^-1`).
 inline void scalar_inverse_ntt(scalar *s) {
-  // Step: 128, 64, 32, 16, ..., 1
-  // Offset: 1, 2, 4, 8, ..., 128
-  int step = kDegree;
-  for (int offset = 1; offset < kDegree; offset <<= 1) {
-    step >>= 1;
-    int k = 0;
-    for (int i = 0; i < step; i++) {
-      assert(k == 2 * offset * i);
-      const uint32_t step_root =
-          kPrime - kNTTRootsMontgomery[step + (step - 1 - i)];
-      for (int j = k; j < k + offset; j++) {
-        uint32_t even = s->c[j];
-        uint32_t odd = s->c[j + offset];
-        s->c[j] = reduce_once(odd + even);
-
-        // `reduce_montgomery` works on values up to kPrime*R and R > 2*kPrime.
-        // kPrime + even < 2*kPrime because `even` < kPrime, by the invariants
-        // of that structure. Thus kPrime + even - odd < 2*kPrime because odd >=
-        // 0, because it's unsigned and less than kPrime. Lastly step_root <
-        // kPrime, because `kNTTRootsMontgomery` is static data.
-        s->c[j + offset] = reduce_montgomery((uint64_t)step_root *
-                                             (uint64_t)(kPrime + even - odd));
-      }
-      k += 2 * offset;
-    }
+  // Manually unrolled loop to maximize vectorization.
+#define ITER(step, offset)                                                     \
+  {                                                                            \
+    int k = 0;                                                                 \
+    for (int i = 0; i < step; i++) {                                           \
+      const uint32_t step_root =                                               \
+          kPrime - kNTTRootsMontgomery[step + (step - 1 - i)];                 \
+      for (int j = k; j < k + offset; j++) {                                   \
+        uint32_t even = s->c[j];                                               \
+        uint32_t odd = s->c[j + offset];                                       \
+        s->c[j] = reduce_once(odd + even);                                     \
+        /* `reduce_montgomery` works on values up to kPrime*R and R >          \
+         * 2*kPrime. kPrime + even < 2*kPrime because `even` < kPrime, by the  \
+         * invariants of that structure. Thus kPrime + even - odd < 2*kPrime   \
+         * because odd >= 0, because it's unsigned and less than kPrime.       \
+         * Lastly step_root < kPrime, because `kNTTRootsMontgomery` is static  \
+         * data. */                                                            \
+        s->c[j + offset] = reduce_montgomery((uint64_t)step_root *             \
+                                             (uint64_t)(kPrime + even - odd)); \
+      }                                                                        \
+      k += 2 * offset;                                                         \
+    }                                                                          \
   }
+
+  ITER(128, 1)
+  ITER(64, 2)
+  ITER(32, 4)
+  ITER(16, 8)
+  ITER(8, 16)
+  ITER(4, 32)
+  ITER(2, 64)
+  ITER(1, 128)
+  static_assert(kDegree == 256);
+#undef ITER
+
   for (int i = 0; i < kDegree; i++) {
     s->c[i] = reduce_montgomery((uint64_t)s->c[i] *
                                 (uint64_t)kInverseDegreeMontgomery);
