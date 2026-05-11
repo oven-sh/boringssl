@@ -1146,29 +1146,55 @@ inline int scalar_decode_signed<20, (1u << 19)>(scalar *out,
 //
 // Rejection samples a Keccak stream to get uniformly distributed elements. This
 // is used for matrix expansion and only operates on public inputs.
-inline void scalar_from_keccak_vartime(
-    scalar *out, const uint8_t derived_seed[kRhoBytes + 2]) {
-  BORINGSSL_keccak_st keccak_ctx;
-  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake128);
-  BORINGSSL_keccak_absorb(&keccak_ctx, derived_seed, kRhoBytes + 2);
-  assert(keccak_ctx.squeeze_offset == 0);
-  assert(keccak_ctx.rate_bytes == 168);
+inline void scalar_from_keccak_block_vartime(scalar *out, int *done,
+                                             const uint8_t block[168]) {
+  for (size_t i = 0; i < 168 && *done < kDegree; i += 3) {
+    // FIPS 204, Algorithm 14 (`CoeffFromThreeBytes`).
+    uint32_t value = (uint32_t)block[i] | ((uint32_t)block[i + 1] << 8) |
+                     (((uint32_t)block[i + 2] & 0x7f) << 16);
+    if (value < kPrime) {
+      out->c[(*done)++] = value;
+    }
+  }
+}
+
+// FIPS 204, Algorithm 30 (`RejNTTPoly`).
+//
+// Rejection samples a Keccak stream to get uniformly distributed elements. This
+// is used for matrix expansion and only operates on public inputs.
+inline void scalar_from_keccak_vartime(scalar *out,
+                                       BORINGSSL_keccak_st *keccak_ctx) {
+  assert(keccak_ctx->squeeze_offset == 0);
+  assert(keccak_ctx->rate_bytes == 168);
   static_assert(168 % 3 == 0, "block and coefficient boundaries do not align");
 
   int done = 0;
   while (done < kDegree) {
     uint8_t block[168];
-    BORINGSSL_keccak_squeeze(&keccak_ctx, block, sizeof(block));
-    for (size_t i = 0; i < sizeof(block) && done < kDegree; i += 3) {
-      // FIPS 204, Algorithm 14 (`CoeffFromThreeBytes`).
-      uint32_t value = (uint32_t)block[i] | ((uint32_t)block[i + 1] << 8) |
-                       (((uint32_t)block[i + 2] & 0x7f) << 16);
-      if (value < kPrime) {
-        out->c[done++] = value;
-      }
-    }
+    BORINGSSL_keccak_squeeze(keccak_ctx, block, sizeof(block));
+    scalar_from_keccak_block_vartime(out, &done, block);
   }
 }
+
+#if defined(HAVE_KECCAK_X2)
+inline void scalar_from_keccak_vartime_x2(scalar *out[2],
+                                          BORINGSSL_keccak_st keccak_ctx[2]) {
+  assert(keccak_ctx[0].squeeze_offset == 0);
+  assert(keccak_ctx[0].rate_bytes == 168);
+  assert(keccak_ctx[1].squeeze_offset == 0);
+  assert(keccak_ctx[1].rate_bytes == 168);
+  static_assert(168 % 3 == 0, "block and coefficient boundaries do not align");
+
+  int done[2] = {0, 0};
+  while (done[0] < kDegree || done[1] < kDegree) {
+    uint8_t block[2][168];
+    uint8_t *blocks[] = {block[0], block[1]};
+    BORINGSSL_keccak_squeeze_x2(keccak_ctx, blocks, sizeof(block[0]));
+    scalar_from_keccak_block_vartime(out[0], &done[0], block[0]);
+    scalar_from_keccak_block_vartime(out[1], &done[1], block[1]);
+  }
+}
+#endif
 
 template <int ETA>
 inline bool coefficient_from_nibble(uint32_t nibble, uint32_t *result);
@@ -1197,47 +1223,75 @@ inline bool coefficient_from_nibble<2>(uint32_t nibble, uint32_t *result) {
   return false;
 }
 
-// FIPS 204, Algorithm 31 (`RejBoundedPoly`).
 template <int ETA>
-inline void scalar_uniform(scalar *out,
-                           const uint8_t derived_seed[kSigmaBytes + 2]) {
-  BORINGSSL_keccak_st keccak_ctx;
-  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake256);
-  BORINGSSL_keccak_absorb(&keccak_ctx, derived_seed, kSigmaBytes + 2);
-  assert(keccak_ctx.squeeze_offset == 0);
-  assert(keccak_ctx.rate_bytes == 136);
-
-  int done = 0;
-  while (done < kDegree) {
-    uint8_t block[136];
-    BORINGSSL_keccak_squeeze(&keccak_ctx, block, sizeof(block));
-    for (size_t i = 0; i < sizeof(block) && done < kDegree; ++i) {
-      uint32_t t0 = block[i] & 0x0F;
-      uint32_t t1 = block[i] >> 4;
-      // FIPS 204, Algorithm 15 (`CoefFromHalfByte`). Although both the input
-      // and output here are secret, it is OK to leak when we rejected a byte.
-      // Individual bytes of the SHAKE-256 stream are (indistinguishable from)
-      // independent of each other and the original seed, so leaking information
-      // about the rejected bytes does not reveal the input or output.
-      uint32_t v;
-      if (coefficient_from_nibble<ETA>(t0, &v)) {
-        out->c[done++] = v;
-      }
-      if (done < kDegree && coefficient_from_nibble<ETA>(t1, &v)) {
-        out->c[done++] = v;
-      }
+inline void scalar_uniform_block(scalar *out, int *done,
+                                 const uint8_t block[136]) {
+  for (size_t i = 0; i < 136 && *done < kDegree; ++i) {
+    uint32_t t0 = block[i] & 0x0F;
+    uint32_t t1 = block[i] >> 4;
+    // FIPS 204, Algorithm 15 (`CoefFromHalfByte`). Although both the input
+    // and output here are secret, it is OK to leak when we rejected a byte.
+    // Individual bytes of the SHAKE-256 stream are (indistinguishable from)
+    // independent of each other and the original seed, so leaking information
+    // about the rejected bytes does not reveal the input or output.
+    uint32_t v;
+    if (coefficient_from_nibble<ETA>(t0, &v)) {
+      out->c[(*done)++] = v;
+    }
+    if (*done < kDegree && coefficient_from_nibble<ETA>(t1, &v)) {
+      out->c[(*done)++] = v;
     }
   }
 }
 
+// FIPS 204, Algorithm 31 (`RejBoundedPoly`).
+template <int ETA>
+inline void scalar_uniform(scalar *out, BORINGSSL_keccak_st *keccak_ctx) {
+  assert(keccak_ctx->squeeze_offset == 0);
+  assert(keccak_ctx->rate_bytes == 136);
+
+  int done = 0;
+  while (done < kDegree) {
+    uint8_t block[136];
+    BORINGSSL_keccak_squeeze(keccak_ctx, block, sizeof(block));
+    scalar_uniform_block<ETA>(out, &done, block);
+  }
+}
+
+#if defined(HAVE_KECCAK_X2)
+template <int ETA>
+inline void scalar_uniform_x2(scalar *out[2],
+                              BORINGSSL_keccak_st keccak_ctx[2]) {
+  assert(keccak_ctx[0].squeeze_offset == 0);
+  assert(keccak_ctx[0].rate_bytes == 136);
+  assert(keccak_ctx[1].squeeze_offset == 0);
+  assert(keccak_ctx[1].rate_bytes == 136);
+
+  int done[2] = {0, 0};
+  while (done[0] < kDegree || done[1] < kDegree) {
+    uint8_t block[2][136];
+    uint8_t *blocks[] = {block[0], block[1]};
+    BORINGSSL_keccak_squeeze_x2(keccak_ctx, blocks, sizeof(block[0]));
+    scalar_uniform_block<ETA>(out[0], &done[0], block[0]);
+    scalar_uniform_block<ETA>(out[1], &done[1], block[1]);
+  }
+}
+#endif
+
 // FIPS 204, Algorithm 34 (`ExpandMask`), but just a single step.
 template <int K>
 inline void scalar_sample_mask(scalar *out,
-                               const uint8_t derived_seed[kRhoPrimeBytes + 2]) {
+                               const uint8_t rho_prime[kRhoPrimeBytes],
+                               size_t index) {
   uint8_t buf[scalar_le_gamma1_bytes<K>()];
-  BORINGSSL_keccak(buf, sizeof(buf), derived_seed, kRhoPrimeBytes + 2,
-                   boringssl_shake256);
-
+  struct BORINGSSL_keccak_st ctx;
+  BORINGSSL_keccak_init(&ctx, boringssl_shake256);
+  BORINGSSL_keccak_absorb(&ctx, rho_prime, kRhoPrimeBytes);
+  uint8_t index_buf[2];
+  index_buf[0] = static_cast<uint8_t>(index);
+  index_buf[1] = static_cast<uint8_t>(index >> 8);
+  BORINGSSL_keccak_absorb(&ctx, index_buf, 2);
+  BORINGSSL_keccak_squeeze(&ctx, buf, sizeof(buf));
   scalar_decode_signed<gamma1_bits<K>() + 1, gamma1<K>()>(out, buf);
 }
 
@@ -1284,22 +1338,95 @@ inline void scalar_sample_in_ball_vartime(scalar *out, const uint8_t *seed,
   }
 }
 
-// FIPS 204, Algorithm 32 (`ExpandA`).
+template <int K, int L>
+inline void matrix_expand_step(scalar *out, const uint8_t rho[kRhoBytes],
+                               int index) {
+  BORINGSSL_keccak_st keccak_ctx;
+  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake128);
+  BORINGSSL_keccak_absorb(&keccak_ctx, rho, kRhoBytes);
+  uint8_t index_buf[2];
+  index_buf[0] = static_cast<uint8_t>(index % L);
+  index_buf[1] = static_cast<uint8_t>(index / L);
+  BORINGSSL_keccak_absorb(&keccak_ctx, index_buf, 2);
+  scalar_from_keccak_vartime(out, &keccak_ctx);
+}
+
+#if defined(HAVE_KECCAK_X2)
+template <int K, int L>
+inline void matrix_expand_step_x2(matrix<K, L> *out,
+                                  const uint8_t rho[kRhoBytes], int index) {
+  BORINGSSL_keccak_st keccak_ctx[2];
+  BORINGSSL_keccak_init(&keccak_ctx[0], boringssl_shake128);
+  BORINGSSL_keccak_init(&keccak_ctx[1], boringssl_shake128);
+  BORINGSSL_keccak_absorb(&keccak_ctx[0], rho, kRhoBytes);
+  BORINGSSL_keccak_absorb(&keccak_ctx[1], rho, kRhoBytes);
+  uint8_t index_buf[2];
+  index_buf[0] = static_cast<uint8_t>(index % L);
+  index_buf[1] = static_cast<uint8_t>(index / L);
+  BORINGSSL_keccak_absorb(&keccak_ctx[0], index_buf, 2);
+  index_buf[0] = static_cast<uint8_t>((index + 1) % L);
+  index_buf[1] = static_cast<uint8_t>((index + 1) / L);
+  BORINGSSL_keccak_absorb(&keccak_ctx[1], index_buf, 2);
+
+  scalar *outs[] = {&out->v[index / L][index % L],
+                    &out->v[(index + 1) / L][(index + 1) % L]};
+  scalar_from_keccak_vartime_x2(outs, keccak_ctx);
+}
+#endif
+
 template <int K, int L>
 inline void matrix_expand(matrix<K, L> *out, const uint8_t rho[kRhoBytes]) {
   static_assert(K <= 0x100, "K must fit in 8 bits");
   static_assert(L <= 0x100, "L must fit in 8 bits");
 
-  uint8_t derived_seed[kRhoBytes + 2];
-  OPENSSL_memcpy(derived_seed, rho, kRhoBytes);
-  for (int i = 0; i < K; i++) {
-    for (int j = 0; j < L; j++) {
-      derived_seed[kRhoBytes + 1] = (uint8_t)i;
-      derived_seed[kRhoBytes] = (uint8_t)j;
-      scalar_from_keccak_vartime(&out->v[i][j], derived_seed);
-    }
+  int index = 0;
+#if defined(HAVE_KECCAK_X2)
+  for (; index + 2 <= K * L; index += 2) {
+    matrix_expand_step_x2(out, rho, index);
+  }
+#endif
+
+  for (; index < K * L; index++) {
+    matrix_expand_step<K, L>(&out->v[index / L][index % L], rho, index);
   }
 }
+
+template <int K>
+inline void vector_expand_short_step(scalar *out,
+                                     const uint8_t sigma[kSigmaBytes],
+                                     int index) {
+  BORINGSSL_keccak_st keccak_ctx;
+  BORINGSSL_keccak_init(&keccak_ctx, boringssl_shake256);
+  BORINGSSL_keccak_absorb(&keccak_ctx, sigma, kSigmaBytes);
+  uint8_t index_buf[2];
+  index_buf[0] = static_cast<uint8_t>(index);
+  index_buf[1] = 0;
+  BORINGSSL_keccak_absorb(&keccak_ctx, index_buf, 2);
+  scalar_uniform<eta<K>()>(out, &keccak_ctx);
+}
+
+#if defined(HAVE_KECCAK_X2)
+template <int K>
+inline void vector_expand_short_step_x2(scalar *out0, scalar *out1,
+                                        const uint8_t sigma[kSigmaBytes],
+                                        int index) {
+  BORINGSSL_keccak_st keccak_ctx[2];
+  BORINGSSL_keccak_init(&keccak_ctx[0], boringssl_shake256);
+  BORINGSSL_keccak_init(&keccak_ctx[1], boringssl_shake256);
+  BORINGSSL_keccak_absorb(&keccak_ctx[0], sigma, kSigmaBytes);
+  BORINGSSL_keccak_absorb(&keccak_ctx[1], sigma, kSigmaBytes);
+  uint8_t index_buf[2];
+  index_buf[0] = static_cast<uint8_t>(index);
+  index_buf[1] = 0;
+  BORINGSSL_keccak_absorb(&keccak_ctx[0], index_buf, 2);
+  index_buf[0] = static_cast<uint8_t>(index + 1);
+  index_buf[1] = 0;
+  BORINGSSL_keccak_absorb(&keccak_ctx[1], index_buf, 2);
+
+  scalar *outs[] = {out0, out1};
+  scalar_uniform_x2<eta<K>()>(outs, keccak_ctx);
+}
+#endif
 
 // FIPS 204, Algorithm 33 (`ExpandS`).
 template <int K, int L>
@@ -1309,34 +1436,37 @@ inline void vector_expand_short(vector<L> *s1, vector<K> *s2,
   static_assert(L <= 0x100, "L must fit in 8 bits");
   static_assert(K + L <= 0x100, "K+L must fit in 8 bits");
 
-  uint8_t derived_seed[kSigmaBytes + 2];
-  OPENSSL_memcpy(derived_seed, sigma, kSigmaBytes);
-  derived_seed[kSigmaBytes] = 0;
-  derived_seed[kSigmaBytes + 1] = 0;
+  scalar *all_scalars[K + L];
   for (int i = 0; i < L; i++) {
-    scalar_uniform<eta<K>()>(&s1->v[i], derived_seed);
-    ++derived_seed[kSigmaBytes];
+    all_scalars[i] = &s1->v[i];
   }
   for (int i = 0; i < K; i++) {
-    scalar_uniform<eta<K>()>(&s2->v[i], derived_seed);
-    ++derived_seed[kSigmaBytes];
+    all_scalars[L + i] = &s2->v[i];
+  }
+
+  int index = 0;
+#if defined(HAVE_KECCAK_X2)
+  for (; index + 2 <= K + L; index += 2) {
+    vector_expand_short_step_x2<K>(all_scalars[index], all_scalars[index + 1],
+                                   sigma, index);
+  }
+#endif
+
+  for (; index < K + L; index++) {
+    vector_expand_short_step<K>(all_scalars[index], sigma, index);
   }
 }
 
 // FIPS 204, Algorithm 34 (`ExpandMask`).
 template <int K, int L>
 inline void vector_expand_mask(vector<L> *out,
-                               const uint8_t seed[kRhoPrimeBytes],
+                               const uint8_t rho_prime[kRhoPrimeBytes],
                                size_t kappa) {
   assert(kappa + L <= 0x10000);
 
-  uint8_t derived_seed[kRhoPrimeBytes + 2];
-  OPENSSL_memcpy(derived_seed, seed, kRhoPrimeBytes);
   for (int i = 0; i < L; i++) {
     size_t index = kappa + i;
-    derived_seed[kRhoPrimeBytes] = index & 0xFF;
-    derived_seed[kRhoPrimeBytes + 1] = (index >> 8) & 0xFF;
-    scalar_sample_mask<K>(&out->v[i], derived_seed);
+    scalar_sample_mask<K>(&out->v[i], rho_prime, index);
   }
 }
 
