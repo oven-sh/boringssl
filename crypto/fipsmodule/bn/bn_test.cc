@@ -223,6 +223,8 @@ static void TestSum(BIGNUMFileTest *t, BN_CTX *ctx) {
     ASSERT_TRUE(BN_usub(ret.get(), sum.get(), ret.get()));
     EXPECT_BIGNUMS_EQUAL("Sum -u B (r is b)", a.get(), ret.get());
 
+    // bn_abs_sub_consttime should overwrite the output sign.
+    BN_set_negative(ret.get(), 1);
     ASSERT_TRUE(bn_abs_sub_consttime(ret.get(), sum.get(), a.get(), ctx));
     EXPECT_BIGNUMS_EQUAL("|Sum - A|", b.get(), ret.get());
     ASSERT_TRUE(bn_abs_sub_consttime(ret.get(), a.get(), sum.get(), ctx));
