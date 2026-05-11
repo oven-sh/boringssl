@@ -47,6 +47,8 @@
 
 #include <openssl/mem.h>
 
+#include "../internal.h"
+
 
 BSSL_NAMESPACE_BEGIN
 namespace {
@@ -120,14 +122,21 @@ static bool AlternateForkInChild(std::function<void()> f) {
   fflush(stderr);  // Avoid duplicating any buffered output.
 #if defined(OPENSSL_LINUX)
   // On Linux, clone() can make new processes, too (even by default).
-  void *temp_stack = OPENSSL_malloc(65536);
-  void *stack_top = static_cast<char *>(temp_stack) + 65536;
+  const size_t kAlign = 16;
+  const size_t kStackSize = 65536;
+  void *temp_stack = OPENSSL_malloc(kStackSize + kAlign - 1);
+  void *stack_top =
+      static_cast<char *>(align_pointer(temp_stack, kAlign)) + kStackSize;
   pid_t pid = clone(
       +[](void *fp) {
         (*static_cast<std::function<void()> *>(fp))();
         return 0;
       },
       stack_top, SIGCHLD, &f);
+  if (pid < 0) {
+    perror("clone");
+    _exit(1);
+  }
   OPENSSL_free(temp_stack);
   WaitForChildOrDie(pid);
   return true;
