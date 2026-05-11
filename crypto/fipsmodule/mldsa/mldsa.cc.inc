@@ -777,8 +777,12 @@ inline void vector_use_hint_vartime(vector<K> *out, const vector<K> *h,
 
 /* Bit packing */
 
+template <int bits>
+inline void scalar_encode(uint8_t *out, const scalar *s);
+
 // FIPS 204, Algorithm 16 (`SimpleBitPack`). Specialized to bitlen(b) = 4.
-inline void scalar_encode_4(uint8_t out[128], const scalar *s) {
+template <>
+inline void scalar_encode<4>(uint8_t out[128], const scalar *s) {
   // Every two elements lands on a byte boundary.
   static_assert(kDegree % 2 == 0, "kDegree must be a multiple of 2");
   for (int i = 0; i < kDegree / 2; i++) {
@@ -791,7 +795,8 @@ inline void scalar_encode_4(uint8_t out[128], const scalar *s) {
 }
 
 // FIPS 204, Algorithm 16 (`SimpleBitPack`). Specialized to bitlen(b) = 6.
-inline void scalar_encode_6(uint8_t out[192], const scalar *s) {
+template <>
+inline void scalar_encode<6>(uint8_t out[192], const scalar *s) {
   // Every four elements lands on a byte boundary.
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
   for (int i = 0; i < kDegree / 4; i++) {
@@ -810,7 +815,8 @@ inline void scalar_encode_6(uint8_t out[192], const scalar *s) {
 }
 
 // FIPS 204, Algorithm 16 (`SimpleBitPack`). Specialized to bitlen(b) = 10.
-inline void scalar_encode_10(uint8_t out[320], const scalar *s) {
+template <>
+inline void scalar_encode<10>(uint8_t out[320], const scalar *s) {
   // Every four elements lands on a byte boundary.
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
   for (int i = 0; i < kDegree / 4; i++) {
@@ -830,8 +836,12 @@ inline void scalar_encode_10(uint8_t out[320], const scalar *s) {
   }
 }
 
+template <int bits, uint32_t max>
+inline void scalar_encode_signed(uint8_t *out, const scalar *s);
+
 // FIPS 204, Algorithm 17 (`BitPack`). Specialized to bitlen(a+b) = 4 and b = 4.
-inline void scalar_encode_signed_4_4(uint8_t out[128], const scalar *s) {
+template <>
+inline void scalar_encode_signed<4, 4>(uint8_t out[128], const scalar *s) {
   // Every two elements lands on a byte boundary.
   static_assert(kDegree % 2 == 0, "kDegree must be a multiple of 2");
   for (int i = 0; i < kDegree / 2; i++) {
@@ -844,7 +854,8 @@ inline void scalar_encode_signed_4_4(uint8_t out[128], const scalar *s) {
 }
 
 // FIPS 204, Algorithm 17 (`BitPack`). Specialized to bitlen(a+b) = 3 and b = 2.
-inline void scalar_encode_signed_3_2(uint8_t out[96], const scalar *s) {
+template <>
+inline void scalar_encode_signed<3, 2>(uint8_t out[96], const scalar *s) {
   static_assert(kDegree % 8 == 0, "kDegree must be a multiple of 8");
   for (int i = 0; i < kDegree / 8; i++) {
     uint32_t a = mod_sub(2, s->c[8 * i]);
@@ -865,7 +876,9 @@ inline void scalar_encode_signed_3_2(uint8_t out[96], const scalar *s) {
 
 // FIPS 204, Algorithm 17 (`BitPack`). Specialized to bitlen(a+b) = 13 and b =
 // 2^12.
-inline void scalar_encode_signed_13_12(uint8_t out[416], const scalar *s) {
+template <>
+inline void scalar_encode_signed<13, (1u << 12)>(uint8_t out[416],
+                                                 const scalar *s) {
   static const uint32_t kMax = 1u << 12;
   // Every two elements lands on a byte boundary.
   static_assert(kDegree % 8 == 0, "kDegree must be a multiple of 8");
@@ -905,7 +918,9 @@ inline void scalar_encode_signed_13_12(uint8_t out[416], const scalar *s) {
 
 // FIPS 204, Algorithm 17 (`BitPack`). Specialized to bitlen(a+b) = 20 and b =
 // 2^19.
-inline void scalar_encode_signed_20_19(uint8_t out[640], const scalar *s) {
+template <>
+inline void scalar_encode_signed<20, (1u << 19)>(uint8_t out[640],
+                                                 const scalar *s) {
   static const uint32_t kMax = 1u << 19;
   // Every two elements lands on a byte boundary.
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
@@ -931,7 +946,9 @@ inline void scalar_encode_signed_20_19(uint8_t out[640], const scalar *s) {
 
 // FIPS 204, Algorithm 17 (`BitPack`). Specialized to bitlen(a+b) = 18 and b =
 // 2^17.
-inline void scalar_encode_signed_18_17(uint8_t out[576], const scalar *s) {
+template <>
+inline void scalar_encode_signed<18, (1u << 17)>(uint8_t out[576],
+                                                 const scalar *s) {
   static const uint32_t kMax = 1u << 17;
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
   for (int i = 0; i < kDegree / 4; i++) {
@@ -955,30 +972,12 @@ inline void scalar_encode_signed_18_17(uint8_t out[576], const scalar *s) {
   }
 }
 
-// FIPS 204, Algorithm 17 (`BitPack`).
-inline void scalar_encode_signed(uint8_t *out, const scalar *s, int bits,
-                                 uint32_t max) {
-  if (bits == 3) {
-    assert(max == 2);
-    scalar_encode_signed_3_2(out, s);
-  } else if (bits == 4) {
-    assert(max == 4);
-    scalar_encode_signed_4_4(out, s);
-  } else if (bits == 20) {
-    assert(max == 1u << 19);
-    scalar_encode_signed_20_19(out, s);
-  } else if (bits == 18) {
-    assert(max == 1u << 17);
-    scalar_encode_signed_18_17(out, s);
-  } else {
-    assert(bits == 13);
-    assert(max == 1u << 12);
-    scalar_encode_signed_13_12(out, s);
-  }
-}
+template <int bits>
+inline void scalar_decode(scalar *out, const uint8_t *in);
 
 // FIPS 204, Algorithm 18 (`SimpleBitUnpack`). Specialized for bitlen(b) == 10.
-inline void scalar_decode_10(scalar *out, const uint8_t in[320]) {
+template <>
+inline void scalar_decode<10>(scalar *out, const uint8_t in[320]) {
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
   for (int i = 0; i < kDegree / 4; i++) {
     uint32_t v = CRYPTO_load_u32_le(&in[5 * i]);
@@ -989,9 +988,13 @@ inline void scalar_decode_10(scalar *out, const uint8_t in[320]) {
   }
 }
 
+template <int bits, uint32_t max>
+inline int scalar_decode_signed(scalar *out, const uint8_t *in);
+
 // FIPS 204, Algorithm 19 (`BitUnpack`). Specialized to bitlen(a+b) = 4 and b =
 // 4.
-inline int scalar_decode_signed_4_4(scalar *out, const uint8_t in[128]) {
+template <>
+inline int scalar_decode_signed<4, 4>(scalar *out, const uint8_t in[128]) {
   static_assert(kDegree % 8 == 0, "kDegree must be a multiple of 8");
   for (int i = 0; i < kDegree / 8; i++) {
     uint32_t v = CRYPTO_load_u32_le(&in[4 * i]);
@@ -1020,7 +1023,8 @@ inline int scalar_decode_signed_4_4(scalar *out, const uint8_t in[128]) {
 
 // FIPS 204, Algorithm 19 (`BitUnpack`). Specialized to bitlen(a+b) = 3 and b =
 // 2.
-inline int scalar_decode_signed_3_2(scalar *out, const uint8_t in[96]) {
+template <>
+inline int scalar_decode_signed<3, 2>(scalar *out, const uint8_t in[96]) {
   uint32_t v;
   uint8_t v_bytes[sizeof(v)] = {0};
   static_assert(kDegree % 8 == 0, "kDegree must be a multiple of 8");
@@ -1053,7 +1057,9 @@ inline int scalar_decode_signed_3_2(scalar *out, const uint8_t in[96]) {
 
 // FIPS 204, Algorithm 19 (`BitUnpack`). Specialized to bitlen(a+b) = 13 and b =
 // 2^12.
-inline void scalar_decode_signed_13_12(scalar *out, const uint8_t in[416]) {
+template <>
+inline int scalar_decode_signed<13, (1u << 12)>(scalar *out,
+                                                const uint8_t in[416]) {
   static const uint32_t kMax = 1u << 12;
   static const uint32_t k13Bits = (1u << 13) - 1;
   static const uint32_t k7Bits = (1u << 7) - 1;
@@ -1076,11 +1082,14 @@ inline void scalar_decode_signed_13_12(scalar *out, const uint8_t in[416]) {
     out->c[i * 8 + 6] = mod_sub(kMax, (c >> 14) & k13Bits);
     out->c[i * 8 + 7] = mod_sub(kMax, (c >> 27) | ((uint32_t)d) << 5);
   }
+  return 1;
 }
 
 // FIPS 204, Algorithm 19 (`BitUnpack`). Specialized to bitlen(a+b) = 18 and b =
 // 2^17.
-inline void scalar_decode_signed_18_17(scalar *out, const uint8_t in[576]) {
+template <>
+inline int scalar_decode_signed<18, (1u << 17)>(scalar *out,
+                                                const uint8_t in[576]) {
   static const uint32_t kMax = 1u << 17;
 
   static_assert(kDegree % 4 == 0, "kDegree must be a multiple of 4");
@@ -1102,11 +1111,14 @@ inline void scalar_decode_signed_18_17(scalar *out, const uint8_t in[576]) {
     out->c[i * 4 + 2] = mod_sub(kMax, c);
     out->c[i * 4 + 3] = mod_sub(kMax, d);
   }
+  return 1;
 }
 
 // FIPS 204, Algorithm 19 (`BitUnpack`). Specialized to bitlen(a+b) = 20 and b =
 // 2^19.
-inline void scalar_decode_signed_20_19(scalar *out, const uint8_t in[640]) {
+template <>
+inline int scalar_decode_signed<20, (1u << 19)>(scalar *out,
+                                                const uint8_t in[640]) {
   static const uint32_t kMax = 1u << 19;
   static const uint32_t k20Bits = (1u << 20) - 1;
 
@@ -1123,33 +1135,10 @@ inline void scalar_decode_signed_20_19(scalar *out, const uint8_t in[640]) {
     out->c[i * 4 + 2] = mod_sub(kMax, (b >> 8) & k20Bits);
     out->c[i * 4 + 3] = mod_sub(kMax, (b >> 28) | ((uint32_t)c) << 4);
   }
+  return 1;
 }
 
-// FIPS 204, Algorithm 19 (`BitUnpack`).
-inline int scalar_decode_signed(scalar *out, const uint8_t *in, int bits,
-                                uint32_t max) {
-  if (bits == 3) {
-    assert(max == 2);
-    return scalar_decode_signed_3_2(out, in);
-  } else if (bits == 4) {
-    assert(max == 4);
-    return scalar_decode_signed_4_4(out, in);
-  } else if (bits == 13) {
-    assert(max == (1u << 12));
-    scalar_decode_signed_13_12(out, in);
-    return 1;
-  } else if (bits == 18) {
-    assert(max == (1u << 17));
-    scalar_decode_signed_18_17(out, in);
-    return 1;
-  } else if (bits == 20) {
-    assert(max == (1u << 19));
-    scalar_decode_signed_20_19(out, in);
-    return 1;
-  } else {
-    abort();
-  }
-}
+
 
 /* Expansion functions */
 
@@ -1249,7 +1238,7 @@ inline void scalar_sample_mask(scalar *out,
   BORINGSSL_keccak(buf, sizeof(buf), derived_seed, kRhoPrimeBytes + 2,
                    boringssl_shake256);
 
-  scalar_decode_signed(out, buf, gamma1_bits<K>() + 1, gamma1<K>());
+  scalar_decode_signed<gamma1_bits<K>() + 1, gamma1<K>()>(out, buf);
 }
 
 // FIPS 204, Algorithm 29 (`SampleInBall`).
@@ -1358,29 +1347,18 @@ inline void vector_expand_mask(vector<L> *out,
 // Encodes an entire vector into 32*K*`bits` bytes. Note that since 256
 // (kDegree) is divisible by 8, the individual vector entries will always fill a
 // whole number of bytes, so we do not need to worry about bit packing here.
-template <int K>
-inline void vector_encode(uint8_t *out, const vector<K> *a, int bits) {
-  if (bits == 4) {
-    for (int i = 0; i < K; i++) {
-      scalar_encode_4(out + i * bits * kDegree / 8, &a->v[i]);
-    }
-  } else if (bits == 6) {
-    for (int i = 0; i < K; i++) {
-      scalar_encode_6(out + i * bits * kDegree / 8, &a->v[i]);
-    }
-  } else {
-    assert(bits == 10);
-    for (int i = 0; i < K; i++) {
-      scalar_encode_10(out + i * bits * kDegree / 8, &a->v[i]);
-    }
+template <int bits, int K>
+inline void vector_encode(uint8_t *out, const vector<K> *a) {
+  for (int i = 0; i < K; i++) {
+    scalar_encode<bits>(out + i * bits * kDegree / 8, &a->v[i]);
   }
 }
 
 // FIPS 204, Algorithm 18 (`SimpleBitUnpack`).
-template <int K>
-inline void vector_decode_10(vector<K> *out, const uint8_t *in) {
+template <int bits, int K>
+inline void vector_decode(vector<K> *out, const uint8_t *in) {
   for (int i = 0; i < K; i++) {
-    scalar_decode_10(&out->v[i], in + i * 10 * kDegree / 8);
+    scalar_decode<bits>(&out->v[i], in + i * bits * kDegree / 8);
   }
 }
 
@@ -1389,20 +1367,19 @@ inline void vector_decode_10(vector<K> *out, const uint8_t *in) {
 // Encodes an entire vector into 32*L*`bits` bytes. Note that since 256
 // (kDegree) is divisible by 8, the individual vector entries will always fill a
 // whole number of bytes, so we do not need to worry about bit packing here.
-template <int X>
-inline void vector_encode_signed(uint8_t *out, const vector<X> *a, int bits,
-                                 uint32_t max) {
+template <int bits, uint32_t max, int X>
+inline void vector_encode_signed(uint8_t *out, const vector<X> *a) {
   for (int i = 0; i < X; i++) {
-    scalar_encode_signed(out + i * bits * kDegree / 8, &a->v[i], bits, max);
+    scalar_encode_signed<bits, max>(out + i * bits * kDegree / 8, &a->v[i]);
   }
 }
 
-template <int X>
-inline int vector_decode_signed(vector<X> *out, const uint8_t *in, int bits,
-                                uint32_t max) {
+// FIPS 204, Algorithm 19 (`BitUnpack`).
+template <int bits, uint32_t max, int X>
+inline int vector_decode_signed(vector<X> *out, const uint8_t *in) {
   for (int i = 0; i < X; i++) {
-    if (!scalar_decode_signed(&out->v[i], in + i * bits * kDegree / 8, bits,
-                              max)) {
+    if (!scalar_decode_signed<bits, max>(&out->v[i],
+                                         in + i * bits * kDegree / 8)) {
       return 0;
     }
   }
@@ -1412,7 +1389,7 @@ inline int vector_decode_signed(vector<X> *out, const uint8_t *in, int bits,
 // FIPS 204, Algorithm 28 (`w1Encode`).
 template <int K>
 inline void w1_encode(uint8_t out[w1_bytes<K>()], const vector<K> *w1) {
-  vector_encode(out, w1, w1_coeffs_bits<K>());
+  vector_encode<w1_coeffs_bits<K>()>(out, w1);
 }
 
 // FIPS 204, Algorithm 20 (`HintBitPack`).
@@ -1498,7 +1475,7 @@ inline int mldsa_marshal_public_key(CBB *out, const public_key<K> *pub) {
   if (!CBB_add_space(out, &vectork_output, 320 * K)) {
     return 0;
   }
-  vector_encode(vectork_output, &pub->t1, 10);
+  vector_encode<10>(vectork_output, &pub->t1);
 
   return 1;
 }
@@ -1516,7 +1493,7 @@ inline int mldsa_parse_public_key(public_key<K> *pub, CBS *in) {
   if (!CBS_get_bytes(in, &t1_bytes, 320 * K) || CBS_len(in) != 0) {
     return 0;
   }
-  vector_decode_10(&pub->t1, CBS_data(&t1_bytes));
+  vector_decode<10>(&pub->t1, CBS_data(&t1_bytes));
 
   // Compute pre-cached values.
   BORINGSSL_keccak(pub->public_key_hash, sizeof(pub->public_key_hash),
@@ -1541,21 +1518,21 @@ inline int mldsa_marshal_private_key(CBB *out, const private_key<K, L> *priv) {
   if (!CBB_add_space(out, &vectorl_output, scalar_bytes * L)) {
     return 0;
   }
-  vector_encode_signed(vectorl_output, &priv->s1, plus_minus_eta_bitlen<K>(),
-                       eta<K>());
+  vector_encode_signed<plus_minus_eta_bitlen<K>(), eta<K>()>(vectorl_output,
+                                                             &priv->s1);
 
   uint8_t *s2_output;
   if (!CBB_add_space(out, &s2_output, scalar_bytes * K)) {
     return 0;
   }
-  vector_encode_signed(s2_output, &priv->s2, plus_minus_eta_bitlen<K>(),
-                       eta<K>());
+  vector_encode_signed<plus_minus_eta_bitlen<K>(), eta<K>()>(s2_output,
+                                                             &priv->s2);
 
   uint8_t *t0_output;
   if (!CBB_add_space(out, &t0_output, 416 * K)) {
     return 0;
   }
-  vector_encode_signed(t0_output, &priv->t0, 13, 1 << 12);
+  vector_encode_signed<13, (1 << 12)>(t0_output, &priv->t0);
 
   return 1;
 }
@@ -1571,14 +1548,14 @@ inline int mldsa_parse_private_key(private_key<K, L> *priv, CBS *in) {
       !CBS_copy_bytes(in, priv->k, sizeof(priv->k)) ||
       !CBS_get_bytes(in, &public_key_hash, kTrBytes) ||
       !CBS_get_bytes(in, &s1_bytes, scalar_bytes * L) ||
-      !vector_decode_signed(&priv->s1, CBS_data(&s1_bytes),
-                            plus_minus_eta_bitlen<K>(), eta<K>()) ||
+      !vector_decode_signed<plus_minus_eta_bitlen<K>(), eta<K>()>(
+          &priv->s1, CBS_data(&s1_bytes)) ||
       !CBS_get_bytes(in, &s2_bytes, scalar_bytes * K) ||
-      !vector_decode_signed(&priv->s2, CBS_data(&s2_bytes),
-                            plus_minus_eta_bitlen<K>(), eta<K>()) ||
+      !vector_decode_signed<plus_minus_eta_bitlen<K>(), eta<K>()>(
+          &priv->s2, CBS_data(&s2_bytes)) ||
       !CBS_get_bytes(in, &t0_bytes, 416 * K) ||
       // Note: Decoding 13 bits into (-2^12, 2^12] cannot fail.
-      !vector_decode_signed(&priv->t0, CBS_data(&t0_bytes), 13, 1 << 12)) {
+      !vector_decode_signed<13, (1 << 12)>(&priv->t0, CBS_data(&t0_bytes))) {
     return 0;
   }
 
@@ -1591,7 +1568,7 @@ inline int mldsa_parse_private_key(private_key<K, L> *priv, CBS *in) {
   // As a side effect of computing `t1`, we also compute `t0` and
   // `public_key_hash`. Check they match the received bytes.
   uint8_t t0_computed[416 * K];
-  vector_encode_signed(t0_computed, &priv->t0, 13, 1 << 12);
+  vector_encode_signed<13, (1 << 12)>(t0_computed, &priv->t0);
   if (!CBS_mem_equal(&public_key_hash, priv->pub.public_key_hash,
                      sizeof(priv->pub.public_key_hash)) ||
       !CBS_mem_equal(&t0_bytes, t0_computed, sizeof(t0_computed))) {
@@ -1612,8 +1589,8 @@ inline int mldsa_marshal_signature(CBB *out, const signature<K, L> *sign) {
   if (!CBB_add_space(out, &vectorl_output, scalar_le_gamma1_bytes<K>() * L)) {
     return 0;
   }
-  vector_encode_signed(vectorl_output, &sign->z, gamma1_bits<K>() + 1,
-                       gamma1<K>());
+  vector_encode_signed<gamma1_bits<K>() + 1, gamma1<K>()>(vectorl_output,
+                                                          &sign->z);
 
   uint8_t *hint_output;
   if (!CBB_add_space(out, &hint_output, omega<K>() + K)) {
@@ -1632,8 +1609,8 @@ inline int mldsa_parse_signature(signature<K, L> *sign, CBS *in) {
   if (!CBS_copy_bytes(in, sign->c_tilde, sizeof(sign->c_tilde)) ||
       !CBS_get_bytes(in, &z_bytes, scalar_le_gamma1_bytes<K>() * L) ||
       // Note: Decoding b+1 bits into (-2^b, 2^b] cannot fail.
-      !vector_decode_signed(&sign->z, CBS_data(&z_bytes), gamma1_bits<K>() + 1,
-                            gamma1<K>()) ||
+      !vector_decode_signed<gamma1_bits<K>() + 1, gamma1<K>()>(
+          &sign->z, CBS_data(&z_bytes)) ||
       !CBS_get_bytes(in, &hint_bytes, omega<K>() + K) ||
       !hint_bit_unpack(&sign->h, CBS_data(&hint_bytes))) {
     return 0;
