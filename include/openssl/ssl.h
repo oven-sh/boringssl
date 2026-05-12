@@ -6392,6 +6392,35 @@ OPENSSL_EXPORT enum ssl_compliance_policy_t SSL_get_compliance_policy(
   ERR_put_error(ERR_LIB_SSL, 0, reason, __FILE__, __LINE__)
 
 
+// Server Padding
+//
+// The Server Padding extension allows clients to request that servers add
+// additional bytes of padding through EncryptedExtensions on the TLS handshake.
+// This extension is only supported on TLS 1.3 connections. This is a temporary
+// feature supporting an experiment, and will be removed on conclusion of the
+// experiment.
+
+// SSL_set_server_padding_request configures |ssl| as a client to request
+// |num_bytes| of additional padding from servers on the TLS handshake. The
+// client can confirm whether the server sent back the requested amount of
+// padding in the handshake with |SSL_server_sent_requested_padding|.
+OPENSSL_EXPORT void SSL_set_server_padding_request(SSL *ssl,
+                                                   uint16_t num_bytes);
+
+// SSL_set_server_padding_enabled configures |ssl| as a server to respond to
+// the server padding extension with the padding requested by the client.
+// Passing 0 disables support for the server padding extension, 1 enables
+// support for the extension.
+//
+// By default, the extension is not enabled.
+OPENSSL_EXPORT void SSL_set_server_padding_enabled(SSL *ssl, int enabled);
+
+// SSL_server_sent_requested_padding returns 1 if |ssl|, as a client, received
+// the requested amount of padding from the server as requested through
+// |SSL_set_server_padding_request|. Otherwise, it returns 0.
+OPENSSL_EXPORT int SSL_server_sent_requested_padding(const SSL *ssl);
+
+
 // Preprocessor compatibility section (hidden).
 //
 // Historically, a number of APIs were implemented in OpenSSL as macros and

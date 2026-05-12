@@ -2399,6 +2399,7 @@ func main() {
 	addTrustAnchorTests()
 	addPSKTests()
 	addRawPublicKeyTests()
+	addServerPaddingTests()
 
 	toAppend, err := convertToSplitHandshakeTests(testCases)
 	if err != nil {

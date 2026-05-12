@@ -582,7 +582,8 @@ SSL_CONFIG::SSL_CONFIG(SSL *ssl_arg)
       jdk11_workaround(false),
       quic_use_legacy_codepoint(false),
       permute_extensions(false),
-      alps_use_new_codepoint(true) {
+      alps_use_new_codepoint(true),
+      server_padding_enabled(false) {
   assert(ssl);
 }
 
@@ -3774,4 +3775,24 @@ EVP_PKEY *SSL_get0_peer_rpk(const SSL *ssl) {
     return session->peer_raw_public_key.get();
   }
   return nullptr;
+}
+
+void SSL_set_server_padding_request(SSL *ssl, uint16_t num_bytes) {
+  if (!ssl->config) {
+    return;
+  }
+
+  ssl->config->server_padding_request = num_bytes;
+}
+
+void SSL_set_server_padding_enabled(SSL *ssl, int enabled) {
+  if (!ssl->config) {
+    return;
+  }
+
+  ssl->config->server_padding_enabled = enabled;
+}
+
+int SSL_server_sent_requested_padding(const SSL *ssl) {
+  return ssl->s3->server_sent_requested_padding;
 }

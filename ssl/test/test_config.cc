@@ -644,6 +644,12 @@ const Flag<TestConfig> *FindFlag(const char *name) {
                         &TestConfig::expect_peer_certificate_type),
         Base64Flag("-expect-peer-rpk-sha256",
                    &TestConfig::expect_peer_rpk_sha256),
+        OptionalIntFlag("-request-server-padding",
+                        &TestConfig::request_server_padding),
+        BoolFlag("-expect-server-sent-requested-padding",
+                 &TestConfig::expect_server_sent_requested_padding),
+        BoolFlag("-server-supports-padding",
+                 &TestConfig::server_supports_padding),
     };
     std::sort(ret.begin(), ret.end(), FlagNameComparator{});
     return ret;
@@ -2654,6 +2660,13 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
           reinterpret_cast<const uint8_t *>(quic_early_data_context.data()),
           quic_early_data_context.size())) {
     return nullptr;
+  }
+
+  if (request_server_padding) {
+    SSL_set_server_padding_request(ssl.get(), request_server_padding.value());
+  }
+  if (server_supports_padding) {
+    SSL_set_server_padding_enabled(ssl.get(), 1);
   }
 
   // The compliance policy must be the last thing configured to have defined
