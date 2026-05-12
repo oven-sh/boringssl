@@ -11646,5 +11646,59 @@ TEST_F(SSLPAKETest, ServerThreads) {
 }
 #endif  // OPENSSL_THREADS
 
+static uint16_t g_client_sigalg_used = 0;
+static uint16_t g_server_sigalg_used = 0;
+
+static void SignatureAlgorithmUsedInfoCallback(const SSL *ssl, int type,
+                                               int value) {
+  if (type == SSL_CB_HANDSHAKE_DONE) {
+    if (SSL_is_server(ssl)) {
+      g_server_sigalg_used = SSL_get_signature_algorithm_used(ssl);
+    } else {
+      g_client_sigalg_used = SSL_get_signature_algorithm_used(ssl);
+    }
+  }
+}
+
+TEST(SSLTest, SignatureAlgorithmUsed) {
+  g_client_sigalg_used = 0;
+  g_server_sigalg_used = 0;
+
+  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
+  bssl::UniquePtr<SSL_CTX> server_ctx(
+      CreateContextWithTestCertificate(TLS_method()));
+  ASSERT_TRUE(client_ctx);
+  ASSERT_TRUE(server_ctx);
+
+  // By setting a single signature algorithm, we force the handshake to use
+  // that algorithm, and we can check that it is reported as the signature
+  // algorithm used.
+  const uint16_t kPref = SSL_SIGN_RSA_PSS_RSAE_SHA384;
+  static const uint16_t kPrefs[] = {kPref};
+  ASSERT_TRUE(SSL_CTX_set_signing_algorithm_prefs(
+      server_ctx.get(), kPrefs, std::size(kPrefs)));
+  ASSERT_TRUE(SSL_CTX_set_signing_algorithm_prefs(
+      client_ctx.get(), kPrefs, std::size(kPrefs)));
+
+  SSL_CTX_set_info_callback(client_ctx.get(),
+                            SignatureAlgorithmUsedInfoCallback);
+  SSL_CTX_set_info_callback(server_ctx.get(),
+                            SignatureAlgorithmUsedInfoCallback);
+
+  bssl::UniquePtr<SSL> client, server;
+  ASSERT_TRUE(ConnectClientAndServer(&client, &server, client_ctx.get(),
+                                     server_ctx.get()));
+
+  EXPECT_EQ(g_server_sigalg_used, kPref);
+  // There is no client signature algorithm.
+  EXPECT_EQ(g_client_sigalg_used, 0u);
+
+  // After the handshake completes, the handshake object is reset, so the API
+  // returns 0.
+  EXPECT_EQ(SSL_get_signature_algorithm_used(client.get()), 0u);
+  EXPECT_EQ(SSL_get_signature_algorithm_used(server.get()), 0u);
+}
+
 }  // namespace
 BSSL_NAMESPACE_END
+
