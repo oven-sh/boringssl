@@ -196,23 +196,32 @@ static bool WaitForSocket(Socket sock, WaitType wait_type) {
   // there's an issue.
   static const int kTimeoutSeconds = 5;
 #if defined(OPENSSL_WINDOWS)
-  fd_set read_set, write_set;
+  fd_set read_set, write_set, except_set;
   FD_ZERO(&read_set);
   FD_ZERO(&write_set);
+  FD_ZERO(&except_set);
   fd_set *wait_set = wait_type == WaitType::kRead ? &read_set : &write_set;
   FD_SET(sock, wait_set);
+  FD_SET(sock, &except_set);
   timeval timeout;
   timeout.tv_sec = kTimeoutSeconds;
   timeout.tv_usec = 0;
-  if (select(0 /* unused on Windows */, &read_set, &write_set, nullptr,
+  if (select(0 /* unused on Windows */, &read_set, &write_set, &except_set,
              &timeout) <= 0) {
     return false;
   }
-  return FD_ISSET(sock, wait_set);
+  return FD_ISSET(sock, wait_set) || FD_ISSET(sock, &except_set);
 #else
-  short events = wait_type == WaitType::kRead ? POLLIN : POLLOUT;
-  pollfd fd = {/*fd=*/sock, events, /*revents=*/0};
-  return poll(&fd, 1, kTimeoutSeconds * 1000) == 1 && (fd.revents & events);
+  pollfd pfd;
+  pfd.fd = sock;
+  // poll implicitly listens for POLLERR and POLLHUP.
+  pfd.events = wait_type == WaitType::kRead ? POLLIN : POLLOUT;
+  pfd.revents = 0;
+  int ret;
+  do {
+    ret = poll(&pfd, 1, kTimeoutSeconds * 1000);
+  } while (ret < 0 && errno == EINTR);
+  return ret == 1 && pfd.revents != 0;
 #endif
 }
 
@@ -234,18 +243,7 @@ TEST(BIOTest, SocketConnect) {
              ntohs(addr.ToIPv4().sin_port));
   }
 
-  // Using a connect BIO implicitly connects to it.
-  {
-    // Connect to it with a connect BIO.
-    UniquePtr<BIO> bio(BIO_new_connect(hostname));
-    ASSERT_TRUE(bio);
-
-    // Write a test message to the BIO. This is assumed to be smaller than the
-    // transport buffer.
-    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
-              BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
-        << LastSocketError();
-
+  auto accept_socket_and_read = [&] {
     // Accept the socket.
     OwnedSocket sock(accept(listening_sock.get(), addr.addr_mut(), &addr.len));
     ASSERT_TRUE(sock.is_valid()) << LastSocketError();
@@ -257,6 +255,20 @@ TEST(BIOTest, SocketConnect) {
         << LastSocketError();
     EXPECT_EQ(Bytes(kTestMessage, sizeof(kTestMessage)),
               Bytes(buf, sizeof(buf)));
+  };
+
+  // Using a connect BIO implicitly connects to it.
+  {
+    // Connect to it with a connect BIO.
+    UniquePtr<BIO> bio(BIO_new_connect(hostname));
+    ASSERT_TRUE(bio);
+
+    // Write a test message to the BIO. This is assumed to be smaller than the
+    // transport buffer.
+    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
+              BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
+        << LastSocketError();
+    accept_socket_and_read();
   }
 
   // Explicitly connect to the BIO first.
@@ -268,16 +280,7 @@ TEST(BIOTest, SocketConnect) {
     ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
               BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
         << LastSocketError();
-
-    // Accept and read.
-    OwnedSocket sock(accept(listening_sock.get(), addr.addr_mut(), &addr.len));
-    ASSERT_TRUE(sock.is_valid()) << LastSocketError();
-    char buf[sizeof(kTestMessage)];
-    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
-              recv(sock.get(), buf, sizeof(buf), 0))
-        << LastSocketError();
-    EXPECT_EQ(Bytes(kTestMessage, sizeof(kTestMessage)),
-              Bytes(buf, sizeof(buf)));
+    accept_socket_and_read();
   }
 
   // Connect in non-blocking mode.
@@ -286,30 +289,39 @@ TEST(BIOTest, SocketConnect) {
     ASSERT_TRUE(bio);
     ASSERT_EQ(1, BIO_set_nbio(bio.get(), 1));
 
+    // Although this is a loopback connection, this seems to consistently
+    // trigger EINPROGRESS on our supported platforms so far. Require this for
+    // now, as it is convenient for ensuring test coverage. If the test flakes
+    // on some platform, we may need to tolerate either outcome.
     ASSERT_EQ(-1, BIO_do_connect(bio.get()));
     EXPECT_TRUE(BIO_should_retry(bio.get()));
     EXPECT_TRUE(BIO_should_io_special(bio.get()));
     EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
 
-    // Wait for the underlying socket to become writable and try again.
-    int fd = BIO_get_fd(bio.get(), nullptr);
-    ASSERT_GT(fd, -1);
-    ASSERT_TRUE(WaitForSocket(static_cast<Socket>(fd), WaitType::kWrite));
-    ASSERT_EQ(1, BIO_do_connect(bio.get()));
+    // Try again, without waiting on the socket, to test that we correctly pick
+    // up the new socket state. It is possible the socket is ready anyway, in
+    // which case this test run will not exercise this case, but most likely it
+    // will still be waiting.
+    int ret = BIO_do_connect(bio.get());
+    if (ret <= 0) {
+      EXPECT_EQ(ret, -1);
+      EXPECT_TRUE(BIO_should_retry(bio.get()));
+      EXPECT_TRUE(BIO_should_io_special(bio.get()));
+      EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
+
+      // Wait for the underlying socket to become writable and try again.
+      int fd = BIO_get_fd(bio.get(), nullptr);
+      ASSERT_GT(fd, -1);
+      ASSERT_TRUE(WaitForSocket(static_cast<Socket>(fd), WaitType::kWrite));
+      ASSERT_EQ(1, BIO_do_connect(bio.get()));
+    } else {
+      EXPECT_EQ(ret, 1);
+    }
 
     ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
               BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
         << LastSocketError();
-
-    // Accept and read.
-    OwnedSocket sock(accept(listening_sock.get(), addr.addr_mut(), &addr.len));
-    ASSERT_TRUE(sock.is_valid()) << LastSocketError();
-    char buf[sizeof(kTestMessage)];
-    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
-              recv(sock.get(), buf, sizeof(buf), 0))
-        << LastSocketError();
-    EXPECT_EQ(Bytes(kTestMessage, sizeof(kTestMessage)),
-              Bytes(buf, sizeof(buf)));
+    accept_socket_and_read();
   }
 
   // Implicitly connect in non-blocking mode.
@@ -318,28 +330,117 @@ TEST(BIOTest, SocketConnect) {
     ASSERT_TRUE(bio);
     ASSERT_EQ(1, BIO_set_nbio(bio.get(), 1));
 
+    // Although this is a loopback connection, this seems to consistently
+    // trigger EINPROGRESS on our supported platforms so far. Require this for
+    // now, as it is convenient for ensuring test coverage. If the test flakes
+    // on some platform, we may need to tolerate either outcome.
     ASSERT_EQ(-1, BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)));
     EXPECT_TRUE(BIO_should_retry(bio.get()));
     EXPECT_TRUE(BIO_should_io_special(bio.get()));
     EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
 
-    // Wait for the underlying socket to become writable and try again.
+    // Try again, without waiting on the socket, to test that we correctly pick
+    // up the new socket state. It is possible the socket is ready anyway, in
+    // which case this test run will not exercise this case, but most likely it
+    // will still be waiting.
+    int ret = BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage));
+    if (ret <= 0) {
+      EXPECT_EQ(ret, -1);
+      EXPECT_TRUE(BIO_should_retry(bio.get()));
+      EXPECT_TRUE(BIO_should_io_special(bio.get()));
+      EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
+
+      // Wait for the underlying socket to become writable and try again.
+      int fd = BIO_get_fd(bio.get(), nullptr);
+      ASSERT_GT(fd, -1);
+      ASSERT_TRUE(WaitForSocket(static_cast<Socket>(fd), WaitType::kWrite));
+      ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
+                BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
+          << LastSocketError();
+    } else {
+      ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)), ret);
+    }
+
+    accept_socket_and_read();
+  }
+
+  // Close the socket to test failed connects.
+  listening_sock.reset();
+
+  auto expect_connect_error = [](BIO *bio) {
+    EXPECT_FALSE(BIO_should_retry(bio));
+    EXPECT_FALSE(BIO_should_io_special(bio));
+#if defined(OPENSSL_WINDOWS)
+    EXPECT_EQ(WSAGetLastError(), WSAECONNREFUSED);
+    // TODO(crbug.com/518014953): Also check the error queue.
+#else
+    EXPECT_EQ(errno, ECONNREFUSED);
+    EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_SYS, ECONNREFUSED));
+#endif
+    ERR_clear_error();
+  };
+
+  // |BIO_do_connect| should observe the error.
+  {
+    UniquePtr<BIO> bio(BIO_new_connect(hostname));
+    ASSERT_TRUE(bio);
+    EXPECT_EQ(-1, BIO_do_connect(bio.get()));
+    expect_connect_error(bio.get());
+  }
+
+  // Using a connect BIO implicitly connects to it, which should observe the
+  // error.
+  {
+    UniquePtr<BIO> bio(BIO_new_connect(hostname));
+    ASSERT_TRUE(bio);
+    EXPECT_EQ(-1, BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)));
+    expect_connect_error(bio.get());
+  }
+
+  // Connect in non-blocking mode.
+  {
+    UniquePtr<BIO> bio(BIO_new_connect(hostname));
+    ASSERT_TRUE(bio);
+    ASSERT_EQ(1, BIO_set_nbio(bio.get(), 1));
+
+    // Although this is a loopback connection, this seems to consistently
+    // trigger EINPROGRESS on our supported platforms so far. Require this for
+    // now, as it is convenient for ensuring test coverage. If the test flakes
+    // on some platform, we may need to tolerate either outcome.
+    ASSERT_EQ(-1, BIO_do_connect(bio.get()));
+    EXPECT_TRUE(BIO_should_retry(bio.get()));
+    EXPECT_TRUE(BIO_should_io_special(bio.get()));
+    EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
+
+    // Wait for the underlying socket to observe the error and try again.
     int fd = BIO_get_fd(bio.get(), nullptr);
     ASSERT_GT(fd, -1);
     ASSERT_TRUE(WaitForSocket(static_cast<Socket>(fd), WaitType::kWrite));
-    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
-              BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)))
-        << LastSocketError();
+    ASSERT_EQ(-1, BIO_do_connect(bio.get()));
+    expect_connect_error(bio.get());
+  }
 
-    // Accept and read.
-    OwnedSocket sock(accept(listening_sock.get(), addr.addr_mut(), &addr.len));
-    ASSERT_TRUE(sock.is_valid()) << LastSocketError();
-    char buf[sizeof(kTestMessage)];
-    ASSERT_EQ(static_cast<int>(sizeof(kTestMessage)),
-              recv(sock.get(), buf, sizeof(buf), 0))
-        << LastSocketError();
-    EXPECT_EQ(Bytes(kTestMessage, sizeof(kTestMessage)),
-              Bytes(buf, sizeof(buf)));
+  // Implicitly connect in non-blocking mode.
+  {
+    UniquePtr<BIO> bio(BIO_new_connect(hostname));
+    ASSERT_TRUE(bio);
+    ASSERT_EQ(1, BIO_set_nbio(bio.get(), 1));
+
+    // Although this is a loopback connection, this seems to consistently
+    // trigger EINPROGRESS on our supported platforms so far. Require this for
+    // now, as it is convenient for ensuring test coverage. If the test flakes
+    // on some platform, we may need to tolerate either outcome.
+    ASSERT_EQ(-1, BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)));
+    EXPECT_TRUE(BIO_should_retry(bio.get()));
+    EXPECT_TRUE(BIO_should_io_special(bio.get()));
+    EXPECT_EQ(BIO_RR_CONNECT, BIO_get_retry_reason(bio.get()));
+
+    // Wait for the underlying socket to observe the error and try again.
+    int fd = BIO_get_fd(bio.get(), nullptr);
+    ASSERT_GT(fd, -1);
+    ASSERT_TRUE(WaitForSocket(static_cast<Socket>(fd), WaitType::kWrite));
+    ASSERT_EQ(-1, BIO_write(bio.get(), kTestMessage, sizeof(kTestMessage)));
+    expect_connect_error(bio.get());
   }
 }
 

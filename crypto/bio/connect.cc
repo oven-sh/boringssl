@@ -209,21 +209,19 @@ static int conn_state(BIO *bio, BIO_CONNECT *c) {
         break;
 
       case BIO_CONN_S_BLOCKED_CONNECT:
-        i = bio_sock_error(FromOpaque(bio)->num);
-        if (i) {
-          if (bio_socket_should_retry(ret)) {
+        if (!bio_socket_finish_connect(FromOpaque(bio)->num)) {
+          if (bio_socket_should_retry(-1)) {
             BIO_set_retry_special(bio);
             c->state = BIO_CONN_S_BLOCKED_CONNECT;
             BIO_set_retry_reason(bio, BIO_RR_CONNECT);
-            ret = -1;
           } else {
             BIO_clear_retry_flags(bio);
             OPENSSL_PUT_SYSTEM_ERROR();
             OPENSSL_PUT_ERROR(BIO, BIO_R_NBIO_CONNECT_ERROR);
             ERR_add_error_data(4, "host=", c->param_hostname.get(), ":",
                                c->param_port.get());
-            ret = 0;
           }
+          ret = -1;
           goto exit_loop;
         } else {
           c->state = BIO_CONN_S_OK;
