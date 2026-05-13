@@ -120,23 +120,20 @@ static int mem_read(BIO *bio, char *out, int outl) {
   return ret;
 }
 
-static int mem_write(BIO *bio, const char *in, int inl) {
+static int mem_write_ex(BIO *bio, const char *in, size_t inl,
+                        size_t *out_written) {
   BIO_clear_retry_flags(bio);
-  if (inl <= 0) {
-    return 0;  // Successfully write zero bytes.
-  }
-
   if (BIO_test_flags(bio, BIO_FLAGS_MEM_RDONLY)) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_WRITE_TO_READ_ONLY_BIO);
-    return -1;
+    return 0;
   }
 
   BUF_MEM *b = reinterpret_cast<BUF_MEM *>(BIO_get_data(bio));
   if (!BUF_MEM_append(b, in, inl)) {
-    return -1;
+    return 0;
   }
-
-  return inl;
+  *out_written = inl;
+  return 1;
 }
 
 static int mem_gets(BIO *bio, char *buf, int size) {
@@ -224,11 +221,9 @@ static long mem_ctrl(BIO *bio, int cmd, long num, void *ptr) {
 }
 
 static const BIO_METHOD mem_method = {
-    BIO_TYPE_MEM, "memory buffer",
-    mem_write,    /*bwrite_ex=*/nullptr,
-    mem_read,     mem_gets,
-    mem_ctrl,     mem_new,
-    mem_free,     /*callback_ctrl=*/nullptr,
+    BIO_TYPE_MEM,       "memory buffer",
+    /*bwrite=*/nullptr, mem_write_ex,    mem_read, mem_gets,
+    mem_ctrl,           mem_new,         mem_free, /*callback_ctrl=*/nullptr,
 };
 
 const BIO_METHOD *BIO_s_mem() { return &mem_method; }

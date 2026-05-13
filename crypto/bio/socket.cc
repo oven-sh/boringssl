@@ -18,6 +18,9 @@
 
 #include <fcntl.h>
 #include <string.h>
+#include <limits.h>
+
+#include <algorithm>
 
 #if !defined(OPENSSL_WINDOWS)
 #include <unistd.h>
@@ -66,20 +69,25 @@ static int sock_read(BIO *b, char *out, int outl) {
   return ret;
 }
 
-static int sock_write(BIO *b, const char *in, int inl) {
+static int sock_write_ex(BIO *b, const char *in, size_t inl,
+                         size_t *out_written) {
   bio_clear_socket_error();
 #if defined(OPENSSL_WINDOWS)
-  int ret = send(FromOpaque(b)->num, in, inl, 0);
+  inl = std::min(inl, size_t{INT_MAX});
+  int ret = send(FromOpaque(b)->num, in, static_cast<int>(inl), 0);
 #else
-  int ret = (int)write(FromOpaque(b)->num, in, inl);
+  ssize_t ret = write(FromOpaque(b)->num, in, inl);
 #endif
   BIO_clear_retry_flags(b);
   if (ret <= 0) {
     if (bio_socket_should_retry(ret)) {
       BIO_set_retry_write(b);
     }
+    return 0;
   }
-  return ret;
+
+  *out_written = ret;
+  return 1;
 }
 
 static long sock_ctrl(BIO *b, int cmd, long num, void *ptr) {
@@ -112,11 +120,11 @@ static long sock_ctrl(BIO *b, int cmd, long num, void *ptr) {
 }
 
 static const BIO_METHOD methods_sockp = {
-    BIO_TYPE_SOCKET, "socket",
-    sock_write,      /*bwrite_ex=*/nullptr,
-    sock_read,       nullptr /* gets, */,
-    sock_ctrl,       nullptr /* create */,
-    sock_free,       nullptr /* callback_ctrl */,
+    BIO_TYPE_SOCKET,    "socket",
+    /*bwrite=*/nullptr, sock_write_ex,
+    sock_read,          nullptr /* gets, */,
+    sock_ctrl,          nullptr /* create */,
+    sock_free,          nullptr /* callback_ctrl */,
 };
 
 const BIO_METHOD *BIO_s_socket() { return &methods_sockp; }

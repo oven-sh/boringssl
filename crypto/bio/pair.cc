@@ -190,18 +190,15 @@ static int bio_read(BIO *bio, char *buf, int size_) {
   return (int)size;
 }
 
-static int bio_write(BIO *bio, const char *buf, int num_) {
-  size_t num = num_;
-  size_t rest;
-  struct bio_bio_st *b;
-
+static int bio_write_ex(BIO *bio, const char *buf, size_t num,
+                        size_t *out_written) {
   BIO_clear_retry_flags(bio);
 
   if (!BIO_get_init(bio) || buf == nullptr || num == 0) {
     return 0;
   }
 
-  b = reinterpret_cast<bio_bio_st *>(BIO_get_data(bio));
+  struct bio_bio_st *b = reinterpret_cast<bio_bio_st *>(BIO_get_data(bio));
   assert(b != nullptr);
   assert(b->peer != nullptr);
   assert(b->buf != nullptr);
@@ -210,14 +207,14 @@ static int bio_write(BIO *bio, const char *buf, int num_) {
   if (b->closed) {
     // we already closed
     OPENSSL_PUT_ERROR(BIO, BIO_R_BROKEN_PIPE);
-    return -1;
+    return 0;
   }
 
   assert(b->len <= b->size);
 
   if (b->len == b->size) {
     BIO_set_retry_write(bio);  // buffer is full
-    return -1;
+    return 0;
   }
 
   // we can write
@@ -226,7 +223,7 @@ static int bio_write(BIO *bio, const char *buf, int num_) {
   }
 
   // now write "num" bytes
-  rest = num;
+  size_t rest = num;
 
   assert(rest > 0);
   // one or two iterations
@@ -259,8 +256,8 @@ static int bio_write(BIO *bio, const char *buf, int num_) {
     buf += chunk;
   } while (rest);
 
-  // |num| is bounded by the buffer size, which fits in |int|.
-  return (int)num;
+  *out_written = num;
+  return 1;
 }
 
 static int bio_make_pair(BIO *bio1, BIO *bio2, size_t writebuf1_len,
@@ -401,8 +398,8 @@ static long bio_ctrl(BIO *bio, int cmd, long num, void *ptr) {
 static const BIO_METHOD methods_biop = {
     BIO_TYPE_BIO,
     "BIO pair",
-    bio_write,
-    /*bwrite_ex=*/nullptr,
+    /*bwrite=*/nullptr,
+    bio_write_ex,
     bio_read,
     /*gets=*/nullptr,
     bio_ctrl,

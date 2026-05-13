@@ -126,16 +126,22 @@ static int file_read(BIO *b, char *out, int outl) {
   return (int)ret;
 }
 
-static int file_write(BIO *b, const char *in, int inl) {
+static int file_write_ex(BIO *b, const char *in, size_t inl,
+                         size_t *out_written) {
   if (!BIO_get_init(b)) {
     return 0;
   }
-
-  int ret = (int)fwrite(in, inl, 1, (FILE *)BIO_get_data(b));
-  if (ret > 0) {
-    ret = inl;
+  if (fwrite(in, inl, 1, (FILE *)BIO_get_data(b)) == 0) {
+    return 0;
   }
-  return ret;
+  // We currently ask |fwrite| to write one "object" of size |inl|, rather than
+  // |inl| objects of size 1. |fwrite| will only succeed if it wrote the whole
+  // input.
+  //
+  // TODO(crbug.com/518854940): This also means we discard information about
+  // partial writes.
+  *out_written = inl;
+  return 1;
 }
 
 static long file_ctrl(BIO *b, int cmd, long num, void *ptr) {
@@ -236,8 +242,8 @@ static int file_gets(BIO *bp, char *buf, int size) {
 static const BIO_METHOD methods_filep = {
     BIO_TYPE_FILE,
     "FILE pointer",
-    file_write,
-    /*bwrite_ex=*/nullptr,
+    /*bwrite=*/nullptr,
+    file_write_ex,
     file_read,
     file_gets,
     file_ctrl,

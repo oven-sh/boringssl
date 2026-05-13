@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <string.h>
 
 #if !defined(OPENSSL_WINDOWS)
@@ -30,6 +31,7 @@
 #include <ws2tcpip.h>
 #endif
 
+#include <algorithm>
 #include <utility>
 
 #include <openssl/err.h>
@@ -309,28 +311,32 @@ static int conn_read(BIO *bio, char *out, int out_len) {
   return ret;
 }
 
-static int conn_write(BIO *bio, const char *in, int in_len) {
-  int ret;
-  BIO_CONNECT *data;
-
-  data = (BIO_CONNECT *)BIO_get_data(bio);
+static int conn_write_ex(BIO *bio, const char *in, size_t in_len,
+                         size_t *out_written) {
+  BIO_CONNECT *data = (BIO_CONNECT *)BIO_get_data(bio);
   if (data->state != BIO_CONN_S_OK) {
-    ret = conn_state(bio, data);
-    if (ret <= 0) {
-      return ret;
+    if (conn_state(bio, data) <= 0) {
+      return 0;
     }
   }
 
   bio_clear_socket_error();
-  ret = (int)send(FromOpaque(bio)->num, in, in_len, 0);
+#if defined(OPENSSL_WINDOWS)
+  in_len = std::min(in_len, size_t{INT_MAX});
+  int ret = send(FromOpaque(bio)->num, in, static_cast<int>(in_len), 0);
+#else
+  ssize_t ret = send(FromOpaque(bio)->num, in, in_len, 0);
+#endif
   BIO_clear_retry_flags(bio);
   if (ret <= 0) {
     if (bio_socket_should_retry(ret)) {
       BIO_set_retry_write(bio);
     }
+    return 0;
   }
 
-  return ret;
+  *out_written = ret;
+  return 1;
 }
 
 static long conn_ctrl(BIO *bio, int cmd, long num, void *ptr) {
@@ -425,8 +431,8 @@ BIO *BIO_new_connect(const char *hostname) {
 }
 
 static const BIO_METHOD methods_connectp = {
-    BIO_TYPE_CONNECT, "socket connect",   conn_write, /*bwrite_ex=*/nullptr,
-    conn_read,        /*gets=*/nullptr,   conn_ctrl,  conn_new,
+    BIO_TYPE_CONNECT, "socket connect",   /*bwrite=*/nullptr, conn_write_ex,
+    conn_read,        /*gets=*/nullptr,   conn_ctrl,          conn_new,
     conn_free,        conn_callback_ctrl,
 };
 
