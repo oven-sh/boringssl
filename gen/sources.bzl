@@ -824,6 +824,9 @@ crypto_test_sources = [
     "crypto/x509/x509_time_test.cc",
     "crypto/xwing/xwing_test.cc",
     "third_party/fiat/bedrock_platform_test.cc",
+]
+
+crypto_test_internal_headers = [
     "third_party/fiat/bedrock_polyfill_platform.c.inc",
 ]
 

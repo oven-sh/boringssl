@@ -852,6 +852,11 @@ set(
   crypto/x509/x509_time_test.cc
   crypto/xwing/xwing_test.cc
   third_party/fiat/bedrock_platform_test.cc
+)
+
+set(
+  CRYPTO_TEST_INTERNAL_HEADERS
+
   third_party/fiat/bedrock_polyfill_platform.c.inc
 )
 

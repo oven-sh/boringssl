@@ -804,7 +804,9 @@
       "crypto/x509/x509_test.cc",
       "crypto/x509/x509_time_test.cc",
       "crypto/xwing/xwing_test.cc",
-      "third_party/fiat/bedrock_platform_test.cc",
+      "third_party/fiat/bedrock_platform_test.cc"
+    ],
+    "internal_hdrs": [
       "third_party/fiat/bedrock_polyfill_platform.c.inc"
     ],
     "data": [
