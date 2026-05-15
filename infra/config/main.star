@@ -423,6 +423,15 @@ def compile_only(properties):
     compile_properties["run_ssl_tests"] = False
     return compile_properties
 
+def preprocess_properties(properties):
+    out_properties = dict(properties)
+    cmake_args = dict(out_properties.get("cmake_args", {}))
+    out_properties["cmake_args"]  = cmake_args
+    if properties.get("clang", False) and cmake_args.get("CMAKE_BUILD_TYPE", "Debug") == "Debug":
+        # All Clang debug builds shall use our libc++ with added debugging/hardening.
+        cmake_args["USE_CUSTOM_LIBCXX"] = 1
+    return out_properties
+
 def cq_builders(
         name,
         host,
@@ -454,7 +463,7 @@ def cq_builders(
         recipe = recipe,
         cq_enabled = cq_enabled and not cq_compile_only,
         execution_timeout = execution_timeout,
-        properties = properties,
+        properties = preprocess_properties(properties),
     )
     if cq_compile_only:
         cq_builder(
@@ -463,7 +472,7 @@ def cq_builders(
             recipe = recipe,
             cq_enabled = cq_enabled,
             execution_timeout = execution_timeout,
-            properties = compile_only(properties),
+            properties = preprocess_properties(compile_only(properties)),
         )
 
 def both_builders(
@@ -504,7 +513,7 @@ def both_builders(
         category = category,
         short_name = short_name,
         execution_timeout = execution_timeout,
-        properties = properties,
+        properties = preprocess_properties(properties),
     )
     cq_builders(
         name,
@@ -572,7 +581,7 @@ SDE_TIMEOUT = 3 * 60 * time.minute
 # properties rather than parsing names. Then we can add new configurations
 # without having to touch multiple repositories.
 
-cq_builder(
+cq_builders(
     "presubmit",
     LINUX_HOST,
     recipe = "presubmit",
