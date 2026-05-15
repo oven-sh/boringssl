@@ -12,6 +12,9 @@
 #define _LIBCPP_ASSERTION_SEMANTIC_DEFAULT \
   _LIBCPP_ASSERTION_SEMANTIC_HARDENING_DEPENDENT
 
+// Randomize order where unspecified (e.g. equal-comparing items in std::sort).
+#define _LIBCPP_DEBUG_RANDOMIZE_UNSPECIFIED_STABILITY
+
 // libc++ headers disable std::string ASan annotations if this is not defined.
 // This is to avoid false positives when libc++'s runtime components are
 // uninstrumented. When building our custom libc++, libc++ will be as
