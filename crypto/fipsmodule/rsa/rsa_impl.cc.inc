@@ -752,6 +752,36 @@ static int rsa_generate_key_impl(RSAImpl *rsa, int bits, const BIGNUM *e_value,
     return 0;
   }
 
+  // The smallest reasonable RSA exponent is 3, and it definitely must be odd.
+  // Catching this here prevents endless loops or slow computation when trying
+  // to actually generate keys later.
+  if (BN_is_negative(e_value)) {
+    // You're kidding.
+    //
+    // Would fail in |bn_lcm_consttime| anyway, as it only allows positive
+    // integers.
+    //
+    // However, |RSA_R_BAD_E_VALUE| is a better error return than |ERR_LIB_BN|.
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_E_VALUE);
+    return 0;
+  }
+  if (!BN_is_odd(e_value)) {
+    // The R in RSA doesn't stand for Rabin.
+    //
+    // Would fail in |generate_prime| anyway, as only one |rsa->p|-1 is coprime
+    // with an even |e_value| and that one is a little bit short.
+    //
+    // However, |RSA_R_BAD_E_VALUE| is a better error return than |ERR_LIB_BN|.
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_E_VALUE);
+    return 0;
+  }
+  if (BN_is_one(e_value)) {
+    // Would loop endlessly because _somehow_ it'll always compute a |rsa->d|
+    // exponent of 1, which is too small.
+    OPENSSL_PUT_ERROR(RSA, RSA_R_BAD_E_VALUE);
+    return 0;
+  }
+
   UniquePtr<BN_CTX> ctx(BN_CTX_new());
   if (ctx == nullptr) {
     OPENSSL_PUT_ERROR(RSA, ERR_LIB_BN);
