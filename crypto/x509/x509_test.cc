@@ -8434,6 +8434,36 @@ TEST(X509Test, ParamInheritance) {
     // The new value is used.
     EXPECT_EQ(X509_VERIFY_PARAM_get_depth(dest.get()), 10);
   }
+
+  // |X509_VERIFY_PARAM_inherit| and |X509_VERIFY_PARAM_set1| must fail if the
+  // source parameter is poisoned.
+  {
+    UniquePtr<X509_VERIFY_PARAM> dest(X509_VERIFY_PARAM_new());
+    ASSERT_TRUE(dest);
+    UniquePtr<X509_VERIFY_PARAM> src(X509_VERIFY_PARAM_new());
+    ASSERT_TRUE(src);
+
+    // Poison the source parameter (using an embedded NUL in hostname).
+    ASSERT_FALSE(X509_VERIFY_PARAM_set1_host(src.get(), "a", 2));
+
+    EXPECT_FALSE(X509_VERIFY_PARAM_inherit(dest.get(), src.get()));
+    EXPECT_FALSE(X509_VERIFY_PARAM_set1(dest.get(), src.get()));
+  }
+
+  // |X509_VERIFY_PARAM_inherit| and |X509_VERIFY_PARAM_set1| must fail if the
+  // destination parameter is poisoned.
+  {
+    UniquePtr<X509_VERIFY_PARAM> dest(X509_VERIFY_PARAM_new());
+    ASSERT_TRUE(dest);
+    UniquePtr<X509_VERIFY_PARAM> src(X509_VERIFY_PARAM_new());
+    ASSERT_TRUE(src);
+
+    // Poison the destination parameter (using an embedded NUL in hostname).
+    ASSERT_FALSE(X509_VERIFY_PARAM_set1_host(dest.get(), "a", 2));
+
+    EXPECT_FALSE(X509_VERIFY_PARAM_inherit(dest.get(), src.get()));
+    EXPECT_FALSE(X509_VERIFY_PARAM_set1(dest.get(), src.get()));
+  }
 }
 
 TEST(X509Test, PublicKeyCache) {
