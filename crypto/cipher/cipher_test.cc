@@ -1247,6 +1247,22 @@ TEST(CipherTest, SetIVLengthResets) {
     int out_len;
     EXPECT_TRUE(EVP_EncryptUpdate(ctx.get(), out, &out_len, in, sizeof(in)));
   }
+
+  {
+    // If GCM IV length is less than 8, SET_IV_FIXED(-1) is allowed to succeed,
+    // but a subsequent EVP_CTRL_GCM_IV_GEN call must fail rather than
+    // underflow.
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    ASSERT_TRUE(
+        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, 7, nullptr));
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IV_FIXED, -1,
+                                    const_cast<uint8_t *>(kIV)));
+    uint8_t counter[8];
+    EXPECT_FALSE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_IV_GEN,
+                                     sizeof(counter), counter));
+  }
 }
 
 // EVP_CIPHER's buffer management for AES-GCM's variable-length IV is messy.
