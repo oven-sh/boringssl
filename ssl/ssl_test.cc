@@ -5504,6 +5504,57 @@ TEST(SSLTest, OverrideKeyMethodWithKey) {
   ASSERT_TRUE(ConnectClientAndServer(&client, &server, ctx.get(), ctx.get()));
 }
 
+TEST(SSLTest, NullDecryptPrivateKeyMethod) {
+  bssl::UniquePtr<EVP_PKEY> key = GetTestKey();
+  ASSERT_TRUE(key);
+  bssl::UniquePtr<X509> leaf = GetTestCertificate();
+  ASSERT_TRUE(leaf);
+
+  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
+  ASSERT_TRUE(client_ctx);
+  bssl::UniquePtr<SSL_CTX> server_ctx(SSL_CTX_new(TLS_method()));
+  ASSERT_TRUE(server_ctx);
+
+  ASSERT_TRUE(SSL_CTX_use_certificate(server_ctx.get(), leaf.get()));
+
+  // Configure an SSL_PRIVATE_KEY_METHOD on the server with sign and complete,
+  // but NULL decrypt.
+  static const SSL_PRIVATE_KEY_METHOD kNullDecryptMethod = {
+      [](SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
+         uint16_t signature_algorithm, const uint8_t *in,
+         size_t in_len) { return ssl_private_key_failure; },
+      nullptr,  // decrypt
+      [](SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out) {
+        return ssl_private_key_failure;
+      },
+  };
+
+  SSL_CTX_set_private_key_method(server_ctx.get(), &kNullDecryptMethod);
+
+  // Negotiate RSA key exchange (SSL_kRSA). We do this by restricting both
+  // client and server to TLS 1.2 and configuring an RSA key exchange cipher
+  // suite.
+  ASSERT_TRUE(SSL_CTX_set_max_proto_version(client_ctx.get(), TLS1_2_VERSION));
+  ASSERT_TRUE(SSL_CTX_set_max_proto_version(server_ctx.get(), TLS1_2_VERSION));
+
+  ASSERT_TRUE(SSL_CTX_set_cipher_list(client_ctx.get(), "AES128-GCM-SHA256"));
+  ASSERT_TRUE(SSL_CTX_set_cipher_list(server_ctx.get(), "AES128-GCM-SHA256"));
+
+  // Use a custom verify on client to accept the self-signed test cert.
+  SSL_CTX_set_custom_verify(client_ctx.get(), SSL_VERIFY_PEER,
+                            AcceptAnyCertificate);
+
+  bssl::UniquePtr<SSL> client, server;
+  // Since the decrypt hook is NULL, the server's decryption during the RSA key
+  // exchange should fail cleanly.
+  EXPECT_FALSE(ConnectClientAndServer(&client, &server, client_ctx.get(),
+                                      server_ctx.get()));
+  uint32_t err = ERR_get_error();
+  EXPECT_TRUE(ErrorEquals(err, ERR_LIB_SSL, ERR_R_INTERNAL_ERROR));
+  EXPECT_EQ(0u, ERR_get_error());
+}
+
+
 // Configuring a chain and then overwriting it with a different chain should
 // clear the old one.
 TEST(SSLTest, OverrideChain) {
