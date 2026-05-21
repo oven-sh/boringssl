@@ -51,8 +51,8 @@ struct aead_aes_gcm_siv_asm_ctx {
 
 // The assembly code assumes 8-byte alignment of the EVP_AEAD_CTX's state, and
 // aligns to 16 bytes itself.
-static_assert(sizeof(((EVP_AEAD_CTX *)nullptr)->state) + 8 >=
-                  sizeof(struct aead_aes_gcm_siv_asm_ctx),
+static_assert(sizeof(((EVP_AEAD_CTX *)nullptr)->state) >=
+                  sizeof(struct aead_aes_gcm_siv_asm_ctx) + 8,
               "AEAD state is too small");
 static_assert(alignof(union evp_aead_ctx_st_state) >= 8,
               "AEAD state has insufficient alignment");
