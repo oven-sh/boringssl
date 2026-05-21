@@ -385,6 +385,7 @@ static const LIBRARY_NAME kLibraryNames[ERR_NUM_LIBS] = {
     {"Cipher functions", "CIPHER", "CIPHER_LIB"},
     {"HKDF functions", "HKDF", "HKDF_LIB"},
     {"Trust Token functions", "TRUST_TOKEN", "TRUST_TOKEN_LIB"},
+    {"CMS routines", "CMS", "CMS_LIB"},
     {"User defined functions", "USER", "USER_LIB"},
 };
 
