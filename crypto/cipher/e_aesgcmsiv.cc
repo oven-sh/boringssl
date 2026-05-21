@@ -1039,14 +1039,16 @@ const EVP_AEAD aead_aes_256_gcm_siv = {
 #if defined(AES_GCM_SIV_ASM)
 
 const EVP_AEAD *EVP_aead_aes_128_gcm_siv() {
-  if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable()) {
+  if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable() &&
+      CRYPTO_is_PCLMUL_capable()) {
     return &aead_aes_128_gcm_siv_asm;
   }
   return &aead_aes_128_gcm_siv;
 }
 
 const EVP_AEAD *EVP_aead_aes_256_gcm_siv() {
-  if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable()) {
+  if (CRYPTO_is_AVX_capable() && CRYPTO_is_AESNI_capable() &&
+      CRYPTO_is_PCLMUL_capable()) {
     return &aead_aes_256_gcm_siv_asm;
   }
   return &aead_aes_256_gcm_siv;
