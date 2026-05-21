@@ -1333,5 +1333,19 @@ TEST(CipherTest, GCMRepeatedlyChangeIVLength) {
   }
 }
 
+TEST(CipherTest, RC2KeyLengthOverflow) {
+  const EVP_CIPHER *cipher = EVP_rc2_cbc();
+  UniquePtr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new());
+  ASSERT_TRUE(ctx);
+
+  ASSERT_TRUE(EVP_DecryptInit_ex(ctx.get(), cipher, nullptr, nullptr, nullptr));
+
+  if (EVP_CIPHER_CTX_set_key_length(ctx.get(), 0x80000000)) {
+    std::vector<uint8_t> key(128, 0);
+    // This should not crash.
+    EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nullptr);
+  }
+}
+
 }  // namespace
 BSSL_NAMESPACE_END
