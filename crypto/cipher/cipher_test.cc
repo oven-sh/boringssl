@@ -1363,5 +1363,25 @@ TEST(CipherTest, RC2KeyLengthOverflow) {
   }
 }
 
+// |EVP_CIPHER_CTX| is a caller-allocatable C struct. Some APIs are required to
+// work when the struct is uninitialized.
+TEST(CipherTest, Uninitialized) {
+  // |EVP_CIPHER_CTX_init| initializes its input from an arbitrary state.
+  {
+    EVP_CIPHER_CTX ctx;
+    EVP_CIPHER_CTX_init(&ctx);
+    EVP_CipherInit_ex(&ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr, -1);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+  }
+
+  // |EVP_CipherInit| internally calls |EVP_CIPHER_CTX_init| and thus
+  // initializes it from an arbitrary state.
+  {
+    EVP_CIPHER_CTX ctx;
+    EVP_CipherInit(&ctx, EVP_aes_128_gcm(), nullptr, nullptr, -1);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+  }
+}
+
 }  // namespace
 BSSL_NAMESPACE_END
