@@ -321,7 +321,7 @@ void aead_aes_gcm_siv_kdf(int is_128_bit,
                           uint64_t out_record_auth_key[2],
                           uint64_t out_record_enc_key[4],
                           const uint8_t nonce[12]) {
-  alignas(16) uint8_t padded_nonce[16];
+  alignas(16) uint8_t padded_nonce[16] = {0};
   OPENSSL_memcpy(padded_nonce, nonce, 12);
 
   alignas(16) uint64_t key_material[12];
