@@ -177,6 +177,18 @@ func addRenegotiationTests() {
 			"-expect-no-secure-renegotiation",
 		},
 	})
+	testCases = append(testCases, testCase{
+		name: "Renegotiate-Client-NoExt-Forbidden",
+		config: Config{
+			MaxVersion: VersionTLS12,
+			Bugs: ProtocolBugs{
+				NoRenegotiationInfo: true,
+			},
+		},
+		flags:         []string{"-no-legacy-server-connect"},
+		shouldFail:    true,
+		expectedError: ":UNSAFE_LEGACY_RENEGOTIATION_DISABLED:",
+	})
 
 	// Test that the server may switch ciphers on renegotiation without
 	// problems.

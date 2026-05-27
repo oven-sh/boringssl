@@ -3989,7 +3989,8 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   // Default values to use in SSL structures follow (these are copied by
   // SSL_new)
 
-  uint32_t options = 0;
+  // TODO(crbug.com/41393419): Disable SSL_OP_LEGACY_SERVER_CONNECT by default.
+  uint32_t options = SSL_OP_LEGACY_SERVER_CONNECT;
   // Disable the auto-chaining feature by default. wpa_supplicant relies on this
   // feature, but require callers opt into it.
   uint32_t mode = SSL_MODE_NO_AUTO_CHAIN;

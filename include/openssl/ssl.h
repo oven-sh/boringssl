@@ -598,6 +598,12 @@ OPENSSL_EXPORT int SSL_version(const SSL *ssl);
 //
 // Options configure protocol behavior.
 
+// SSL_OP_LEGACY_SERVER_CONNECT configures a client to permit connecting to
+// legacy servers that do not implement renegotiation_info (RFC 5746). If
+// disabled, connections to such servers will fail. This option is enabled by
+// default, but may be disabled with |SSL_CTX_clear_options|.
+#define SSL_OP_LEGACY_SERVER_CONNECT 0x00000004L
+
 // SSL_OP_NO_QUERY_MTU, in DTLS, disables querying the MTU from the underlying
 // |BIO|. Instead, the MTU is configured with |SSL_set_mtu|.
 #define SSL_OP_NO_QUERY_MTU 0x00001000L
@@ -5882,7 +5888,6 @@ DEFINE_STACK_OF(SSL_COMP)
 #define SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION 0
 #define SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS 0
 #define SSL_OP_EPHEMERAL_RSA 0
-#define SSL_OP_LEGACY_SERVER_CONNECT 0
 #define SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER 0
 #define SSL_OP_MICROSOFT_SESS_ID_BUG 0
 #define SSL_OP_MSIE_SSLV2_RSA_PADDING 0
