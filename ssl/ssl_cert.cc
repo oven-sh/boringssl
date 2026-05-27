@@ -28,6 +28,7 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/mem.h>
+#include <openssl/pool.h>
 #include <openssl/sha2.h>
 #include <openssl/x509.h>
 
@@ -669,6 +670,8 @@ void SSL_CTX_set0_client_CAs(SSL_CTX *ctx, STACK_OF(CRYPTO_BUFFER) *name_list) {
 
 void SSL_set0_client_CAs(SSL *ssl, STACK_OF(CRYPTO_BUFFER) *name_list) {
   if (!ssl->config) {
+    // |SSL_set0_client_CAs| is expected to take ownership of |name_list|.
+    sk_CRYPTO_BUFFER_pop_free(name_list, CRYPTO_BUFFER_free);
     return;
   }
   ssl->ctx->x509_method->ssl_flush_cached_client_CA(ssl->config.get());
