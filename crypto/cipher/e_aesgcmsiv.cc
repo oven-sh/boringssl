@@ -972,7 +972,7 @@ int aead_aes_gcm_siv_openv_detached(const EVP_AEAD_CTX *ctx,
 
   const uint64_t in_len_64 = bssl::iovec::TotalLength(iovecs);
   if (in_tag.size() != EVP_AEAD_AES_GCM_SIV_TAG_LEN ||
-      in_len_64 > (UINT64_C(1) << 36) + AES_BLOCK_SIZE) {
+      in_len_64 > (UINT64_C(1) << 36)) {
     OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_BAD_DECRYPT);
     return 0;
   }
