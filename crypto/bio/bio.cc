@@ -25,6 +25,7 @@
 #include <openssl/asn1.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
+#include <openssl/span.h>
 
 #include "../internal.h"
 #include "../mem_internal.h"
@@ -173,14 +174,13 @@ int BIO_write(BIO *bio, const void *in, int inl) {
 }
 
 int BIO_write_all(BIO *bio, const void *data, size_t len) {
-  const uint8_t *data_u8 = reinterpret_cast<const uint8_t *>(data);
-  while (len > 0) {
-    int ret = BIO_write(bio, data_u8, len > INT_MAX ? INT_MAX : (int)len);
-    if (ret <= 0) {
+  auto span = Span(reinterpret_cast<const uint8_t *>(data), len);
+  while (!span.empty()) {
+    size_t written;
+    if (!BIO_write_ex(bio, span.data(), span.size(), &written)) {
       return 0;
     }
-    data_u8 += ret;
-    len -= ret;
+    span = span.subspan(written);
   }
   return 1;
 }

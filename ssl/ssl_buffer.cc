@@ -257,14 +257,13 @@ static_assert(DTLS1_RT_MAX_HEADER_LENGTH + SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD +
 
 static int tls_write_buffer_flush(SSL *ssl) {
   SSLBuffer *buf = &ssl->s3->write_buffer;
-
   while (!buf->empty()) {
-    int ret = BIO_write(ssl->wbio.get(), buf->data(), buf->size());
-    if (ret <= 0) {
+    size_t written;
+    if (!BIO_write_ex(ssl->wbio.get(), buf->data(), buf->size(), &written)) {
       ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
-      return ret;
+      return -1;
     }
-    buf->Consume(static_cast<size_t>(ret));
+    buf->Consume(written);
   }
   buf->Clear();
   return 1;
@@ -276,14 +275,14 @@ static int dtls_write_buffer_flush(SSL *ssl) {
     return 1;
   }
 
-  int ret = BIO_write(ssl->wbio.get(), buf->data(), buf->size());
-  if (ret <= 0) {
+  if (!BIO_write_ex(ssl->wbio.get(), buf->data(), buf->size(),
+                    /*out_written=*/nullptr)) {
     ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
     // If the write failed, drop the write buffer anyway. Datagram transports
     // can't write half a packet, so the caller is expected to retry from the
     // top.
     buf->Clear();
-    return ret;
+    return -1;
   }
   buf->Clear();
   return 1;

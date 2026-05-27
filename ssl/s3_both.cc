@@ -210,8 +210,7 @@ int tls_flush(SSL *ssl) {
     return -1;
   }
 
-  static_assert(INT_MAX <= 0xffffffff, "int is larger than 32 bits");
-  if (ssl->s3->pending_flight->length > INT_MAX) {
+  if (ssl->s3->pending_flight->length > UINT32_MAX) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
     return -1;
   }
@@ -233,16 +232,17 @@ int tls_flush(SSL *ssl) {
 
   // Write the pending flight.
   while (ssl->s3->pending_flight_offset < ssl->s3->pending_flight->length) {
-    int ret = BIO_write(
-        ssl->wbio.get(),
-        ssl->s3->pending_flight->data + ssl->s3->pending_flight_offset,
-        ssl->s3->pending_flight->length - ssl->s3->pending_flight_offset);
-    if (ret <= 0) {
+    size_t written;
+    if (!BIO_write_ex(
+            ssl->wbio.get(),
+            ssl->s3->pending_flight->data + ssl->s3->pending_flight_offset,
+            ssl->s3->pending_flight->length - ssl->s3->pending_flight_offset,
+            &written)) {
       ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
-      return ret;
+      return -1;
     }
 
-    ssl->s3->pending_flight_offset += ret;
+    ssl->s3->pending_flight_offset += static_cast<uint32_t>(written);
   }
 
   if (BIO_flush(ssl->wbio.get()) <= 0) {

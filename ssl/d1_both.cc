@@ -913,13 +913,13 @@ static int send_flight(SSL *ssl) {
     }
 
     if (packet_len != 0) {
-      int bio_ret = BIO_write(ssl->wbio.get(), packet.data(), packet_len);
-      if (bio_ret <= 0) {
+      if (!BIO_write_ex(ssl->wbio.get(), packet.data(), packet_len,
+                        /*out_written=*/nullptr)) {
         // Retry this packet the next time around.
         ssl->d1->outgoing_written = old_written;
         ssl->d1->outgoing_offset = old_offset;
         ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
-        return bio_ret;
+        return -1;
       }
     }
   }
@@ -1007,11 +1007,10 @@ static int send_ack(SSL *ssl) {
 
   ssl_do_msg_callback(ssl, /*is_write=*/1, SSL3_RT_ACK, CBBAsSpan(&cbb));
 
-  int bio_ret =
-      BIO_write(ssl->wbio.get(), record, static_cast<int>(record_len));
-  if (bio_ret <= 0) {
+  if (!BIO_write_ex(ssl->wbio.get(), record, record_len,
+                    /*out_written=*/nullptr)) {
     ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
-    return bio_ret;
+    return -1;
   }
 
   ssl->d1->pending_flush = true;
