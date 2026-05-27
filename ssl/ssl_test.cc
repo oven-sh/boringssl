@@ -10645,22 +10645,6 @@ TEST(SSLTest, ErrorSyscallAfterCloseNotify) {
   EXPECT_EQ(SSL_get_error(client.get(), ret), SSL_ERROR_SYSCALL);
   EXPECT_TRUE(write_failed);
   write_failed = false;
-
-  // Cause |BIO_write| to fail with a return value of zero instead.
-  // |SSL_get_error| should not misinterpret this as a close_notify.
-  //
-  // This is not actually a correct implementation of |BIO_write|, but the rest
-  // of the code treats zero from |BIO_write| as an error, so ensure it does so
-  // correctly. Fixing https://crbug.com/boringssl/503 will make this case moot.
-  BIO_meth_set_write(method.get(), [](BIO *, const char *, int) -> int {
-    write_failed = true;
-    return 0;
-  });
-  ret = SSL_write(client.get(), data, sizeof(data));
-  EXPECT_EQ(ret, 0);
-  EXPECT_EQ(SSL_get_error(client.get(), ret), SSL_ERROR_SYSCALL);
-  EXPECT_TRUE(write_failed);
-  write_failed = false;
 }
 
 // Test that |SSL_shutdown|, when quiet shutdown is enabled, simulates receiving

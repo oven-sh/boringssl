@@ -1123,9 +1123,7 @@ TEST(BIOTest, FileFDError) {
   {
     UniquePtr<BIO> bio(BIO_new_file(temp.path().c_str(), "rb"));
     ASSERT_TRUE(bio);
-    // TODO(crbug.com/42290372): File BIOs currently return zero instead of -1
-    // on write error.
-    EXPECT_EQ(BIO_write(bio.get(), "foo", 3), 0);
+    EXPECT_EQ(BIO_write(bio.get(), "foo", 3), -1);
     EXPECT_FALSE(BIO_should_retry(bio.get()));
   }
 
@@ -1280,9 +1278,9 @@ TEST_P(BIOPairTest, TestPair) {
   // |bio1| no longer has the "init" flag set, so reads and writes will fail at
   // the BIO framework.
   EXPECT_FALSE(BIO_get_init(bio1.get()));
-  EXPECT_EQ(-2, BIO_write(bio1.get(), "12345", 5));
+  EXPECT_EQ(-1, BIO_write(bio1.get(), "12345", 5));
   EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_BIO, BIO_R_UNINITIALIZED));
-  EXPECT_EQ(-2, BIO_read(bio1.get(), buf, sizeof(buf)));
+  EXPECT_EQ(-1, BIO_read(bio1.get(), buf, sizeof(buf)));
   EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_BIO, BIO_R_UNINITIALIZED));
 
   // Although in this disconnected state, |BIO_ctrl| works. |bio1| should
@@ -1412,6 +1410,43 @@ TEST(BIOTest, BIOChain) {
   // The remainder was returned.
   expect_bio_chain(rest.get(),
                    {method2->first, method3->first, method4->first});
+}
+
+TEST(BIOTest, CanonicalizeErrors) {
+  // Make a custom BIO with a programmable return value.
+  UniquePtr<BIO_METHOD> method(BIO_meth_new(0, nullptr));
+  ASSERT_TRUE(method);
+  BIO_meth_set_read(method.get(), [](BIO *bio, char *, int) -> int {
+    return *static_cast<int *>(BIO_get_data(bio));
+  });
+  BIO_meth_set_write(method.get(), [](BIO *bio, const char *, int) -> int {
+    return *static_cast<int *>(BIO_get_data(bio));
+  });
+
+  int return_value = -1;
+  UniquePtr<BIO> bio(BIO_new(method.get()));
+  ASSERT_TRUE(bio);
+  BIO_set_data(bio.get(), &return_value);
+  BIO_set_init(bio.get(), 1);
+
+  // Any return value < 0 from BIO_read is an error, which should be -1.
+  char buf[10];
+  return_value = -2;
+  EXPECT_EQ(BIO_read(bio.get(), buf, sizeof(buf)), -1);
+  return_value = -1;
+  EXPECT_EQ(BIO_read(bio.get(), buf, sizeof(buf)), -1);
+
+  // Zero is EOF and should be preserved.
+  return_value = 0;
+  EXPECT_EQ(BIO_read(bio.get(), buf, sizeof(buf)), 0);
+
+  // Any return value <= 0 from BIO_write is an error, which should be -1.
+  return_value = -2;
+  EXPECT_EQ(BIO_write(bio.get(), "foo", 3), -1);
+  return_value = -1;
+  EXPECT_EQ(BIO_write(bio.get(), "foo", 3), -1);
+  return_value = 0;
+  EXPECT_EQ(BIO_write(bio.get(), "foo", 3), -1);
 }
 
 }  // namespace

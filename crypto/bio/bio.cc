@@ -80,11 +80,11 @@ int BIO_read(BIO *bio, void *buf, int len) {
   auto *impl = FromOpaque(bio);
   if (impl == nullptr || impl->method->bread == nullptr) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNSUPPORTED_METHOD);
-    return -2;
+    return -1;
   }
   if (!impl->init) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNINITIALIZED);
-    return -2;
+    return -1;
   }
   if (len <= 0) {
     return 0;
@@ -92,6 +92,9 @@ int BIO_read(BIO *bio, void *buf, int len) {
   int ret = impl->method->bread(impl, reinterpret_cast<char *>(buf), len);
   if (ret > 0) {
     impl->num_read += ret;
+  } else if (ret < 0) {
+    // In preparation for |BIO_read_ex|, canonicalize error returns to -1.
+    ret = -1;
   }
   return ret;
 }
@@ -100,11 +103,11 @@ int BIO_gets(BIO *bio, char *buf, int len) {
   auto *impl = FromOpaque(bio);
   if (impl == nullptr || impl->method->bgets == nullptr) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNSUPPORTED_METHOD);
-    return -2;
+    return -1;
   }
   if (!impl->init) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNINITIALIZED);
-    return -2;
+    return -1;
   }
   if (len <= 0) {
     return 0;
@@ -120,11 +123,11 @@ int BIO_write(BIO *bio, const void *in, int inl) {
   auto *impl = FromOpaque(bio);
   if (impl == nullptr || impl->method->bwrite == nullptr) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNSUPPORTED_METHOD);
-    return -2;
+    return -1;
   }
   if (!impl->init) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNINITIALIZED);
-    return -2;
+    return -1;
   }
   if (inl <= 0) {
     return 0;
@@ -132,6 +135,9 @@ int BIO_write(BIO *bio, const void *in, int inl) {
   int ret = impl->method->bwrite(impl, reinterpret_cast<const char *>(in), inl);
   if (ret > 0) {
     impl->num_write += ret;
+  } else {
+    // In preparation for |BIO_write_ex|, canonicalize error returns to -1.
+    ret = -1;
   }
   return ret;
 }
@@ -171,7 +177,7 @@ long BIO_ctrl(BIO *bio, int cmd, long larg, void *parg) {
 
   if (impl->method->ctrl == nullptr) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNSUPPORTED_METHOD);
-    return -2;
+    return -1;
   }
 
   return impl->method->ctrl(impl, cmd, larg, parg);
