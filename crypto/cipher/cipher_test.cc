@@ -262,6 +262,7 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
     size_t todo = chunk_size == 0 ? in.size() : std::min(in.size(), chunk_size);
     EXPECT_LE(todo, static_cast<size_t>(INT_MAX));
     ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+    size_t max = EVP_CIPHER_CTX_max_next_update(ctx.get(), todo);
     switch (api) {
       case API::kCipher:
         // `EVP_Cipher` sometimes returns the number of bytes written, or -1 on
@@ -288,6 +289,9 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
     ASSERT_GE(len, 0);
+    // `EVP_CIPHER_CTX_max_next_update` is, for all currently-implemented
+    // ciphers, exact.
+    EXPECT_EQ(static_cast<size_t>(len), max);
     total += static_cast<size_t>(len);
     in = in.subspan(todo);
   }
@@ -314,6 +318,8 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
   } else {
+    ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+    size_t max = EVP_CIPHER_CTX_max_final(ctx.get());
     switch (api) {
       case API::kCipher:
         if (is_custom_cipher) {
@@ -336,6 +342,13 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
     ASSERT_GE(len, 0);
+    // `EVP_CIPHER_CTX_max_final` is, for currently-implemented ciphers, exact
+    // for all but padded decrypt.
+    if (op == Operation::kDecrypt && padding) {
+      EXPECT_LE(static_cast<size_t>(len), max);
+    } else {
+      EXPECT_EQ(static_cast<size_t>(len), max);
+    }
     total += static_cast<size_t>(len);
     result.resize(total);
     EXPECT_EQ(Bytes(expected), Bytes(result));

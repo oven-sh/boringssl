@@ -170,12 +170,13 @@ OPENSSL_EXPORT int EVP_DecryptInit_ex(EVP_CIPHER_CTX *ctx,
 // Cipher operations.
 
 // EVP_EncryptUpdate_ex encrypts `in_len` bytes from `in` and writes up to
-// `max_out` bytes of ciphertext to `out`. On success, it sets `*out_len` to
+// `max_out_len` bytes of ciphertext to `out`. On success, it sets `*out_len` to
 // the number of output bytes and returns one. Otherwise, it returns zero.
 //
-// If `max_out` is not large enough for the output, the function will return
+// If `max_out_len` is not large enough for the output, the function will return
 // zero. The size of output buffer needed depends on the cipher and the number
-// of bytes encrypted by `ctx` thus far.
+// of bytes encrypted by `ctx` thus far. `EVP_CIPHER_CTX_max_next_update` will
+// return the maximum output for this call.
 //
 // In ciphers whose block size is not 1, such as CBC, individual calls to
 // `EVP_EncryptUpdate_ex` may output more or less than `in_len` bytes: a single
@@ -188,12 +189,13 @@ OPENSSL_EXPORT int EVP_EncryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                         const uint8_t *in, size_t in_len);
 
 // EVP_EncryptFinal_ex2 finishes an encryption operation and writes up to
-// `max_out` bytes of output to out. On success, it sets `*out_len` to the
+// `max_out_len` bytes of output to out. On success, it sets `*out_len` to the
 // number of bytes written and returns one. Otherwise, it returns zero.
 //
-// If `max_out` is not large enough for the output, the function will return
+// If `max_out_len` is not large enough for the output, the function will return
 // zero. The size of output buffer needed depends on the cipher and the number
-// of bytes encrypted.
+// of bytes encrypted. `EVP_CIPHER_CTX_max_final` will return the maximum output
+// for this call.
 //
 // If the block size is 1, there will be no final output at all; otherwise, at
 // most one block of ciphertext will be written to the output.
@@ -207,12 +209,13 @@ OPENSSL_EXPORT int EVP_EncryptFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                         size_t *out_len, size_t max_out_len);
 
 // EVP_DecryptUpdate_ex decrypts `in_len` bytes from `in` and writes up to
-// `max_out` bytes of plaintext to `out`. On success, it sets `*out_len` to
+// `max_out_len` bytes of plaintext to `out`. On success, it sets `*out_len` to
 // the number of output bytes and returns one. Otherwise, it returns zero.
 //
-// If `max_out` is not large enough for the output, the function will return
+// If `max_out_len` is not large enough for the output, the function will return
 // zero. The size of output buffer needed depends on the cipher and the number
-// of bytes decrypted by `ctx` thus far.
+// of bytes decrypted by `ctx` thus far. `EVP_CIPHER_CTX_max_next_update` will
+// return the maximum output for this call.
 //
 // In ciphers whose block size is not 1, such as CBC, individual calls to
 // `EVP_DecryptUpdate_ex` may output more or less than `in_len` bytes: a single
@@ -228,12 +231,13 @@ OPENSSL_EXPORT int EVP_DecryptUpdate_ex(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                         const uint8_t *in, size_t in_len);
 
 // EVP_DecryptFinal_ex2 finishes a decryption operation and writes up to
-// `max_out` bytes of output to out. On success, it sets `*out_len` to the
+// `max_out_len` bytes of output to out. On success, it sets `*out_len` to the
 // number of bytes written and returns one. Otherwise, it returns zero.
 //
-// If `max_out` is not large enough for the output, the function will return
+// If `max_out_len` is not large enough for the output, the function will return
 // zero. The size of output buffer needed depends on the cipher and the number
-// of bytes decrypted.
+// of bytes decrypted. `EVP_CIPHER_CTX_max_final` will return the maximum output
+// for this call.
 //
 // If the block size is 1, there will be no final output at all; otherwise, at
 // most one block of ciphertext will be written to the output.
@@ -264,6 +268,19 @@ OPENSSL_EXPORT int EVP_CipherUpdateAAD(EVP_CIPHER_CTX *ctx, const uint8_t *in,
 // `EVP_DecryptFinal_ex2` depending on how `ctx` has been setup.
 OPENSSL_EXPORT int EVP_CipherFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out,
                                        size_t *out_len, size_t max_out_len);
+
+// EVP_CIPHER_CTX_max_next_update returns the maximum number of bytes that may
+// be output from `ctx` by a call to `EVP_CipherUpdate_ex` with `in_len` bytes
+// of input. This takes the current state of `ctx` into account, so the output
+// will change as bytes are passed in and out.
+OPENSSL_EXPORT size_t EVP_CIPHER_CTX_max_next_update(const EVP_CIPHER_CTX *ctx,
+                                                     size_t in_len);
+
+// EVP_CIPHER_CTX_max_final returns the maximum number of bytes that may
+// be output from `ctx` by a call to `EVP_CipherFinal_ex2`. This takes the
+// current state of `ctx` into account, so the output will change as bytes are
+// passed in and out.
+OPENSSL_EXPORT size_t EVP_CIPHER_CTX_max_final(const EVP_CIPHER_CTX *ctx);
 
 
 // Cipher context accessors.

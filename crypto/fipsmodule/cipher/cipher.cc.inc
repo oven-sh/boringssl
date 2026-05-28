@@ -680,6 +680,49 @@ int EVP_CipherFinal_ex2(EVP_CIPHER_CTX *ctx, uint8_t *out, size_t *out_len,
   }
 }
 
+size_t EVP_CIPHER_CTX_max_next_update(const EVP_CIPHER_CTX *ctx,
+                                      size_t in_len) {
+  if (in_len == 0) {
+    return 0;
+  }
+
+  size_t block_size = ctx->cipher->block_size;
+  // |block_size| must be a power of 2.
+  assert(block_size != 0 && (block_size & (block_size - 1)) == 0);
+  size_t buf_len = ctx->buf_len;
+
+  // Any buffered input is combined with |in_len|, then we round down to a
+  // multiple of the block size.
+  size_t ret = (in_len + buf_len) & ~(block_size - 1);
+  if (!ctx->encrypt && block_size > 1 && !(ctx->flags & EVP_CIPH_NO_PADDING)) {
+    if (ctx->final_used) {
+      // There was a buffered decrypted block. Now that it is known to not have
+      // padding, DecryptUpdate will output it.
+      ret += block_size;
+    }
+    if (block_remainder(ctx, in_len + buf_len) == 0) {
+      // This call ends on a block boundary. The last block will be buffered in
+      // |ctx->final| until it is known to have padding.
+      assert(ret >= block_size);
+      ret -= block_size;
+    }
+  }
+  return ret;
+}
+
+size_t EVP_CIPHER_CTX_max_final(const EVP_CIPHER_CTX *ctx) {
+  size_t block_size = ctx->cipher->block_size;
+  if (block_size == 1 || (ctx->flags & EVP_CIPH_NO_PADDING)) {
+    return 0;
+  }
+  if (ctx->encrypt) {
+    return block_size;
+  } else {
+    // At least one byte will be removed when processing padding.
+    return block_size - 1;
+  }
+}
+
 const EVP_CIPHER *EVP_CIPHER_CTX_cipher(const EVP_CIPHER_CTX *ctx) {
   return ctx->cipher;
 }
