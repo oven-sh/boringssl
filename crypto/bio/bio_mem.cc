@@ -93,10 +93,6 @@ static int mem_free(BIO *bio) {
 
 static int mem_read(BIO *bio, char *out, int outl) {
   BIO_clear_retry_flags(bio);
-  if (outl <= 0) {
-    return 0;
-  }
-
   BUF_MEM *b = reinterpret_cast<BUF_MEM *>(BIO_get_data(bio));
   int ret = outl;
   if ((size_t)ret > b->length) {

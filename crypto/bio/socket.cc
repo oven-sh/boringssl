@@ -50,10 +50,6 @@ static int sock_free(BIO *bio) {
 }
 
 static int sock_read(BIO *b, char *out, int outl) {
-  if (out == nullptr) {
-    return 0;
-  }
-
   bio_clear_socket_error();
 #if defined(OPENSSL_WINDOWS)
   int ret = recv(FromOpaque(b)->num, out, outl, 0);

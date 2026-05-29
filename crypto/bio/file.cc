@@ -111,10 +111,6 @@ static int file_free(BIO *bio) {
 }
 
 static int file_read(BIO *b, char *out, int outl) {
-  if (!BIO_get_init(b)) {
-    return 0;
-  }
-
   size_t ret = fread(out, 1, outl, (FILE *)BIO_get_data(b));
   if (ret == 0 && ferror((FILE *)BIO_get_data(b))) {
     OPENSSL_PUT_SYSTEM_ERROR();
@@ -128,9 +124,6 @@ static int file_read(BIO *b, char *out, int outl) {
 
 static int file_write_ex(BIO *b, const char *in, size_t inl,
                          size_t *out_written) {
-  if (!BIO_get_init(b)) {
-    return 0;
-  }
   if (fwrite(in, inl, 1, (FILE *)BIO_get_data(b)) == 0) {
     return 0;
   }

@@ -72,9 +72,7 @@ static int fd_free(BIO *bio) {
 }
 
 static int fd_read(BIO *b, char *out, int outl) {
-  int ret = 0;
-
-  ret = (int)BORINGSSL_READ(FromOpaque(b)->num, out, outl);
+  int ret = (int)BORINGSSL_READ(FromOpaque(b)->num, out, outl);
   BIO_clear_retry_flags(b);
   if (ret <= 0) {
     if (bio_errno_should_retry(ret)) {

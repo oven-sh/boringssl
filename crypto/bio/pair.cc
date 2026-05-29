@@ -108,27 +108,17 @@ static int bio_free(BIO *bio) {
 
 static int bio_read(BIO *bio, char *buf, int size_) {
   size_t size = size_;
-  size_t rest;
-  struct bio_bio_st *b, *peer_b;
 
   BIO_clear_retry_flags(bio);
 
-  if (!BIO_get_init(bio)) {
-    return 0;
-  }
-
-  b = reinterpret_cast<bio_bio_st *>(BIO_get_data(bio));
+  bio_bio_st *b = reinterpret_cast<bio_bio_st *>(BIO_get_data(bio));
   assert(b != nullptr);
   assert(b->peer != nullptr);
-  peer_b = reinterpret_cast<bio_bio_st *>(BIO_get_data(b->peer));
+  bio_bio_st *peer_b = reinterpret_cast<bio_bio_st *>(BIO_get_data(b->peer));
   assert(peer_b != nullptr);
   assert(peer_b->buf != nullptr);
 
   peer_b->request = 0;  // will be set in "retry_read" situation
-
-  if (buf == nullptr || size == 0) {
-    return 0;
-  }
 
   if (peer_b->len == 0) {
     if (peer_b->closed) {
@@ -152,7 +142,7 @@ static int bio_read(BIO *bio, char *buf, int size_) {
   }
 
   // now read "size" bytes
-  rest = size;
+  size_t rest = size;
 
   assert(rest > 0);
   // one or two iterations
@@ -193,10 +183,6 @@ static int bio_read(BIO *bio, char *buf, int size_) {
 static int bio_write_ex(BIO *bio, const char *buf, size_t num,
                         size_t *out_written) {
   BIO_clear_retry_flags(bio);
-
-  if (!BIO_get_init(bio) || buf == nullptr || num == 0) {
-    return 0;
-  }
 
   struct bio_bio_st *b = reinterpret_cast<bio_bio_st *>(BIO_get_data(bio));
   assert(b != nullptr);

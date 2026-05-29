@@ -692,7 +692,9 @@ OPENSSL_EXPORT int BIO_meth_set_destroy(BIO_METHOD *method,
 // and returns one. `BIO_METHOD`s which implement `BIO_write_ex` should also
 // implement `BIO_CTRL_FLUSH`. (See `BIO_meth_set_ctrl`.)
 //
-// `write_ex_func` can assume `out_written` is non-NULL.
+// `write_ex_func` can assume `BIO_get_init` returns one, the input size is
+// greater than zero, and `out_written` is non-NULL. Those cases are handled
+// before calling into the `BIO_METHOD`.
 //
 // If configured, `write_ex_func` will also be used to implement `BIO_write`,
 // with the `BIO` framework converting the conventions. `BIO_meth_set_write_ex`
@@ -706,6 +708,10 @@ OPENSSL_EXPORT int BIO_meth_set_write_ex(
 // returns one. `BIO_METHOD`s which implement `BIO_write` should also implement
 // `BIO_CTRL_FLUSH`. (See `BIO_meth_set_ctrl`.)
 //
+// `write_func` can assume `BIO_get_init` returns one and the input size is
+// greater than zero. Those cases are handled before calling into the
+// `BIO_METHOD`.
+//
 // If configured, `write_func` will also be used to implement `BIO_write_ex`,
 // with the `BIO` framework converting the conventions. `BIO_meth_set_write_ex`
 // and `BIO_meth_set_write` should not be configured on the same `BIO_METHOD`.
@@ -716,11 +722,19 @@ OPENSSL_EXPORT int BIO_meth_set_write(BIO_METHOD *method,
 
 // BIO_meth_set_read sets the implementation of `BIO_read` for `method` and
 // returns one.
+//
+// `read_func` can assume `BIO_get_init` returns one and the output size is
+// greater than zero. Those cases are handled before calling into the
+// `BIO_METHOD`.
 OPENSSL_EXPORT int BIO_meth_set_read(BIO_METHOD *method,
                                      int (*read_func)(BIO *, char *, int));
 
 // BIO_meth_set_gets sets the implementation of `BIO_gets` for `method` and
 // returns one.
+//
+// `gets_func` can assume `BIO_get_init` returns one and the output size is
+// greater than zero. Those cases are handled before calling into the
+// `BIO_METHOD`.
 OPENSSL_EXPORT int BIO_meth_set_gets(BIO_METHOD *method,
                                      int (*gets_func)(BIO *, char *, int));
 
