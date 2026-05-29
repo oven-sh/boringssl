@@ -69,7 +69,7 @@ PacketedBio *GetData(BIO *bio) {
   return static_cast<PacketedBio *>(BIO_get_data(bio));
 }
 
-// ReadAll reads |len| bytes from |bio| into |out|. It returns 1 on success and
+// ReadAll reads `len` bytes from `bio` into `out`. It returns 1 on success and
 // 0 or -1 on error.
 static int ReadAll(BIO *bio, bssl::Span<uint8_t> out) {
   while (!out.empty()) {
@@ -231,7 +231,7 @@ static int PacketedRead(BIO *bio, char *out, int outl) {
       data->interrupt = [=] {
         DTLSv1_set_initial_timeout_duration(data->ssl, duration_ms);
         // A real caller is expected to immediately check the new timeout and
-        // call |DTLSv1_handle_timeout| if the timeout is now expired. We do not
+        // call `DTLSv1_handle_timeout` if the timeout is now expired. We do not
         // this automatically, so that the test can send ExpectNextTimeout(0)
         // first.
         return true;

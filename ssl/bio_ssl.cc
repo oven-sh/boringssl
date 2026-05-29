@@ -111,8 +111,8 @@ static long ssl_ctrl(BIO *bio, int cmd, long num, void *ptr) {
       }
 
       // Note this differs from upstream OpenSSL, which synchronizes
-      // |BIO_next(bio)| with |ssl|'s rbio here, and on |BIO_CTRL_PUSH|. We call
-      // into the corresponding |BIO| directly. (We can implement the upstream
+      // `BIO_next(bio)` with `ssl`'s rbio here, and on `BIO_CTRL_PUSH`. We call
+      // into the corresponding `BIO` directly. (We can implement the upstream
       // behavior if it ends up necessary.)
       BIO_set_shutdown(bio, static_cast<int>(num));
       BIO_set_data(bio, ptr);
