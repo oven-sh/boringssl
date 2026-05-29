@@ -93,7 +93,7 @@ static int aes_init_key(EVP_CIPHER_CTX *ctx, const uint8_t *key,
       if (ret == 0) {
         vpaes_decrypt_key_to_bsaes(&dat->ks.ks, &dat->ks.ks);
       }
-      // If |dat->stream.cbc| is provided, |dat->block| is never used.
+      // If `dat->stream.cbc` is provided, `dat->block` is never used.
       dat->block = nullptr;
       dat->stream.cbc = bsaes_cbc_encrypt;
 #endif
@@ -330,7 +330,7 @@ static int aes_gcm_ctrl(EVP_CIPHER_CTX *c, int type, int arg, void *ptr) {
       }
       OPENSSL_memcpy(gctx->iv, ptr, arg);
       if (c->encrypt) {
-        // |BCM_rand_bytes| calls within the fipsmodule should be wrapped with
+        // `BCM_rand_bytes` calls within the fipsmodule should be wrapped with
         // state lock functions to avoid updating the service indicator with the
         // DRBG functions.
         FIPS_service_indicator_lock_state();
@@ -958,7 +958,7 @@ static int aead_aes_gcm_sealv_randnonce(const EVP_AEAD_CTX *ctx,
     return 0;
   }
 
-  // |BCM_rand_bytes| calls within the fipsmodule should be wrapped with state
+  // `BCM_rand_bytes` calls within the fipsmodule should be wrapped with state
   // lock functions to avoid updating the service indicator with the DRBG
   // functions.
   FIPS_service_indicator_lock_state();

@@ -303,7 +303,7 @@ inline uint32_t reduce_once(uint32_t x) {
   // We usually add value barriers to selects because Clang turns consecutive
   // selects with the same condition into a branch instead of CMOV/CSEL. This
   // condition does not occur in ML-DSA, so omitting it seems to be generally
-  // safe. However, see |coefficient_from_nibble|.
+  // safe. However, see `coefficient_from_nibble`.
   return (mask & x) | (~mask & subtracted);
 }
 
@@ -341,7 +341,7 @@ inline uint32_t mod_sub(uint32_t a, uint32_t b) {
   uint32_t r = a - b;
   // return r < 0 ? r + kPrime : r;
   uint32_t mask = 0u - (r >> 31);
-  // See |reduce_once| for why this does not have a value barrier.
+  // See `reduce_once` for why this does not have a value barrier.
   return (mask & (r + kPrime)) | (~mask & r);
 }
 
@@ -388,9 +388,9 @@ inline void scalar_ntt(scalar *s) {
       const uint32_t step_root = kNTTRootsMontgomery[step + i];
       for (int j = k; j < k + offset; j++) {
         uint32_t even = s->c[j];
-        // |reduce_montgomery| works on values up to kPrime*R and R > 2*kPrime.
-        // |step_root| < kPrime because it's static data. |s->c[...]| is <
-        // kPrime by the invariants of that struct.
+        // `reduce_montgomery` works on values up to kPrime*R and R > 2*kPrime.
+        // `step_root` < kPrime because it's static data.
+        // `s->c[...]` is < kPrime by the invariants of that struct.
         uint32_t odd =
             reduce_montgomery((uint64_t)step_root * (uint64_t)s->c[j + offset]);
         s->c[j] = reduce_once(odd + even);
@@ -420,11 +420,11 @@ inline void scalar_inverse_ntt(scalar *s) {
         uint32_t odd = s->c[j + offset];
         s->c[j] = reduce_once(odd + even);
 
-        // |reduce_montgomery| works on values up to kPrime*R and R > 2*kPrime.
-        // kPrime + even < 2*kPrime because |even| < kPrime, by the invariants
+        // `reduce_montgomery` works on values up to kPrime*R and R > 2*kPrime.
+        // kPrime + even < 2*kPrime because `even` < kPrime, by the invariants
         // of that structure. Thus kPrime + even - odd < 2*kPrime because odd >=
         // 0, because it's unsigned and less than kPrime. Lastly step_root <
-        // kPrime, because |kNTTRootsMontgomery| is static data.
+        // kPrime, because `kNTTRootsMontgomery` is static data.
         s->c[j + offset] = reduce_montgomery((uint64_t)step_root *
                                              (uint64_t)(kPrime + even - odd));
       }
@@ -600,8 +600,8 @@ inline uint32_t use_hint_vartime(uint32_t h, uint32_t r) {
   if (h) {
     if constexpr (prime_minus_one_over_gamma2<K>() == 32) {
       if (r0 > 0) {
-        // (Q-1)/(2 gamma2) = m = 16, thus |mod m| in the spec turns into |&
-        // 15|.
+        // (Q-1)/(2 gamma2) = m = 16, thus `mod m` in the spec turns into
+        // `& 15`.
         return (r1 + 1) & 15;
       } else {
         return (r1 - 1) & 15;
@@ -1170,8 +1170,8 @@ inline bool coefficient_from_nibble(uint32_t nibble, uint32_t *result);
 template <>
 inline bool coefficient_from_nibble<4>(uint32_t nibble, uint32_t *result) {
   if (constant_time_declassify_int(nibble < 9)) {
-    // Knowing bounds on |nibble| seems to tempt some versions of Clang to emit
-    // a branch, if we don't have a barrier in |mod_sub|.
+    // Knowing bounds on `nibble` seems to tempt some versions of Clang to emit
+    // a branch, if we don't have a barrier in `mod_sub`.
     *result = mod_sub(4, value_barrier_u32(nibble));
     return true;
   }
@@ -1181,8 +1181,8 @@ inline bool coefficient_from_nibble<4>(uint32_t nibble, uint32_t *result) {
 template <>
 inline bool coefficient_from_nibble<2>(uint32_t nibble, uint32_t *result) {
   if (constant_time_declassify_int(nibble < 15)) {
-    // Knowing bounds on |nibble| seems to tempt some versions of Clang to emit
-    // a branch, if we don't have a barrier in |mod_sub|.
+    // Knowing bounds on `nibble` seems to tempt some versions of Clang to emit
+    // a branch, if we don't have a barrier in `mod_sub`.
     // Constant time "nibble % 5".
     nibble = nibble - 5 * ((205 * nibble) >> 10);
     *result = mod_sub(2, value_barrier_u32(nibble));
@@ -1338,7 +1338,7 @@ inline void vector_expand_mask(vector<L> *out,
 
 // FIPS 204, Algorithm 16 (`SimpleBitPack`).
 //
-// Encodes an entire vector into 32*K*|bits| bytes. Note that since 256
+// Encodes an entire vector into 32*K*`bits` bytes. Note that since 256
 // (kDegree) is divisible by 8, the individual vector entries will always fill a
 // whole number of bytes, so we do not need to worry about bit packing here.
 template <int K>
@@ -1369,7 +1369,7 @@ inline void vector_decode_10(vector<K> *out, const uint8_t *in) {
 
 // FIPS 204, Algorithm 17 (`BitPack`).
 //
-// Encodes an entire vector into 32*L*|bits| bytes. Note that since 256
+// Encodes an entire vector into 32*L*`bits` bytes. Note that since 256
 // (kDegree) is divisible by 8, the individual vector entries will always fill a
 // whole number of bytes, so we do not need to worry about bit packing here.
 template <int X>
@@ -1804,7 +1804,7 @@ inline int mldsa_sign_mu_no_self_test(
     // https://pq-crystals.org/dilithium/data/dilithium-specification-round3.pdf
     // describes this leak as OK. Note we leak less than what is described by
     // the paper; we do not reveal which coefficient violated the bound, and
-    // we hide which of the |z_max| or |r0_max| bound failed. See also
+    // we hide which of the `z_max` or `r0_max` bound failed. See also
     // https://boringssl-review.googlesource.com/c/boringssl/+/67747/comment/2bbab0fa_d241d35a/
     uint32_t z_max = vector_max(&values->sign.z);
     uint32_t r0_max = vector_max_signed(r0);
@@ -2324,8 +2324,8 @@ bcm_status bssl::BCM_mldsa65_check_key_fips(MLDSA65_private_key *private_key) {
       mldsa::fips::check_key(mldsa::private_key_from_external_65(private_key)));
 }
 
-// Calls |MLDSA_generate_key_external_entropy| with random bytes from
-// |BCM_rand_bytes|.
+// Calls `MLDSA_generate_key_external_entropy` with random bytes from
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa65_generate_key(
     uint8_t out_encoded_public_key[MLDSA65_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA65_private_key *out_private_key) {
@@ -2429,7 +2429,7 @@ bcm_status bssl::BCM_mldsa65_sign_mu_internal(
 }
 
 // ML-DSA signature in randomized mode, filling the random bytes with
-// |BCM_rand_bytes|.
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa65_sign(
     uint8_t out_encoded_signature[MLDSA65_SIGNATURE_BYTES],
     const MLDSA65_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -2528,7 +2528,7 @@ int bssl::BCM_mldsa65_public_keys_equal(const MLDSA65_public_key *a,
                                         const MLDSA65_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_65(a);
   auto *b_pub = mldsa::public_key_from_external_65(b);
-  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // It is sufficient to compare `public_key_hash`. When importing a public key,
   // the hash must be computed. When importing a private key in expanded form
   // (an internal testing-only API), the hash is provided, but we recompute it
   // and check for correctness.
@@ -2564,8 +2564,8 @@ bcm_status bssl::BCM_mldsa87_check_key_fips(MLDSA87_private_key *private_key) {
       mldsa::fips::check_key(mldsa::private_key_from_external_87(private_key)));
 }
 
-// Calls |MLDSA_generate_key_external_entropy| with random bytes from
-// |BCM_rand_bytes|.
+// Calls `MLDSA_generate_key_external_entropy` with random bytes from
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa87_generate_key(
     uint8_t out_encoded_public_key[MLDSA87_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA87_private_key *out_private_key) {
@@ -2669,7 +2669,7 @@ bcm_status bssl::BCM_mldsa87_sign_mu_internal(
 }
 
 // ML-DSA signature in randomized mode, filling the random bytes with
-// |BCM_rand_bytes|.
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa87_sign(
     uint8_t out_encoded_signature[MLDSA87_SIGNATURE_BYTES],
     const MLDSA87_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -2769,7 +2769,7 @@ int bssl::BCM_mldsa87_public_keys_equal(const MLDSA87_public_key *a,
                                         const MLDSA87_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_87(a);
   auto *b_pub = mldsa::public_key_from_external_87(b);
-  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // It is sufficient to compare `public_key_hash`. When importing a public key,
   // the hash must be computed. When importing a private key in expanded form
   // (an internal testing-only API), the hash is provided, but we recompute it
   // and check for correctness.
@@ -2805,8 +2805,8 @@ bcm_status bssl::BCM_mldsa44_check_key_fips(MLDSA44_private_key *private_key) {
       mldsa::fips::check_key(mldsa::private_key_from_external_44(private_key)));
 }
 
-// Calls |MLDSA_generate_key_external_entropy| with random bytes from
-// |BCM_rand_bytes|.
+// Calls `MLDSA_generate_key_external_entropy` with random bytes from
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa44_generate_key(
     uint8_t out_encoded_public_key[MLDSA44_PUBLIC_KEY_BYTES],
     uint8_t out_seed[MLDSA_SEED_BYTES], MLDSA44_private_key *out_private_key) {
@@ -2910,7 +2910,7 @@ bcm_status bssl::BCM_mldsa44_sign_mu_internal(
 }
 
 // ML-DSA signature in randomized mode, filling the random bytes with
-// |BCM_rand_bytes|.
+// `BCM_rand_bytes`.
 bcm_status bssl::BCM_mldsa44_sign(
     uint8_t out_encoded_signature[MLDSA44_SIGNATURE_BYTES],
     const MLDSA44_private_key *private_key, const uint8_t *msg, size_t msg_len,
@@ -3010,7 +3010,7 @@ int bssl::BCM_mldsa44_public_keys_equal(const MLDSA44_public_key *a,
                                         const MLDSA44_public_key *b) {
   auto *a_pub = mldsa::public_key_from_external_44(a);
   auto *b_pub = mldsa::public_key_from_external_44(b);
-  // It is sufficient to compare |public_key_hash|. When importing a public key,
+  // It is sufficient to compare `public_key_hash`. When importing a public key,
   // the hash must be computed. When importing a private key in expanded form
   // (an internal testing-only API), the hash is provided, but we recompute it
   // and check for correctness.
