@@ -28,7 +28,7 @@ BSSL_NAMESPACE_BEGIN
 // from the operating system, if the operating system requires initialization.
 void CRYPTO_init_sysrand();
 
-// CRYPTO_sysrand fills |len| bytes at |buf| with entropy from the operating
+// CRYPTO_sysrand fills `len` bytes at `buf` with entropy from the operating
 // system.
 void CRYPTO_sysrand(uint8_t *buf, size_t len);
 
@@ -44,7 +44,7 @@ void CRYPTO_sysrand(uint8_t *buf, size_t len);
 // the save fork generation. Note this logic transparently handles platforms
 // which always return zero.
 //
-// This is not reliably supported on all platforms which implement |fork|, so it
+// This is not reliably supported on all platforms which implement `fork`, so it
 // should only be used as a hardening measure.
 OPENSSL_EXPORT uint64_t CRYPTO_get_fork_generation();
 
