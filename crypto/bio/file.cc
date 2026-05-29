@@ -118,7 +118,7 @@ static int file_read(BIO *b, char *out, int outl) {
     return -1;
   }
 
-  // fread reads at most |outl| bytes, so |ret| fits in an int.
+  // fread reads at most `outl` bytes, so `ret` fits in an int.
   return (int)ret;
 }
 
@@ -156,10 +156,10 @@ static long file_ctrl(BIO *b, int cmd, long num, void *ptr) {
       static_assert((BIO_CLOSE & BIO_FP_TEXT) == 0,
                     "BIO_CLOSE and BIO_FP_TEXT must not collide");
 #if defined(OPENSSL_WINDOWS)
-      // If |BIO_FP_TEXT| is not set, OpenSSL will switch the file to binary
+      // If `BIO_FP_TEXT` is not set, OpenSSL will switch the file to binary
       // mode. BoringSSL intentionally diverges here because it means code
-      // tested under POSIX will inadvertently change the state of |FILE|
-      // objects when wrapping them in a |BIO|.
+      // tested under POSIX will inadvertently change the state of `FILE`
+      // objects when wrapping them in a `BIO`.
       if (num & BIO_FP_TEXT) {
         _setmode(_fileno(reinterpret_cast<FILE *>(ptr)), _O_TEXT);
       }
@@ -225,7 +225,7 @@ static int file_gets(BIO *bp, char *buf, int size) {
   if (!fgets(buf, size, (FILE *)BIO_get_data(bp))) {
     buf[0] = 0;
     // TODO(davidben): This doesn't distinguish error and EOF. This should check
-    // |ferror| as in |file_read|.
+    // `ferror` as in `file_read`.
     return 0;
   }
 

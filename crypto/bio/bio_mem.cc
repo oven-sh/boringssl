@@ -43,14 +43,14 @@ BIO *BIO_new_mem_buf(const void *buf, ossl_ssize_t len) {
   }
 
   b = (BUF_MEM *)BIO_get_data(ret);
-  // BIO_FLAGS_MEM_RDONLY ensures |b->data| is not written to.
+  // BIO_FLAGS_MEM_RDONLY ensures `b->data` is not written to.
   b->data = reinterpret_cast<char *>(const_cast<void *>(buf));
   b->length = size;
   b->max = size;
 
   BIO_set_flags(ret, BIO_FLAGS_MEM_RDONLY);
 
-  // |num| is used to store the value that this BIO will return when it runs
+  // `num` is used to store the value that this BIO will return when it runs
   // out of data. If it's negative then the retry flags will also be set. Since
   // this is static data, retrying won't help
   FromOpaque(ret)->num = 0;
@@ -66,7 +66,7 @@ static int mem_new(BIO *bio) {
     return 0;
   }
 
-  // |shutdown| is used to store the close flag: whether the BIO has ownership
+  // `shutdown` is used to store the close flag: whether the BIO has ownership
   // of the BUF_MEM.
   BIO_set_shutdown(bio, 1);
   BIO_set_init(bio, 1);
@@ -185,8 +185,8 @@ static long mem_ctrl(BIO *bio, int cmd, long num, void *ptr) {
         char **out = reinterpret_cast<char **>(ptr);
         *out = b->data;
       }
-      // This API can overflow on 64-bit Windows, where |long| is smaller than
-      // |ptrdiff_t|. |BIO_mem_contents| is the overflow-safe API.
+      // This API can overflow on 64-bit Windows, where `long` is smaller than
+      // `ptrdiff_t`. `BIO_mem_contents` is the overflow-safe API.
       return static_cast<long>(b->length);
     case BIO_C_SET_BUF_MEM:
       mem_free(bio);

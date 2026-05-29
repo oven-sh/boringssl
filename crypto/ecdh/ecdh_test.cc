@@ -101,7 +101,7 @@ TEST(ECDHTest, TestVectors) {
     ASSERT_TRUE(EC_KEY_check_key(key.get()));
 
     std::vector<uint8_t> actual_z;
-    // Make |actual_z| larger than expected to ensure |ECDH_compute_key| returns
+    // Make `actual_z` larger than expected to ensure `ECDH_compute_key` returns
     // the right amount of data.
     actual_z.resize(z.size() + 1);
     int ret = ECDH_compute_key(actual_z.data(), actual_z.size(),
@@ -109,7 +109,7 @@ TEST(ECDHTest, TestVectors) {
     ASSERT_GE(ret, 0);
     EXPECT_EQ(Bytes(z), Bytes(actual_z.data(), static_cast<size_t>(ret)));
 
-    // Test |ECDH_compute_key| truncates.
+    // Test `ECDH_compute_key` truncates.
     actual_z.resize(z.size() - 1);
     ret = ECDH_compute_key(actual_z.data(), actual_z.size(), peer_pub_key.get(),
                            key.get(), nullptr);
@@ -117,7 +117,7 @@ TEST(ECDHTest, TestVectors) {
     EXPECT_EQ(Bytes(z.data(), z.size() - 1),
               Bytes(actual_z.data(), static_cast<size_t>(ret)));
 
-    // Test that |ECDH_compute_key_fips| hashes as expected.
+    // Test that `ECDH_compute_key_fips` hashes as expected.
     uint8_t digest[SHA256_DIGEST_LENGTH], expected_digest[SHA256_DIGEST_LENGTH];
     ASSERT_TRUE(ECDH_compute_key_fips(digest, sizeof(digest),
                                       peer_pub_key.get(), key.get()));
@@ -192,7 +192,7 @@ TEST(ECDHTest, WycheproofP512) {
                 RunWycheproofTest);
 }
 
-// MakeCustomGroup returns an |EC_GROUP| containing a non-standard group. (P-256
+// MakeCustomGroup returns an `EC_GROUP` containing a non-standard group. (P-256
 // with the wrong generator.)
 static bssl::UniquePtr<EC_GROUP> MakeCustomGroup() {
   static const uint8_t kP[] = {

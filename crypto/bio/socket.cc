@@ -137,28 +137,28 @@ BIO *BIO_new_socket(int fd, int close_flag) {
 }
 
 // These functions are provided solely for compatibility with software that
-// tries to copy and then modify |BIO_s_socket|. See bio.h for details.
-// PostgreSQL's use makes several fragile assumptions on |BIO_s_socket|:
+// tries to copy and then modify `BIO_s_socket`. See bio.h for details.
+// PostgreSQL's use makes several fragile assumptions on `BIO_s_socket`:
 //
-// - We do not store anything in |BIO_set_data|. (Broken in upstream OpenSSL,
+// - We do not store anything in `BIO_set_data`. (Broken in upstream OpenSSL,
 //   which broke PostgreSQL.)
-// - We do not store anything in |BIO_set_app_data|.
-// - |BIO_s_socket| is implemented internally using the non-|size_t|-clean
-//   I/O functions rather than the |size_t|-clean ones.
-// - |BIO_METHOD| never gains another function pointer that is used in concert
+// - We do not store anything in `BIO_set_app_data`.
+// - `BIO_s_socket` is implemented internally using the non-`size_t`-clean
+//   I/O functions rather than the `size_t`-clean ones.
+// - `BIO_METHOD` never gains another function pointer that is used in concert
 //   with any of the functions here.
 //
-// Some other projects doing similar things use |BIO_meth_get_read| and
-// |BIO_meth_get_write| and in turn assume that |BIO_s_socket| has not been
-// ported to the |size_t|-clean |BIO_read_ex| and |BIO_write_ex|. (Not yet
+// Some other projects doing similar things use `BIO_meth_get_read` and
+// `BIO_meth_get_write` and in turn assume that `BIO_s_socket` has not been
+// ported to the `size_t`-clean `BIO_read_ex` and `BIO_write_ex`. (Not yet
 // implemented in BoringSSL.)
 //
 // This is hopelessly fragile. PostgreSQL 18 will include a fix to stop using
 // these APIs, but older versions and other software remain impacted, so we
-// implement these functions, but only support |BIO_s_socket|. For now they just
+// implement these functions, but only support `BIO_s_socket`. For now they just
 // return the underlying functions, but if we ever need to break the above
-// assumptions, we can return an older, frozen version of |BIO_s_socket|.
-// Limiting to exactly one allowed |BIO_METHOD| lets us do this.
+// assumptions, we can return an older, frozen version of `BIO_s_socket`.
+// Limiting to exactly one allowed `BIO_METHOD` lets us do this.
 //
 // These functions are also deprecated in upstream OpenSSL. See
 // https://github.com/openssl/openssl/issues/26047

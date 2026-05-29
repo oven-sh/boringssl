@@ -176,7 +176,7 @@ static int bio_read(BIO *bio, char *buf, int size_) {
     rest -= chunk;
   } while (rest);
 
-  // |size| is bounded by the buffer size, which fits in |int|.
+  // `size` is bounded by the buffer size, which fits in `int`.
   return (int)size;
 }
 
@@ -305,7 +305,7 @@ static long bio_ctrl(BIO *bio, int cmd, long num, void *ptr) {
     // Specific control codes first:
     case BIO_C_GET_WRITE_BUF_SIZE:
       // TODO(crbug.com/412584975): This can overflow on 64-bit Windows. Do we
-      // need it? It implements |BIO_get_write_buf_size|, but we don't have the
+      // need it? It implements `BIO_get_write_buf_size`, but we don't have the
       // wrapper.
       return static_cast<long>(b->size);
 

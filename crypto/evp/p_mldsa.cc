@@ -69,13 +69,13 @@ MAKE_MLDSA_TRAITS(44)
 MAKE_MLDSA_TRAITS(65)
 MAKE_MLDSA_TRAITS(87)
 
-// For each ML-DSA variant, the |EvpPkey| must hold a public or private key.
+// For each ML-DSA variant, the `EvpPkey` must hold a public or private key.
 // EVP uses the same type for public and private keys, so the representation
 // must support both. The private key type contains the public key struct in it,
 // so we use a pointer to either a PrivateKeyData<Traits> or
 // PublicKeyData<Traits>, with a common base class to dispatch between them.
 //
-// TODO(crbug.com/404286922): In C++20, we need fewer |typename|s in front of
+// TODO(crbug.com/404286922): In C++20, we need fewer `typename`s in front of
 // dependent type names.
 
 template <typename Traits>

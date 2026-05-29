@@ -43,8 +43,8 @@ TEST(ErrTest, Overflow) {
     SCOPED_TRACE(i);
     uint32_t err = ERR_get_error();
     // Errors are returned in order they were pushed, with the least recent ones
-    // removed, up to |ERR_NUM_ERRORS - 1| errors. So the errors returned are
-    // |ERR_NUM_ERRORS + 2| through |ERR_NUM_ERRORS * 2|, inclusive.
+    // removed, up to `ERR_NUM_ERRORS - 1` errors. So the errors returned are
+    // `ERR_NUM_ERRORS + 2` through `ERR_NUM_ERRORS * 2`, inclusive.
     EXPECT_NE(0u, err);
     EXPECT_EQ(static_cast<int>(i + ERR_NUM_ERRORS + 2), ERR_GET_REASON(err));
   }
@@ -286,7 +286,7 @@ TEST(ErrTest, String) {
   EXPECT_STREQ("::::",
                ERR_error_string_n(err, buf, 5));
 
-  // If the buffer is too short for even four colons, |ERR_error_string_n| does
+  // If the buffer is too short for even four colons, `ERR_error_string_n` does
   // not bother trying to preserve the format.
   EXPECT_STREQ("err", ERR_error_string_n(err, buf, 4));
   EXPECT_STREQ("er", ERR_error_string_n(err, buf, 3));
@@ -315,7 +315,7 @@ TEST(ErrTest, String) {
   EXPECT_STREQ(ERR_reason_error_string(err), "bignum routines");
   EXPECT_STREQ(ERR_reason_symbol_name(err), "BN_LIB");
 
-  // Errors in |ERR_LIB_SYS| are |errno| values, so we don't have their symbolic
+  // Errors in `ERR_LIB_SYS` are `errno` values, so we don't have their symbolic
   // names. Their human-readable strings are OS- and even locale-dependent.
   err = ERR_PACK(ERR_LIB_SYS, ERANGE);
   EXPECT_STREQ(ERR_lib_error_string(err), "system library");

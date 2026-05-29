@@ -164,7 +164,7 @@ static int fd_gets(BIO *bp, char *buf, int size) {
 
   ptr[0] = '\0';
 
-  // The output length is bounded by |size|.
+  // The output length is bounded by `size`.
   return (int)(ptr - buf);
 }
 

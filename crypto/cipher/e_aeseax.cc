@@ -201,7 +201,7 @@ static void omac_with_tag_iovec_out(const struct aead_aes_eax_ctx *aes_ctx,
       });
 }
 
-// Encrypts/decrypts |in_len| bytes from |in| to |out| using AES-CTR with |n| as
+// Encrypts/decrypts `in_len` bytes from `in` to `out` using AES-CTR with `n` as
 // the IV.
 static void aes_ctr(const struct aead_aes_eax_ctx *aes_ctx,
                     Span<const CRYPTO_IOVEC> iovecs,

@@ -76,9 +76,9 @@ struct BIO_CONNECT {
 static int closesocket(int sock) { return close(sock); }
 #endif
 
-// split_host_and_port sets |*out_host| and |*out_port| to the host and port
-// parsed from |name|. It returns one on success or zero on error. Even when
-// successful, |*out_port| may be NULL on return if no port was specified.
+// split_host_and_port sets `*out_host` and `*out_port` to the host and port
+// parsed from `name`. It returns one on success or zero on error. Even when
+// successful, `*out_port` may be NULL on return if no port was specified.
 static int split_host_and_port(UniquePtr<char> *out_host,
                                UniquePtr<char> *out_port, const char *name) {
   const char *host, *port = nullptr;

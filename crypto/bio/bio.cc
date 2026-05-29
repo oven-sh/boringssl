@@ -188,7 +188,7 @@ int BIO_write_all(BIO *bio, const void *data, size_t len) {
 int BIO_puts(BIO *bio, const char *in) {
   size_t len = strlen(in);
   if (len > INT_MAX) {
-    // |BIO_write| and the return value both assume the string fits in |int|.
+    // `BIO_write` and the return value both assume the string fits in `int`.
     OPENSSL_PUT_ERROR(BIO, ERR_R_OVERFLOW);
     return -1;
   }
@@ -417,14 +417,14 @@ static int print_bio(const char *str, size_t len, void *bio) {
 
 void ERR_print_errors(BIO *bio) { ERR_print_errors_cb(print_bio, bio); }
 
-// bio_read_all reads everything from |bio| and prepends |prefix| to it. On
-// success, |*out| is set to an allocated buffer (which should be freed with
-// |OPENSSL_free|), |*out_len| is set to its length and one is returned. The
-// buffer will contain |prefix| followed by the contents of |bio|. On failure,
+// bio_read_all reads everything from `bio` and prepends `prefix` to it. On
+// success, `*out` is set to an allocated buffer (which should be freed with
+// `OPENSSL_free`), `*out_len` is set to its length and one is returned. The
+// buffer will contain `prefix` followed by the contents of `bio`. On failure,
 // zero is returned.
 //
 // The function will fail if the size of the output would equal or exceed
-// |max_len|.
+// `max_len`.
 static int bio_read_all(Bio *bio, uint8_t **out, size_t *out_len,
                         const uint8_t *prefix, size_t prefix_len,
                         size_t max_len) {
@@ -479,11 +479,11 @@ static int bio_read_all(Bio *bio, uint8_t **out, size_t *out_len,
   }
 }
 
-// bio_read_full reads |len| bytes |bio| and writes them into |out|. It
-// tolerates partial reads from |bio| and returns one on success or zero if a
-// read fails before |len| bytes are read. On failure, it additionally sets
-// |*out_eof_on_first_read| to whether the error was due to |bio| returning zero
-// on the first read. |out_eof_on_first_read| may be NULL to discard the value.
+// bio_read_full reads `len` bytes `bio` and writes them into `out`. It
+// tolerates partial reads from `bio` and returns one on success or zero if a
+// read fails before `len` bytes are read. On failure, it additionally sets
+// `*out_eof_on_first_read` to whether the error was due to `bio` returning zero
+// on the first read. `out_eof_on_first_read` may be NULL to discard the value.
 static int bio_read_full(Bio *bio, uint8_t *out, int *out_eof_on_first_read,
                          size_t len) {
   int first_read = 1;
@@ -504,8 +504,8 @@ static int bio_read_full(Bio *bio, uint8_t *out, int *out_eof_on_first_read,
   return 1;
 }
 
-// For compatibility with existing |d2i_*_bio| callers, |BIO_read_asn1| uses
-// |ERR_LIB_ASN1| errors.
+// For compatibility with existing `d2i_*_bio` callers, `BIO_read_asn1` uses
+// `ERR_LIB_ASN1` errors.
 OPENSSL_DECLARE_ERROR_REASON(ASN1, ASN1_R_DECODE_ERROR)
 OPENSSL_DECLARE_ERROR_REASON(ASN1, ASN1_R_HEADER_TOO_LONG)
 OPENSSL_DECLARE_ERROR_REASON(ASN1, ASN1_R_NOT_ENOUGH_DATA)
@@ -519,9 +519,9 @@ int BIO_read_asn1(BIO *bio, uint8_t **out, size_t *out_len, size_t max_len) {
   auto *impl = FromOpaque(bio);
   if (!bio_read_full(impl, header, &eof_on_first_read, kInitialHeaderLen)) {
     if (eof_on_first_read) {
-      // Historically, OpenSSL returned |ASN1_R_HEADER_TOO_LONG| when
-      // |d2i_*_bio| could not read anything. CPython conditions on this to
-      // determine if |bio| was empty.
+      // Historically, OpenSSL returned `ASN1_R_HEADER_TOO_LONG` when
+      // `d2i_*_bio` could not read anything. CPython conditions on this to
+      // determine if `bio` was empty.
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_HEADER_TOO_LONG);
     } else {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_NOT_ENOUGH_DATA);
@@ -616,7 +616,7 @@ static int g_index = BIO_TYPE_START;
 
 int BIO_get_new_index() {
   MutexWriteLock lock(&g_index_lock);
-  // If |g_index| exceeds 255, it will collide with the flags bits.
+  // If `g_index` exceeds 255, it will collide with the flags bits.
   int ret = g_index > 255 ? -1 : g_index++;
   return ret;
 }
@@ -696,7 +696,7 @@ void BIO_set_shutdown(BIO *bio, int shutdown) {
 int BIO_get_shutdown(BIO *bio) { return FromOpaque(bio)->shutdown; }
 
 int BIO_meth_set_puts(BIO_METHOD *method, int (*puts)(BIO *, const char *)) {
-  // Ignore the parameter. We implement |BIO_puts| using |BIO_write|.
+  // Ignore the parameter. We implement `BIO_puts` using `BIO_write`.
   return 1;
 }
 
