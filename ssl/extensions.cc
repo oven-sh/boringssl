@@ -726,9 +726,12 @@ static bool ext_ri_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
 static bool ext_ri_parse_serverhello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
                                      CBS *contents) {
   SSL *const ssl = hs->ssl;
-  if (contents != nullptr && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
-    *out_alert = SSL_AD_ILLEGAL_PARAMETER;
-    return false;
+  if (ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
+    if (contents != nullptr) {
+      *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+      return false;
+    }
+    return true;
   }
 
   // Servers may not switch between omitting the extension and supporting it.

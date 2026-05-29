@@ -190,6 +190,16 @@ func addRenegotiationTests() {
 		expectedError: ":UNSAFE_LEGACY_RENEGOTIATION_DISABLED:",
 	})
 
+	// Missing extension is OK (and expected!) in TLS 1.3, even if the
+	// extension is otherwise enforced. TLS 1.3 has no renegotiation.
+	testCases = append(testCases, testCase{
+		name: "NoLegacyServerConnect-TLS13",
+		config: Config{
+			MaxVersion: VersionTLS13,
+		},
+		flags: []string{"-no-legacy-server-connect"},
+	})
+
 	// Test that the server may switch ciphers on renegotiation without
 	// problems.
 	testCases = append(testCases, testCase{
