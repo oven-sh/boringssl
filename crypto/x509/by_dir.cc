@@ -15,6 +15,8 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <string_view>
+
 #include <openssl/buf.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
@@ -140,55 +142,58 @@ static void free_dir(X509_LOOKUP *lu) {
 #define DIR_HASH_SEPARATOR ':'
 #endif
 
-static int add_cert_dir(BY_DIR *ctx, const char *dir, int type) {
-  size_t j, len;
-  const char *s, *ss, *p;
-
-  if (dir == nullptr || !*dir) {
+static int add_cert_dir(BY_DIR *ctx, const char *inp, int type) {
+  if (inp == nullptr || !*inp) {
     OPENSSL_PUT_ERROR(X509, X509_R_INVALID_DIRECTORY);
     return 0;
   }
 
-  s = dir;
-  p = s;
+  std::string_view rest = inp;
   do {
-    if (*p == DIR_HASH_SEPARATOR || *p == '\0') {
-      BY_DIR_ENTRY *ent;
-      ss = s;
-      s = p + 1;
-      len = p - ss;
-      if (len == 0) {
-        continue;
+    // Split by `DIR_HASH_SEPARATOR`.
+    size_t sep = rest.find(DIR_HASH_SEPARATOR);
+    std::string_view dir;
+    if (sep == std::string_view::npos) {
+      dir = rest;
+      rest = std::string_view();
+    } else {
+      dir = rest.substr(0, sep);
+      rest = rest.substr(sep + 1);
+    }
+    if (dir.empty()) {
+      continue;
+    }
+    // Ignore duplicates.
+    bool found = false;
+    for (size_t j = 0; j < sk_BY_DIR_ENTRY_num(ctx->dirs); j++) {
+      const BY_DIR_ENTRY *ent = sk_BY_DIR_ENTRY_value(ctx->dirs, j);
+      if (ent->dir == dir) {
+        found = true;
+        break;
       }
-      for (j = 0; j < sk_BY_DIR_ENTRY_num(ctx->dirs); j++) {
-        ent = sk_BY_DIR_ENTRY_value(ctx->dirs, j);
-        if (strlen(ent->dir) == len && strncmp(ent->dir, ss, len) == 0) {
-          break;
-        }
-      }
-      if (j < sk_BY_DIR_ENTRY_num(ctx->dirs)) {
-        continue;
-      }
-      if (ctx->dirs == nullptr) {
-        ctx->dirs = sk_BY_DIR_ENTRY_new_null();
-        if (!ctx->dirs) {
-          return 0;
-        }
-      }
-      ent = New<BY_DIR_ENTRY>();
-      if (!ent) {
-        return 0;
-      }
-      ent->dir_type = type;
-      ent->hashes = sk_BY_DIR_HASH_new(by_dir_hash_cmp);
-      ent->dir = OPENSSL_strndup(ss, len);
-      if (ent->dir == nullptr || ent->hashes == nullptr ||
-          !sk_BY_DIR_ENTRY_push(ctx->dirs, ent)) {
-        by_dir_entry_free(ent);
+    }
+    if (found) {
+      continue;
+    }
+    if (ctx->dirs == nullptr) {
+      ctx->dirs = sk_BY_DIR_ENTRY_new_null();
+      if (!ctx->dirs) {
         return 0;
       }
     }
-  } while (*p++ != '\0');
+    BY_DIR_ENTRY *ent = New<BY_DIR_ENTRY>();
+    if (!ent) {
+      return 0;
+    }
+    ent->dir_type = type;
+    ent->hashes = sk_BY_DIR_HASH_new(by_dir_hash_cmp);
+    ent->dir = OPENSSL_strndup(dir.data(), dir.size());
+    if (ent->dir == nullptr || ent->hashes == nullptr ||
+        !sk_BY_DIR_ENTRY_push(ctx->dirs, ent)) {
+      by_dir_entry_free(ent);
+      return 0;
+    }
+  } while (!rest.empty());
   return 1;
 }
 
