@@ -15,6 +15,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <algorithm>
 #include <string_view>
 
 #include <openssl/buf.h>
@@ -27,36 +28,77 @@
 #include "internal.h"
 
 
-using namespace bssl;
-
 BSSL_NAMESPACE_BEGIN
 
-typedef struct lookup_dir_hashes_st {
-  uint32_t hash;
-  int suffix;
-} BY_DIR_HASH;
+// A ByDirEntry tracks state for a single directory, notably the starting suffix
+// for CRL lookups.
+class ByDirEntry {
+ public:
+  static constexpr bool kAllowUniquePtr = true;
 
-typedef struct lookup_dir_entry_st {
-  Mutex lock;
-  char *dir;
-  int dir_type;
-  STACK_OF(BY_DIR_HASH) *hashes;
-} BY_DIR_ENTRY;
+  ByDirEntry() = default;
 
-typedef struct lookup_dir_st {
-  STACK_OF(BY_DIR_ENTRY) *dirs;
-} BY_DIR;
+  static UniquePtr<ByDirEntry> Create(int dir_type, std::string_view dir) {
+    auto ret = MakeUnique<ByDirEntry>();
+    ret->dir_type_ = dir_type;
+    ret->dir_.reset(OPENSSL_strndup(dir.data(), dir.size()));
+    if (ret->dir_ == nullptr) {
+      return nullptr;
+    }
+    return ret;
+  }
 
-DEFINE_NAMESPACED_STACK_OF(BY_DIR_HASH)
-DEFINE_NAMESPACED_STACK_OF(BY_DIR_ENTRY)
+  int dir_type() const { return dir_type_; }
+  const char *dir() const { return dir_.get(); }
 
-BSSL_NAMESPACE_END
+  int GetCRLSuffix(uint32_t hash) const {
+    MutexReadLock lock(&lock_);
+    auto it = std::lower_bound(crl_suffixes_.begin(), crl_suffixes_.end(), hash);
+    if (it == crl_suffixes_.end() || it->hash != hash) {
+      return 0;
+    }
+    return it->suffix;
+  }
+
+  bool UpdateCRLSuffix(uint32_t hash, int suffix) {
+    MutexWriteLock lock(&lock_);
+    auto it = std::lower_bound(crl_suffixes_.begin(), crl_suffixes_.end(), hash);
+    if (it != crl_suffixes_.end() && it->hash == hash) {
+      it->suffix = std::max(suffix, it->suffix);
+      return true;
+    }
+    if (!crl_suffixes_.Push(CRLSuffix{hash, suffix})) {
+      return false;
+    }
+    std::sort(crl_suffixes_.begin(), crl_suffixes_.end());
+    return true;
+  }
+
+ private:
+  struct CRLSuffix {
+    uint32_t hash;
+    int suffix;
+    bool operator<(uint32_t h) const { return hash < h; }
+    bool operator<(const CRLSuffix &other) const { return hash < other.hash; }
+  };
+
+  UniquePtr<char> dir_;
+  int dir_type_ = 0;
+  mutable Mutex lock_;
+  // crl_suffixes_ is kept sorted.
+  // TODO(davidben): This should be a hash table. Insertions are O(N log N).
+  Vector<CRLSuffix> crl_suffixes_;
+};
+
+struct ByDir {
+  Vector<UniquePtr<ByDirEntry>> dirs;
+};
 
 static int dir_ctrl(X509_LOOKUP *ctx, int cmd, const char *argp, long argl,
                     char **ret);
 static int new_dir(X509_LOOKUP *lu);
 static void free_dir(X509_LOOKUP *lu);
-static int add_cert_dir(BY_DIR *ctx, const char *dir, int type);
+static int add_cert_dir(ByDir *ctx, const char *dir, int type);
 static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
                                X509_OBJECT *ret);
 static const X509_LOOKUP_METHOD x509_dir_lookup = {
@@ -66,74 +108,36 @@ static const X509_LOOKUP_METHOD x509_dir_lookup = {
     get_cert_by_subject,  // get_by_subject
 };
 
-const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir() { return &x509_dir_lookup; }
-
 static int dir_ctrl(X509_LOOKUP *ctx, int cmd, const char *argp, long argl,
                     char **retp) {
-  int ret = 0;
-  char *dir = nullptr;
-
-  BY_DIR *ld = reinterpret_cast<BY_DIR *>(ctx->method_data);
-
+  ByDir *ld = reinterpret_cast<ByDir *>(ctx->method_data);
   switch (cmd) {
     case X509_L_ADD_DIR:
       if (argl == X509_FILETYPE_DEFAULT) {
-        dir = (char *)getenv(X509_get_default_cert_dir_env());
-        if (dir) {
-          ret = add_cert_dir(ld, dir, X509_FILETYPE_PEM);
-        } else {
-          ret =
-              add_cert_dir(ld, X509_get_default_cert_dir(), X509_FILETYPE_PEM);
-        }
-        if (!ret) {
+        const char *dir = getenv(X509_get_default_cert_dir_env());
+        if (!add_cert_dir(ld, dir ? dir : X509_get_default_cert_dir(),
+                          X509_FILETYPE_PEM)) {
           OPENSSL_PUT_ERROR(X509, X509_R_LOADING_CERT_DIR);
+          return 0;
         }
-      } else {
-        ret = add_cert_dir(ld, argp, (int)argl);
+        return 1;
       }
-      break;
-  }
-  return ret;
-}
-
-static int new_dir(X509_LOOKUP *lu) {
-  BY_DIR *a;
-
-  if ((a = New<BY_DIR>()) == nullptr) {
-    return 0;
-  }
-  a->dirs = nullptr;
-  lu->method_data = a;
-  return 1;
-}
-
-static void by_dir_hash_free(BY_DIR_HASH *hash) { Delete(hash); }
-
-static int by_dir_hash_cmp(const BY_DIR_HASH *const *a,
-                           const BY_DIR_HASH *const *b) {
-  if ((*a)->hash > (*b)->hash) {
-    return 1;
-  }
-  if ((*a)->hash < (*b)->hash) {
-    return -1;
+      return add_cert_dir(ld, argp, (int)argl);
   }
   return 0;
 }
 
-static void by_dir_entry_free(BY_DIR_ENTRY *ent) {
-  if (ent != nullptr) {
-    Delete(ent->dir);
-    sk_BY_DIR_HASH_pop_free(ent->hashes, by_dir_hash_free);
-    Delete(ent);
+static int new_dir(X509_LOOKUP *lu) {
+  ByDir *a = New<ByDir>();
+  if (a == nullptr) {
+    return 0;
   }
+  lu->method_data = a;
+  return 1;
 }
 
 static void free_dir(X509_LOOKUP *lu) {
-  BY_DIR *a = reinterpret_cast<BY_DIR *>(lu->method_data);
-  if (a != nullptr) {
-    sk_BY_DIR_ENTRY_pop_free(a->dirs, by_dir_entry_free);
-    Delete(a);
-  }
+  Delete(reinterpret_cast<ByDir *>(lu->method_data));
 }
 
 #if defined(OPENSSL_WINDOWS)
@@ -142,7 +146,7 @@ static void free_dir(X509_LOOKUP *lu) {
 #define DIR_HASH_SEPARATOR ':'
 #endif
 
-static int add_cert_dir(BY_DIR *ctx, const char *inp, int type) {
+static int add_cert_dir(ByDir *ctx, const char *inp, int type) {
   if (inp == nullptr || !*inp) {
     OPENSSL_PUT_ERROR(X509, X509_R_INVALID_DIRECTORY);
     return 0;
@@ -164,33 +168,12 @@ static int add_cert_dir(BY_DIR *ctx, const char *inp, int type) {
       continue;
     }
     // Ignore duplicates.
-    bool found = false;
-    for (size_t j = 0; j < sk_BY_DIR_ENTRY_num(ctx->dirs); j++) {
-      const BY_DIR_ENTRY *ent = sk_BY_DIR_ENTRY_value(ctx->dirs, j);
-      if (ent->dir == dir) {
-        found = true;
-        break;
-      }
-    }
-    if (found) {
+    if (std::any_of(ctx->dirs.begin(), ctx->dirs.end(),
+                    [&](const auto &ent) { return ent->dir() == dir; })) {
       continue;
     }
-    if (ctx->dirs == nullptr) {
-      ctx->dirs = sk_BY_DIR_ENTRY_new_null();
-      if (!ctx->dirs) {
-        return 0;
-      }
-    }
-    BY_DIR_ENTRY *ent = New<BY_DIR_ENTRY>();
-    if (!ent) {
-      return 0;
-    }
-    ent->dir_type = type;
-    ent->hashes = sk_BY_DIR_HASH_new(by_dir_hash_cmp);
-    ent->dir = OPENSSL_strndup(dir.data(), dir.size());
-    if (ent->dir == nullptr || ent->hashes == nullptr ||
-        !sk_BY_DIR_ENTRY_push(ctx->dirs, ent)) {
-      by_dir_entry_free(ent);
+    auto ent = ByDirEntry::Create(type, dir);
+    if (ent == nullptr || !ctx->dirs.Push(std::move(ent))) {
       return 0;
     }
   } while (!rest.empty());
@@ -209,7 +192,7 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
   X509_OBJECT stmp;
   const char *postfix = "";
   stmp.type = type;
-  BY_DIR *ctx = reinterpret_cast<BY_DIR *>(xl->method_data);
+  ByDir *ctx = reinterpret_cast<ByDir *>(xl->method_data);
   if (type == X509_LU_X509) {
     lookup_cert.reset(X509_new());
     if (lookup_cert == nullptr ||
@@ -234,47 +217,34 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
   // Try both new and old hashes.
   const uint32_t hashes[] = {X509_NAME_hash(name), X509_NAME_hash_old(name)};
   for (uint32_t hash : hashes) {
-    for (BY_DIR_ENTRY *ent : ctx->dirs) {
+    for (UniquePtr<ByDirEntry> &ent : ctx->dirs) {
       // If a CRL, start from the previously saved suffix. Updated CRLs are
       // expected to be added until new filenames.
       // TODO(crbug.com/42290566): Is this what we want?
-      size_t idx;
-      BY_DIR_HASH htmp, *hent;
-      int suffix;
-      if (type == X509_LU_CRL && ent->hashes) {
-        htmp.hash = hash;
-        MutexReadLock lock(&ent->lock);
-        if (sk_BY_DIR_HASH_find(ent->hashes, &idx, &htmp)) {
-          hent = sk_BY_DIR_HASH_value(ent->hashes, idx);
-          suffix = hent->suffix;
-        } else {
-          hent = nullptr;
-          suffix = 0;
-        }
-      } else {
-        suffix = 0;
-        hent = nullptr;
+      int suffix = 0;
+      if (type == X509_LU_CRL) {
+        suffix = ent->GetCRLSuffix(hash);
       }
 
       // The directory format handles hash collections by incrementing a suffix
       // on the file name. Load every suffix into the cache.
       for (;;) {
         char *path = nullptr;
-        if (OPENSSL_asprintf(&path, "%s/%08" PRIx32 ".%s%d", ent->dir, hash,
+        if (OPENSSL_asprintf(&path, "%s/%08" PRIx32 ".%s%d", ent->dir(), hash,
                              postfix, suffix) == -1) {
           OPENSSL_PUT_ERROR(X509, ERR_R_BUF_LIB);
           return 0;
         }
         UniquePtr<char> free_path(path);
         if (type == X509_LU_X509) {
-          if ((X509_load_cert_file(xl, path, ent->dir_type)) == 0) {
+          if ((X509_load_cert_file(xl, path, ent->dir_type())) == 0) {
             // Don't expose the lower level error, All of these boil down to "we
             // could not find a CA".
             ERR_clear_error();
             break;
           }
         } else if (type == X509_LU_CRL) {
-          if ((X509_load_crl_file(xl, path, ent->dir_type)) == 0) {
+          if ((X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
             // Don't expose the lower level error, All of these boil down to "we
             // could not find a CRL".
             ERR_clear_error();
@@ -290,6 +260,7 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       store_impl->objs_lock.LockWrite();
       const X509_OBJECT *found = nullptr;
       sk_X509_OBJECT_sort(store_impl->objs.get());
+      size_t idx;
       if (sk_X509_OBJECT_find(store_impl->objs.get(), &idx, &stmp)) {
         found = sk_X509_OBJECT_value(store_impl->objs.get(), idx);
       }
@@ -298,30 +269,8 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       // If a CRL, store the last suffix we saw, to skip already loaded files
       // next time.
       // TODO(crbug.com/42290566): Is this what we want?
-      if (type == X509_LU_CRL) {
-        MutexWriteLock lock(&ent->lock);
-        // Look for the entry again in case another thread added one.
-        if (!hent) {
-          htmp.hash = hash;
-          if (sk_BY_DIR_HASH_find(ent->hashes, &idx, &htmp)) {
-            hent = sk_BY_DIR_HASH_value(ent->hashes, idx);
-          }
-        }
-        if (!hent) {
-          hent = New<BY_DIR_HASH>();
-          if (hent == nullptr) {
-            return 0;
-          }
-          hent->hash = hash;
-          hent->suffix = suffix;
-          if (!sk_BY_DIR_HASH_push(ent->hashes, hent)) {
-            Delete(hent);
-            return 0;
-          }
-          sk_BY_DIR_HASH_sort(ent->hashes);
-        } else if (hent->suffix < suffix) {
-          hent->suffix = suffix;
-        }
+      if (type == X509_LU_CRL && !ent->UpdateCRLSuffix(hash, suffix)) {
+        return 0;
       }
 
       if (found != nullptr) {
@@ -339,6 +288,12 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
   }
 
   return 0;
+}
+
+BSSL_NAMESPACE_END
+
+const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir() {
+  return &bssl::x509_dir_lookup;
 }
 
 int X509_LOOKUP_add_dir(X509_LOOKUP *lookup, const char *name, int type) {
