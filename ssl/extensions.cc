@@ -3336,7 +3336,7 @@ static bool cert_compression_parse_clienthello(SSL_HANDSHAKE *hs,
     return true;
   }
 
-  const SSL_CTX *ctx = hs->ssl->ctx.get();
+  const SSLContext *ctx = hs->ssl->ctx.get();
   const size_t num_algs = ctx->cert_compression_algs.size();
 
   CBS alg_ids;
@@ -4925,7 +4925,7 @@ static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_cb(
 static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_ticket_keys(
     SSL_HANDSHAKE *hs, Array<uint8_t> *out, Span<const uint8_t> ticket) {
   assert(ticket.size() >= SSL_TICKET_KEY_NAME_LEN + EVP_MAX_IV_LENGTH);
-  SSL_CTX *ctx = hs->ssl->session_ctx.get();
+  SSLContext *ctx = hs->ssl->session_ctx.get();
 
   // Rotate the ticket key if necessary.
   if (!ssl_ctx_rotate_ticket_encryption_key(ctx)) {
