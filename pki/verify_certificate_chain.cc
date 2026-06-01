@@ -19,6 +19,7 @@
 
 #include <openssl/base.h>
 #include <openssl/bytestring.h>
+#include <openssl/digest.h>
 #include <openssl/mem.h>
 #include <openssl/sha2.h>
 #include <openssl/span.h>
@@ -1125,8 +1126,8 @@ void PathVerifier::ApplyPolicyConstraints(const ParsedCertificate &cert) {
 
 // This function implements draft-davidben-tls-merkle-tree-certs-08 section 7.2:
 // Verifying Certificate Signatures.
-static bool VerifyMTC(const ParsedCertificate &cert,
-                      const MTCAnchor *mtc_anchor) {
+static bool VerifyMTCDraftDavidben08(const ParsedCertificate &cert,
+                                     const MTCAnchor *mtc_anchor) {
   // Step 1: Check that the TBSCertificate's signature field is id-alg-mtcProof
   // (kMtcProofDraftDavidben08) with omitted parameters.
   if (cert.signature_algorithm() !=
@@ -1261,6 +1262,203 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   return CRYPTO_memcmp(expected_subtree_hash->data(),
                        trusted_subtree_hash->data(),
                        expected_subtree_hash->size()) == 0;
+}
+
+// This function implements draft-ietf-plants-merkle-tree-certs-04 section 7.2:
+// Verifying Certificate Signatures.
+static bool VerifyMTCDraftPlants04(const ParsedCertificate &cert,
+                                   const MTCAnchor *mtc_anchor) {
+  // Step 1: Check that the TBSCertificate's signature field is id-alg-mtcProof
+  // (kMtcProofDraftPlants04) with omitted parameters.
+  if (cert.signature_algorithm() !=
+      SignatureAlgorithm::kMtcProofDraftPlants04) {
+    // When we parse the signature algorithm, we check that the parameters are
+    // omitted.
+    return false;
+  }
+
+  // Step 2: Decode the signatureValue as an MTCProof.
+  uint64_t start, end;
+  CBS extensions, inclusion_proof, signatures;
+  CBS mtc_proof(cert.signature_value().bytes());
+  if (cert.signature_value().unused_bits() != 0 ||
+      !CBS_get_u16_length_prefixed(&mtc_proof, &extensions) ||
+      !CBS_get_u48(&mtc_proof, &start) || !CBS_get_u48(&mtc_proof, &end) ||
+      !CBS_get_u16_length_prefixed(&mtc_proof, &inclusion_proof) ||
+      !CBS_get_u16_length_prefixed(&mtc_proof, &signatures) ||
+      CBS_len(&mtc_proof) != 0) {
+    return false;
+  }
+
+  // Step 3: Let serial be the certificate's serial number. If serial is
+  // negative or greater than 2^64-1, abort this process and fail verification.
+  uint64_t serial;
+  if (!der::ParseUint64(cert.tbs().serial_number, &serial)) {
+    return false;
+  }
+
+  // Step 4's revocation check is not performed in this function. The caller is
+  // responsible for performing revocation checks.
+
+  // Step 5: Let index be the least significant 48 bits of serial and let
+  // log_number be serial >> 48. If log_number is zero, abort this process and
+  // fail verification.
+  uint64_t index = serial & ((1ull << 48) - 1);
+  uint16_t log_number = serial >> 48;
+  if (log_number == 0) {
+    return false;
+  }
+
+  // Step 6: Let log_id be the log ID constructed from the CA ID in issuer and
+  // the log_number.
+  //
+  // TODO(crbug.com/452983502): This step is only used for standalone
+  // certificate verification, which isn't implemented yet.
+
+  // Steps 7, 8, and 9 are done in a single pass as described in the procedure
+  // at the end of section 7.2 ("entry_hash can equivalently be computed in a
+  // single pass"):
+  // 1. Initialize a hash instance.
+  bssl::ScopedEVP_MD_CTX entry_hash_ctx;
+  if (!EVP_DigestInit(entry_hash_ctx.get(), EVP_sha256())) {
+    return false;
+  }
+
+  // Write the octet 0x00 to the hash. This is the domain separator for leaf
+  // nodes.
+  // (Note: the procedure as defined in plants-04 is missing this step.)
+  static constexpr uint8_t kDomainSeparator[] = {0x00};
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), kDomainSeparator,
+                        sizeof(kDomainSeparator))) {
+    return false;
+  }
+
+  // 2. Write the extensions field from the MTCProof to the hash.
+  uint8_t extensions_length[2] = {
+      static_cast<uint8_t>(CBS_len(&extensions) >> 8),
+      static_cast<uint8_t>(CBS_len(&extensions) & 0xff)};
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), extensions_length,
+                        sizeof(extensions_length)) ||
+      !EVP_DigestUpdate(entry_hash_ctx.get(), CBS_data(&extensions),
+                        CBS_len(&extensions))) {
+    return false;
+  }
+
+  // 3. Write the big-endian, two-byte tbs_cert_entry value to the hash.
+  static constexpr uint8_t kTbsCertEntry[] = {0, 1};
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), kTbsCertEntry,
+                        sizeof(kTbsCertEntry))) {
+    return false;
+  }
+
+  // 4. Write the TBSCertificate's `version`, `issuer`, `validity`, and
+  // `subject` fields to the hash.
+  // (Note that this is a correction to the instructions in plants-04.)
+  if (cert.tbs().version != CertificateVersion::V1) {
+    ScopedCBB version_outer;
+    CBB version;
+    if (!CBB_init(version_outer.get(), 0) ||
+        !CBB_add_asn1(version_outer.get(), &version,
+                      CBS_ASN1_CONTEXT_SPECIFIC | CBS_ASN1_CONSTRUCTED | 0) ||
+        !CBB_add_asn1_uint64(&version,
+                             static_cast<uint64_t>(cert.tbs().version)) ||
+        !CBB_flush(version_outer.get()) ||
+        !EVP_DigestUpdate(entry_hash_ctx.get(), CBB_data(version_outer.get()),
+                          CBB_len(version_outer.get()))) {
+      return false;
+    }
+  }
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), cert.tbs().issuer_tlv.data(),
+                        cert.tbs().issuer_tlv.size()) ||
+      !EVP_DigestUpdate(entry_hash_ctx.get(), cert.tbs().validity_tlv.data(),
+                        cert.tbs().validity_tlv.size()) ||
+      !EVP_DigestUpdate(entry_hash_ctx.get(), cert.tbs().subject_tlv.data(),
+                        cert.tbs().subject_tlv.size())) {
+    return false;
+  }
+
+  // 5. Write the subjectPublicKeyInfo's algorithm field to the hash.
+  CBS spki(cert.tbs().spki_tlv);
+  CBS spki_sequence, spki_algorithm_tlv;
+  if (!CBS_get_asn1(&spki, &spki_sequence, CBS_ASN1_SEQUENCE) ||
+      !CBS_get_asn1_element(&spki_sequence, &spki_algorithm_tlv,
+                            CBS_ASN1_SEQUENCE) ||
+      !EVP_DigestUpdate(entry_hash_ctx.get(), CBS_data(&spki_algorithm_tlv),
+                        CBS_len(&spki_algorithm_tlv))) {
+    return false;
+  }
+
+  // 6. Write the octet 0x04 to the hash. This is an OCTET STRING identifier.
+  // 7. Write the octet L to the hash, where L is the hash length. (This
+  // assumes L is at most 127.)
+  static constexpr uint8_t kSpkiHashTagAndLength[] = {CBS_ASN1_OCTETSTRING,
+                                                      SHA256_DIGEST_LENGTH};
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), kSpkiHashTagAndLength,
+                        sizeof(kSpkiHashTagAndLength))) {
+    return false;
+  }
+
+  // 8. Write H to the hash, where H is the hash of the entire
+  // subjectPublicKeyInfo field.
+  uint8_t spki_hash[SHA256_DIGEST_LENGTH];
+  SHA256(cert.tbs().spki_tlv.data(), cert.tbs().spki_tlv.size(), spki_hash);
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(), spki_hash, sizeof(spki_hash))) {
+    return false;
+  }
+
+  // 9. Write the remainder of the TBSCertificate contents octets to the hash,
+  // starting just after the subjectPublicKeyInfo field.
+  if (!EVP_DigestUpdate(entry_hash_ctx.get(),
+                        cert.tbs().bytes_after_spki.data(),
+                        cert.tbs().bytes_after_spki.size())) {
+    return false;
+  }
+
+  // 10. Finalize the hash and set entry_hash to the result.
+  TreeHash entry_hash;
+  if (!EVP_DigestFinal(entry_hash_ctx.get(), entry_hash.data(), nullptr)) {
+    return false;
+  }
+
+  // Step 10. Let expected_subtree_hash be the result of evaluating the
+  // MTCProof's inclusion_proof
+  Subtree range{start, end};
+  std::optional<TreeHash> expected_subtree_hash =
+      EvaluateMerkleSubtreeInclusionProof(inclusion_proof, index, entry_hash,
+                                          range);
+  if (!expected_subtree_hash) {
+    return false;
+  }
+
+  // Step 11. If log_number, start, and end matches a trusted subtree (Section
+  // 7.4) for the CA, check that expected_subtree_hash is equal to the trusted
+  // subtree's hash.
+  if (!mtc_anchor) {
+    return false;
+  }
+  std::optional<TreeHashConstSpan> trusted_subtree_hash =
+      mtc_anchor->SubtreeHash(log_number, range);
+  if (trusted_subtree_hash) {
+    return CRYPTO_memcmp(expected_subtree_hash->data(),
+                         trusted_subtree_hash->data(),
+                         expected_subtree_hash->size()) == 0;
+  }
+
+  // TODO(crbug.com/452983502): Step 12 would check the MTCProof's signatures
+  // if there's no matching trusted subtree. This implementation does not
+  // support that check yet.
+  return false;
+}
+
+static bool VerifyMTC(const ParsedCertificate &cert,
+                      const MTCAnchor *mtc_anchor) {
+  switch (mtc_anchor->spec_version()) {
+    case MTCAnchor::MtcSpecVersion::kDavidben08:
+      return VerifyMTCDraftDavidben08(cert, mtc_anchor);
+    case MTCAnchor::MtcSpecVersion::kPlants04:
+      return VerifyMTCDraftPlants04(cert, mtc_anchor);
+  }
+  return false;
 }
 
 void PathVerifier::BasicCertificateProcessing(
