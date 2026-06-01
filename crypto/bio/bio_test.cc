@@ -1449,5 +1449,132 @@ TEST(BIOTest, CanonicalizeErrors) {
   EXPECT_EQ(BIO_write(bio.get(), "foo", 3), -1);
 }
 
+// BIO_write should work with BIOs that implement BIO_write_ex and vice versa.
+TEST(BIOTest, WriteExConversion) {
+  enum class WriteResult { kSuccess, kFail, kRetry };
+  struct MockWrite {
+    std::string expected_data;
+    WriteResult result = WriteResult::kSuccess;
+    size_t bytes_written = 0;
+    int fail_return = -1;  // Only used for write_method failure
+  };
+
+  UniquePtr<BIO_METHOD> write_method(BIO_meth_new(0, nullptr));
+  ASSERT_TRUE(write_method);
+  BIO_meth_set_write(
+      write_method.get(), [](BIO *bio, const char *in, int len) -> int {
+        auto *state = static_cast<MockWrite *>(BIO_get_data(bio));
+        EXPECT_EQ(std::string(in, len), state->expected_data);
+        BIO_clear_retry_flags(bio);
+        switch (state->result) {
+          case WriteResult::kSuccess:
+            return static_cast<int>(state->bytes_written);
+          case WriteResult::kFail:
+            return state->fail_return;
+          case WriteResult::kRetry:
+            BIO_set_retry_write(bio);
+            return -1;
+        }
+        return -1;
+      });
+
+  UniquePtr<BIO_METHOD> write_ex_method(BIO_meth_new(0, nullptr));
+  ASSERT_TRUE(write_ex_method);
+  BIO_meth_set_write_ex(
+      write_ex_method.get(),
+      [](BIO *bio, const char *in, size_t len, size_t *out_written) -> int {
+        auto *state = static_cast<MockWrite *>(BIO_get_data(bio));
+        EXPECT_EQ(std::string(in, len), state->expected_data);
+        BIO_clear_retry_flags(bio);
+        switch (state->result) {
+          case WriteResult::kSuccess:
+            *out_written = state->bytes_written;
+            return 1;
+          case WriteResult::kFail:
+            return 0;
+          case WriteResult::kRetry:
+            BIO_set_retry_write(bio);
+            return 0;
+        }
+        return 0;
+      });
+
+  for (const BIO_METHOD *meth : {write_method.get(), write_ex_method.get()}) {
+    SCOPED_TRACE(meth == write_method.get() ? "write" : "write_ex");
+
+    auto make_bio = [&](MockWrite *mock_write) -> UniquePtr<BIO> {
+      UniquePtr<BIO> bio(BIO_new(meth));
+      if (bio == nullptr) {
+        return nullptr;
+      }
+      BIO_set_data(bio.get(), mock_write);
+      BIO_set_init(bio.get(), 1);
+      return bio;
+    };
+
+    MockWrite mock_write;
+    static const char kInput[] = "hello";
+    mock_write.expected_data = kInput;
+
+    // Test BIO_write
+    {
+      auto bio = make_bio(&mock_write);
+      ASSERT_TRUE(bio);
+
+      mock_write.result = WriteResult::kSuccess;
+      mock_write.bytes_written = 5;
+      EXPECT_EQ(BIO_write(bio.get(), kInput, strlen(kInput)), 5);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      mock_write.result = WriteResult::kFail;
+      mock_write.fail_return = -1;
+      EXPECT_EQ(BIO_write(bio.get(), kInput, strlen(kInput)), -1);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      // Test both return values for |write_method|.
+      mock_write.fail_return = 0;
+      EXPECT_EQ(BIO_write(bio.get(), kInput, strlen(kInput)), -1);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      mock_write.result = WriteResult::kRetry;
+      EXPECT_EQ(BIO_write(bio.get(), kInput, strlen(kInput)), -1);
+      EXPECT_TRUE(BIO_should_retry(bio.get()));
+      EXPECT_TRUE(BIO_should_write(bio.get()));
+    }
+
+    // Test BIO_write_ex
+    {
+      auto bio = make_bio(&mock_write);
+      ASSERT_TRUE(bio);
+      size_t written = 0;
+
+      mock_write.result = WriteResult::kSuccess;
+      mock_write.bytes_written = 5;
+      EXPECT_EQ(BIO_write_ex(bio.get(), kInput, strlen(kInput), &written), 1);
+      EXPECT_EQ(written, 5u);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      // `out_written` can be nullptr.
+      EXPECT_EQ(BIO_write_ex(bio.get(), kInput, strlen(kInput), nullptr), 1);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      mock_write.result = WriteResult::kFail;
+      mock_write.fail_return = -1;
+      EXPECT_EQ(BIO_write_ex(bio.get(), kInput, strlen(kInput), &written), 0);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      // Test both return values for |write_method|.
+      mock_write.fail_return = 0;
+      EXPECT_EQ(BIO_write_ex(bio.get(), kInput, strlen(kInput), &written), 0);
+      EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+      mock_write.result = WriteResult::kRetry;
+      EXPECT_EQ(BIO_write_ex(bio.get(), kInput, strlen(kInput), &written), 0);
+      EXPECT_TRUE(BIO_should_retry(bio.get()));
+      EXPECT_TRUE(BIO_should_write(bio.get()));
+    }
+  }
+}
+
 }  // namespace
 BSSL_NAMESPACE_END

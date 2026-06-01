@@ -43,6 +43,7 @@ struct bio_method_st {
   int type;
   const char *name;
   int (*bwrite)(BIO *, const char *, int);
+  int (*bwrite_ex)(BIO *, const char *, size_t, size_t *);
   int (*bread)(BIO *, char *, int);
   int (*bgets)(BIO *, char *, int);
   long (*ctrl)(BIO *, int, long, void *);

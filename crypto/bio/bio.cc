@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <string.h>
 
+#include <algorithm>
 #include <utility>
 
 #include <openssl/asn1.h>
@@ -119,27 +120,56 @@ int BIO_gets(BIO *bio, char *buf, int len) {
   return ret;
 }
 
-int BIO_write(BIO *bio, const void *in, int inl) {
+int BIO_write_ex(BIO *bio, const void *data, size_t len, size_t *out_written) {
+  if (out_written != nullptr) {
+    *out_written = 0;
+  }
   auto *impl = FromOpaque(bio);
-  if (impl == nullptr || impl->method->bwrite == nullptr) {
+  if (impl == nullptr ||
+      (impl->method->bwrite == nullptr && impl->method->bwrite_ex == nullptr)) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNSUPPORTED_METHOD);
-    return -1;
+    return 0;
   }
   if (!impl->init) {
     OPENSSL_PUT_ERROR(BIO, BIO_R_UNINITIALIZED);
-    return -1;
-  }
-  if (inl <= 0) {
     return 0;
   }
-  int ret = impl->method->bwrite(impl, reinterpret_cast<const char *>(in), inl);
-  if (ret > 0) {
-    impl->num_write += ret;
-  } else {
-    // In preparation for |BIO_write_ex|, canonicalize error returns to -1.
-    ret = -1;
+  // Matching OpenSSL, writing zero bytes should "successfully" write no bytes.
+  if (len == 0) {
+    return 1;
   }
-  return ret;
+  // Support `BIO_METHOD`s using either the old or new API.
+  size_t written;
+  if (impl->method->bwrite_ex != nullptr) {
+    if (!impl->method->bwrite_ex(bio, static_cast<const char *>(data), len,
+                                 &written)) {
+      return 0;
+    }
+  } else {
+    int ret =
+        impl->method->bwrite(impl, static_cast<const char *>(data),
+                             static_cast<int>(std::min(len, size_t{INT_MAX})));
+    if (ret <= 0) {
+      return 0;
+    }
+    written = static_cast<size_t>(ret);
+  }
+  impl->num_write += written;
+  if (out_written != nullptr) {
+    *out_written = written;
+  }
+  return 1;
+}
+
+int BIO_write(BIO *bio, const void *in, int inl) {
+  // Matching OpenSSL, `inl <= 0` returns zero, i.e. a "successful" write of
+  // zero bytes.
+  inl = std::max(inl, 0);
+  size_t written;
+  if (!BIO_write_ex(bio, in, static_cast<size_t>(inl), &written)) {
+    return -1;
+  }
+  return static_cast<int>(written);
 }
 
 int BIO_write_all(BIO *bio, const void *data, size_t len) {
@@ -610,6 +640,13 @@ int BIO_meth_set_create(BIO_METHOD *method, int (*create_func)(BIO *)) {
 
 int BIO_meth_set_destroy(BIO_METHOD *method, int (*destroy_func)(BIO *)) {
   method->destroy = destroy_func;
+  return 1;
+}
+
+int BIO_meth_set_write_ex(BIO_METHOD *method,
+                          int (*write_ex_func)(BIO *, const char *, size_t,
+                                               size_t *)) {
+  method->bwrite_ex = write_ex_func;
   return 1;
 }
 

@@ -402,6 +402,7 @@ static const BIO_METHOD methods_biop = {
     BIO_TYPE_BIO,
     "BIO pair",
     bio_write,
+    /*bwrite_ex=*/nullptr,
     bio_read,
     /*gets=*/nullptr,
     bio_ctrl,
