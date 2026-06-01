@@ -1474,6 +1474,7 @@ Lseal_128_rounds:
 .private_extern	_chacha20_poly1305_open
 
 .align	6
+.alt_entry _chacha20_poly1305_open
 _chacha20_poly1305_open:
 	AARCH64_SIGN_LINK_REGISTER
 .cfi_startproc

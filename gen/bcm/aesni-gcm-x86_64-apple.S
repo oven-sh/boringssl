@@ -343,6 +343,7 @@ L$6x_done:
 .private_extern _aesni_gcm_decrypt
 
 .p2align	5
+.alt_entry _aesni_gcm_decrypt
 _aesni_gcm_decrypt:
 
 
@@ -465,6 +466,7 @@ L$gcm_dec_abort:
 
 
 .p2align	5
+.alt_entry _aesni_ctr32_6x
 _aesni_ctr32_6x:
 
 	vmovdqu	0-128(%rcx),%xmm4
@@ -560,6 +562,7 @@ L$handle_ctr32_2:
 .private_extern _aesni_gcm_encrypt
 
 .p2align	5
+.alt_entry _aesni_gcm_encrypt
 _aesni_gcm_encrypt:
 
 

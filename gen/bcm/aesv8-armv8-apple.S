@@ -187,6 +187,7 @@ Lenc_key_abort:
 .private_extern	_aes_hw_set_decrypt_key
 
 .align	5
+.alt_entry _aes_hw_set_decrypt_key
 _aes_hw_set_decrypt_key:
 	AARCH64_SIGN_LINK_REGISTER
 	stp	x29,x30,[sp,#-16]!
@@ -229,6 +230,7 @@ Ldec_key_abort:
 .private_extern	_aes_hw_encrypt
 
 .align	5
+.alt_entry _aes_hw_encrypt
 _aes_hw_encrypt:
 	AARCH64_VALID_CALL_TARGET
 	ldr	w3,[x2,#240]
@@ -260,6 +262,7 @@ Loop_enc:
 .private_extern	_aes_hw_decrypt
 
 .align	5
+.alt_entry _aes_hw_decrypt
 _aes_hw_decrypt:
 	AARCH64_VALID_CALL_TARGET
 	ldr	w3,[x2,#240]
@@ -291,6 +294,7 @@ Loop_dec:
 .private_extern	_aes_hw_cbc_encrypt
 
 .align	5
+.alt_entry _aes_hw_cbc_encrypt
 _aes_hw_cbc_encrypt:
 	// Armv8.3-A PAuth: even though x30 is pushed to stack it is not popped later.
 	AARCH64_VALID_CALL_TARGET
@@ -584,6 +588,7 @@ Lcbc_abort:
 .private_extern	_aes_hw_ctr32_encrypt_blocks
 
 .align	5
+.alt_entry _aes_hw_ctr32_encrypt_blocks
 _aes_hw_ctr32_encrypt_blocks:
 	// Armv8.3-A PAuth: even though x30 is pushed to stack it is not popped later.
 	AARCH64_VALID_CALL_TARGET

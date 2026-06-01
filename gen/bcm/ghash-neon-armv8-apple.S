@@ -36,6 +36,7 @@ _gcm_init_neon:
 .private_extern	_gcm_gmult_neon
 
 .align	4
+.alt_entry _gcm_gmult_neon
 _gcm_gmult_neon:
 	AARCH64_VALID_CALL_TARGET
 	ld1	{v3.16b}, [x0]		// load Xi
@@ -56,6 +57,7 @@ _gcm_gmult_neon:
 .private_extern	_gcm_ghash_neon
 
 .align	4
+.alt_entry _gcm_ghash_neon
 _gcm_ghash_neon:
 	AARCH64_VALID_CALL_TARGET
 	ld1	{v0.16b}, [x0]		// load Xi

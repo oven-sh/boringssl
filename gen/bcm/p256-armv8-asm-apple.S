@@ -154,6 +154,7 @@ _ecp_nistz256_mul_mont:
 .private_extern	_ecp_nistz256_sqr_mont
 
 .align	4
+.alt_entry _ecp_nistz256_sqr_mont
 _ecp_nistz256_sqr_mont:
 	AARCH64_SIGN_LINK_REGISTER
 	stp	x29,x30,[sp,#-32]!
@@ -510,6 +511,7 @@ _ecp_nistz256_ord_mul_mont:
 .private_extern	_ecp_nistz256_ord_sqr_mont
 
 .align	4
+.alt_entry _ecp_nistz256_ord_sqr_mont
 _ecp_nistz256_ord_sqr_mont:
 	AARCH64_VALID_CALL_TARGET
 	// Armv8.3-A PAuth: even though x30 is pushed to stack it is not popped later.

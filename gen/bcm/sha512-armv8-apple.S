@@ -1074,6 +1074,7 @@ LK512:
 .private_extern	_sha512_block_data_order_hw
 
 .align	6
+.alt_entry _sha512_block_data_order_hw
 _sha512_block_data_order_hw:
 	// Armv8.3-A PAuth: even though x30 is pushed to stack it is not popped later.
 	AARCH64_VALID_CALL_TARGET
