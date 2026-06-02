@@ -30,6 +30,7 @@
 #include <openssl/nid.h>
 #include <openssl/sha2.h>
 
+#include "../fipsmodule/bn/internal.h"
 #include "../test/file_test.h"
 #include "../test/test_util.h"
 #include "../test/wycheproof_util.h"
@@ -134,6 +135,7 @@ static void RunWycheproofTest(FileTest *t) {
   ASSERT_TRUE(group);
   bssl::UniquePtr<BIGNUM> priv_key = GetWycheproofBIGNUM(t, "private", false);
   ASSERT_TRUE(priv_key);
+  bssl::bn_secret(priv_key.get());
   std::vector<uint8_t> peer_spki;
   ASSERT_TRUE(t->GetBytes(&peer_spki, "public"));
   WycheproofResult result;
@@ -164,6 +166,7 @@ static void RunWycheproofTest(FileTest *t) {
   int ret =
       ECDH_compute_key(actual.data(), actual.size(),
                        EC_KEY_get0_public_key(peer_ec), key.get(), nullptr);
+  CONSTTIME_DECLASSIFY(actual.data(), actual.size());
   if (is_valid) {
     EXPECT_EQ(static_cast<int>(actual.size()), ret);
     EXPECT_EQ(Bytes(shared), Bytes(actual.data(), static_cast<size_t>(ret)));
