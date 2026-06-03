@@ -3992,8 +3992,7 @@ class SSLContext : public ssl_ctx_st, public RefCounted<SSLContext> {
   // Default values to use in SSL structures follow (these are copied by
   // SSL_new)
 
-  // TODO(crbug.com/41393419): Disable SSL_OP_LEGACY_SERVER_CONNECT by default.
-  uint32_t options = SSL_OP_LEGACY_SERVER_CONNECT;
+  uint32_t options = SSL_OP_ALL;
   // Disable the auto-chaining feature by default. wpa_supplicant relies on this
   // feature, but require callers opt into it.
   uint32_t mode = SSL_MODE_NO_AUTO_CHAIN;
