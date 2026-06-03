@@ -206,6 +206,14 @@
 #endif
 #endif  // ARM || AARCH64
 
+#if defined(__APPLE__)
+// Require all Apple assembly to be compatible with `.subsections_via_symbols`.
+// Perlasm output will automatically no-op it by marking all non-initials with
+// `.alt_entry`. Other assembly must either do something similar or be
+// compatible with the optimization.
+.subsections_via_symbols
+#endif
+
 #endif  // __ASSEMBLER__
 
 #endif  // OPENSSL_HEADER_ASM_BASE_H
