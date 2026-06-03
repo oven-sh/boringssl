@@ -241,7 +241,13 @@ while(my $line=<>) {
 	my $label = $1;
 	if ($label) {
 	    my $name = ($GLOBALS{$label} or $label);
-	    if ($name !~ /^\.?L/) {
+	    if ($name =~ /^\.?L/) {
+		if (!$segment_had_labels{$current_segment}) {
+		    # With `.subsections_via_symbols`, an asm-local label
+		    # cannot be the first label of a section.
+		    die "Section $current_segment starts with an asm-local .Label - please add at least a file-local label at the start";
+		}
+	    } else {
 		if ($segment_had_labels{$current_segment}++ && $flavour =~ /ios/) {
 		    # The macOS linker may split object files at symbol
 		    # definitions to eliminate dead code. It however is unable

@@ -1117,7 +1117,9 @@ L$tail_no_xor_avx:
 
 
 .section	__DATA,__const
+
 .p2align	6
+ghash_constants:
 L$bswap_mask:
 .byte	15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
 L$0x1c2_polynomial:

@@ -3633,7 +3633,9 @@ L$SEH_end_bn_gather5:
 
 
 .section	__DATA,__const
+
 .p2align	6
+mont5_increments:
 L$inc:
 .long	0,0, 1,1
 .long	2,2, 2,2

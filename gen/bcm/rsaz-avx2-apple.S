@@ -1738,7 +1738,9 @@ L$oop_gather_1024:
 L$SEH_end_rsaz_1024_gather5:
 
 .section	__DATA,__const
+
 .p2align	6
+rsaz_avx2_constants:
 L$and_mask:
 .quad	0x1fffffff,0x1fffffff,0x1fffffff,0x1fffffff
 L$scatter_permd:

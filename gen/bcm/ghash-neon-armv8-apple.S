@@ -323,7 +323,9 @@ Lgmult_neon:
 
 
 .section	__TEXT,__const
+
 .align	4
+ghash_neon_masks:
 Lmasks:
 .quad	0x0000ffffffffffff	// k48
 .quad	0x00000000ffffffff	// k32

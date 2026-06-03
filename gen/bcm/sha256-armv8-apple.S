@@ -1020,7 +1020,9 @@ Loop_16_xx:
 
 
 .section	__TEXT,__const
+
 .align	6
+sha256_constants:
 
 LK256:
 .long	0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5

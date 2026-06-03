@@ -9,7 +9,9 @@
 .arch_extension crypto
 
 .section	__TEXT,__const
+
 .align	5
+aes_hw_constants:
 Lrcon:
 .long	0x01,0x01,0x01,0x01
 .long	0x0c0f0e0d,0x0c0f0e0d,0x0c0f0e0d,0x0c0f0e0d	// rotate-n-splat

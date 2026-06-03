@@ -7,7 +7,9 @@
 .text	
 
 .section	__DATA,__const
+
 .p2align	6
+chacha_constants:
 L$zero:
 .long	0,0,0,0
 L$one:

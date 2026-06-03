@@ -412,7 +412,9 @@ L$oop_row_6:
 
 
 .section	__DATA,__const
+
 .p2align	4
+ghash_ssse3_constants:
 
 
 L$reverse_bytes:

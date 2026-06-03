@@ -5,7 +5,9 @@
 
 #if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__APPLE__)
 .section	__DATA,__const
+
 .p2align	4
+aes_gcm_avx2_constants:
 
 
 L$bswap_mask:

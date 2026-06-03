@@ -7,6 +7,7 @@
 .text	
 
 
+p256_constants:
 L$ord:
 .quad	0xf3b9cac2fc632551, 0xbce6faada7179e84, 0xffffffffffffffff, 0xffffffff00000000
 L$ordK:
@@ -22,6 +23,7 @@ L$ordK:
 .private_extern _ecp_nistz256_ord_mul_mont_nohw
 
 .p2align	5
+.alt_entry _ecp_nistz256_ord_mul_mont_nohw
 _ecp_nistz256_ord_mul_mont_nohw:
 
 _CET_ENDBR
