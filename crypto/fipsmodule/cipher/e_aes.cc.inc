@@ -323,8 +323,8 @@ static int aes_gcm_ctrl(EVP_CIPHER_CTX *c, int type, int arg, void *ptr) {
         gctx->iv_gen = 1;
         return 1;
       }
-      // Fixed field must be at least 4 bytes and invocation field
-      // at least 8.
+      // The fixed field must be at least 4 bytes and the invocation field at
+      // least 8.
       if (arg < 4 || (gctx->ivlen - arg) < 8) {
         return 0;
       }
@@ -356,7 +356,8 @@ static int aes_gcm_ctrl(EVP_CIPHER_CTX *c, int type, int arg, void *ptr) {
     }
 
     case EVP_CTRL_GCM_SET_IV_INV:
-      if (gctx->iv_gen == 0 || gctx->key_set == 0 || c->encrypt) {
+      if (gctx->iv_gen == 0 || gctx->key_set == 0 || c->encrypt || arg < 0 ||
+          arg > gctx->ivlen) {
         return 0;
       }
       OPENSSL_memcpy(gctx->iv + gctx->ivlen - arg, ptr, arg);
