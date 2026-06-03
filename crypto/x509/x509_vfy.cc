@@ -603,7 +603,7 @@ static int check_name_constraints(X509_STORE_CTX *ctx) {
         return 0;
       default:
         ctx->error = rv;
-        ctx->error_depth = i;
+        ctx->error_depth = 0;
         ctx->current_cert = leaf;
         if (!call_verify_cb(0, ctx)) {
           return 0;
