@@ -8062,6 +8062,111 @@ noticeNumbers = 1,2,3
       EXPECT_EQ(Bytes(t.expected), Bytes(der, len));
     }
   }
+
+  UniquePtr<EVP_PKEY> issuer_key = PrivateKeyFromPEM(kP256Key);
+  ASSERT_TRUE(issuer_key);
+
+  // Issuer cert without SKID.
+  UniquePtr<X509> issuer_no_skid =
+      MakeTestCert("Issuer", "Issuer", issuer_key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(issuer_no_skid);
+  ASSERT_TRUE(X509_sign(issuer_no_skid.get(), issuer_key.get(), EVP_sha256()));
+
+  // Issuer cert with SKID.
+  UniquePtr<X509> issuer_with_skid =
+      MakeTestCert("Issuer", "Issuer", issuer_key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(issuer_with_skid);
+  static const uint8_t kSKID[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  ASSERT_TRUE(AddSubjectKeyIdentifier(issuer_with_skid.get(), kSKID));
+  ASSERT_TRUE(
+      X509_sign(issuer_with_skid.get(), issuer_key.get(), EVP_sha256()));
+
+  const struct {
+    const char *name;
+    const char *value;
+    // issuer_cert is the issuer certificate that must be used with the
+    // extension.
+    const X509 *issuer_cert;
+    // expected is the resulting extension, encoded in DER, or the empty string
+    // if an error is expected.
+    std::vector<uint8_t> expected;
+  } kTestsWithIssuer[] = {
+      // The AKID extension is a series of options. The "keyid" option picks up
+      // the issuer's SKID, but only if it is present.
+      {"authorityKeyIdentifier",
+       "keyid",
+       issuer_no_skid.get(),
+       {0x30, 0x09, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x02, 0x30, 0x00}},
+      {"authorityKeyIdentifier",
+       "keyid",
+       issuer_with_skid.get(),
+       {0x30, 0x13, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x0c, 0x30, 0x0a,
+        0x80, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}},
+
+      // keyid:always makes it an error when there is no issuer SKID.
+      {"authorityKeyIdentifier", "keyid:always", issuer_no_skid.get(), {}},
+      {"authorityKeyIdentifier",
+       "keyid:always",
+       issuer_with_skid.get(),
+       {0x30, 0x13, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x0c, 0x30, 0x0a,
+        0x80, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}},
+
+      // The issuer option picks up the issuer's issuer and serial.
+      {"authorityKeyIdentifier",
+       "issuer",
+       issuer_no_skid.get(),
+       {0x30, 0x23, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x1c, 0x30,
+        0x1a, 0xa1, 0x15, 0xa4, 0x13, 0x30, 0x11, 0x31, 0x0f, 0x30,
+        0x0d, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x06, 0x49, 0x73,
+        0x73, 0x75, 0x65, 0x72, 0x82, 0x01, 0x2a}},
+
+      // If both options are enabled, the issuer option only applies if the
+      // keyid option missed.
+      {"authorityKeyIdentifier",
+       "keyid,issuer",
+       issuer_no_skid.get(),
+       {0x30, 0x23, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x1c, 0x30,
+        0x1a, 0xa1, 0x15, 0xa4, 0x13, 0x30, 0x11, 0x31, 0x0f, 0x30,
+        0x0d, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x06, 0x49, 0x73,
+        0x73, 0x75, 0x65, 0x72, 0x82, 0x01, 0x2a}},
+      {"authorityKeyIdentifier",
+       "keyid,issuer",
+       issuer_with_skid.get(),
+       {0x30, 0x13, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x0c, 0x30, 0x0a,
+        0x80, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}},
+
+      // Unless issuer:always is set, in which case both are included.
+      {"authorityKeyIdentifier",
+       "keyid,issuer:always",
+       issuer_with_skid.get(),
+       {0x30, 0x2d, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x26, 0x30, 0x24, 0x80,
+        0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xa1, 0x15, 0xa4,
+        0x13, 0x30, 0x11, 0x31, 0x0f, 0x30, 0x0d, 0x06, 0x03, 0x55, 0x04, 0x03,
+        0x0c, 0x06, 0x49, 0x73, 0x73, 0x75, 0x65, 0x72, 0x82, 0x01, 0x2a}},
+
+      // Invalid options are rejected.
+      {"authorityKeyIdentifier", "keyid,badopt", issuer_with_skid.get(), {}},
+  };
+  for (const auto &t : kTestsWithIssuer) {
+    SCOPED_TRACE(t.name);
+    SCOPED_TRACE(t.value);
+
+    X509V3_CTX ctx;
+    X509V3_set_ctx(&ctx, t.issuer_cert, nullptr, nullptr, nullptr, 0);
+    UniquePtr<X509_EXTENSION> ext(
+        X509V3_EXT_nconf(nullptr, &ctx, t.name, t.value));
+    if (t.expected.empty()) {
+      EXPECT_FALSE(ext);
+      ERR_clear_error();
+    } else {
+      ASSERT_TRUE(ext);
+      uint8_t *der = nullptr;
+      int len = i2d_X509_EXTENSION(ext.get(), &der);
+      ASSERT_GE(len, 0);
+      UniquePtr<uint8_t> free_der(der);
+      EXPECT_EQ(Bytes(t.expected), Bytes(der, len));
+    }
+  }
 }
 
 TEST(X509Test, AddUnserializableExtension) {
