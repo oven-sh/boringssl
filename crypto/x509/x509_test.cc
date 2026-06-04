@@ -8081,6 +8081,18 @@ noticeNumbers = 1,2,3
   ASSERT_TRUE(
       X509_sign(issuer_with_skid.get(), issuer_key.get(), EVP_sha256()));
 
+  // Issuer cert with an unparseable SKID extension.
+  UniquePtr<X509> issuer_invalid_skid =
+      MakeTestCert("Issuer", "Issuer", issuer_key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(issuer_invalid_skid);
+  UniquePtr<X509_EXTENSION> invalid_skid(X509_EXTENSION_new());
+  ASSERT_TRUE(X509_EXTENSION_set_object(
+      invalid_skid.get(), OBJ_nid2obj(NID_subject_key_identifier)));
+  ASSERT_TRUE(
+      X509_add_ext(issuer_invalid_skid.get(), invalid_skid.get(), /*loc=*/-1));
+  ASSERT_TRUE(
+      X509_sign(issuer_invalid_skid.get(), issuer_key.get(), EVP_sha256()));
+
   const struct {
     const char *name;
     const char *value;
@@ -8102,6 +8114,13 @@ noticeNumbers = 1,2,3
        issuer_with_skid.get(),
        {0x30, 0x13, 0x06, 0x03, 0x55, 0x1d, 0x23, 0x04, 0x0c, 0x30, 0x0a,
         0x80, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}},
+
+      // The SKID extension could not be parsed.
+      {"authorityKeyIdentifier",
+       "keyid",
+       nullptr,
+       issuer_invalid_skid.get(),
+       {}},
 
       // keyid:always makes it an error when there is no issuer SKID.
       {"authorityKeyIdentifier", "keyid:always", issuer_no_skid.get(), {}},
