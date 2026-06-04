@@ -1301,13 +1301,13 @@ TEST(ASN1Test, UTCTimeZoneOffsets) {
   EXPECT_EQ("700101000000Z", ASN1StringToStringView(s.get()));
 
   // UTCTIME_set_string should not allow a timezone offset
-  EXPECT_FALSE(ASN1_UTCTIME_set_string(s.get(), "700101000000-0400"));
+  EXPECT_FALSE(ASN1_UTCTIME_set_string(s.get(), "700101000000+0400"));
 
   // Forcibly construct a utc time with a timezone offset.
-  ASSERT_TRUE(ASN1_STRING_set(s.get(), "700101000000-0400",
-                              strlen("700101000000-0400")));
+  ASSERT_TRUE(ASN1_STRING_set(s.get(), "700101000000+0400",
+                              strlen("700101000000+0400")));
   EXPECT_EQ(V_ASN1_UTCTIME, ASN1_STRING_type(s.get()));
-  EXPECT_EQ("700101000000-0400", ASN1StringToStringView(s.get()));
+  EXPECT_EQ("700101000000+0400", ASN1StringToStringView(s.get()));
 
   // check is expected to be valid with timezone offsets
   ASSERT_TRUE(ASN1_UTCTIME_check(s.get()));
@@ -1326,7 +1326,7 @@ TEST(ASN1Test, UTCTimeZoneOffsets) {
   // This should be the correct value
   // EXPECT_EQ("19691231200000Z", ASN1StringToStringView(g.get()));
   // But this function currently generates invalid times.
-  EXPECT_EQ("19700101000000-0400", ASN1StringToStringView(g.get()));
+  EXPECT_EQ("19700101000000+0400", ASN1StringToStringView(g.get()));
   // Force this to be a generalized time the same as our utc time
   EXPECT_TRUE(ASN1_GENERALIZEDTIME_set_string(g.get(), "19691231200000Z"));
 

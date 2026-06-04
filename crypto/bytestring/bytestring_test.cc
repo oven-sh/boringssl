@@ -2077,6 +2077,60 @@ TEST(CBSTest, BogusTime) {
   }
 }
 
+TEST(CBSTest, ParseTime) {
+  tm expected = {};
+  expected.tm_year = 70; // 1970
+  expected.tm_mon = 0;   // January
+  expected.tm_mday = 1;
+  expected.tm_hour = 4;
+  expected.tm_min = 0;
+  expected.tm_sec = 0;
+
+  // 1970-01-01 00:00:00 -0400 should be 1970-01-01 04:00:00 UTC
+  CBS cbs;
+  tm tm;
+  cbs = StringAsBytes("700101000000-0400");
+  ASSERT_TRUE(CBS_parse_utc_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  cbs = StringAsBytes("19700101000000-0400");
+  ASSERT_TRUE(
+      CBS_parse_generalized_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  // 1970-01-01 08:00:00 +0400 should be 1970-01-01 04:00:00 UTC
+  expected.tm_hour = 4;
+  cbs = StringAsBytes("700101080000+0400");
+  ASSERT_TRUE(CBS_parse_utc_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  expected.tm_hour = 4;
+  cbs = StringAsBytes("19700101080000+0400");
+  ASSERT_TRUE(
+      CBS_parse_generalized_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+}
+
 TEST(CBSTest, GetU64Decimal) {
   const struct {
     uint64_t val;
