@@ -4685,9 +4685,9 @@ OPENSSL_EXPORT int SSL_ECH_KEYS_marshal_retry_configs(const SSL_ECH_KEYS *keys,
 // rotate keys in a long-lived server process.
 //
 // The configured ECHConfig values should also be advertised out-of-band via DNS
-// (see draft-ietf-dnsop-svcb-https). Before advertising an ECHConfig in DNS,
-// deployments should ensure all instances of the service are configured with
-// the ECHConfig and corresponding private key.
+// (see RFC 9848). Before advertising an ECHConfig in DNS, deployments should
+// ensure all instances of the service are configured with the ECHConfig and
+// corresponding private key.
 //
 // Only the most recent fully-deployed ECHConfigs should be advertised in DNS.
 // `keys` may contain a newer set if those ECHConfigs are mid-deployment. It
