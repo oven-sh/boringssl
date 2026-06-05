@@ -62,8 +62,9 @@ constexpr uint32_t kPrime = 8380417;
 constexpr uint32_t kPrimeNegInverse = 4236238847;
 constexpr int kDroppedBits = 13;
 constexpr uint32_t kHalfPrime = (kPrime - 1) / 2;
-// 256^-1 mod kPrime, in Montgomery form.
-constexpr uint32_t kInverseDegreeMontgomery = 41978;
+// 256^-1 * R^2 mod kPrime. This is not 256^-1 in Montgomery form, but 256^-1
+// doubly-converted to Montgomery form.
+constexpr uint32_t kInverseDegreeDoubleMontgomery = 41978;
 
 // Constants that vary depending on ML-DSA size.
 //
@@ -366,8 +367,11 @@ inline uint32_t reduce_montgomery(uint64_t x) {
   return reduce_once(c);
 }
 
-// Multiply two scalars in the number theoretically transformed state.
-inline void scalar_mult(scalar *out, const scalar *lhs, const scalar *rhs) {
+// Montgomery-multiply two scalars in the number theoretically transformed
+// state. Each term gains an extra R^-1 term, which is expected to be canceled
+// by `scalar_inverse_ntt_montgomery`.
+inline void scalar_mult_montgomery(scalar *out, const scalar *lhs,
+                                   const scalar *rhs) {
   for (int i = 0; i < kDegree; i++) {
     out->c[i] = reduce_montgomery((uint64_t)lhs->c[i] * (uint64_t)rhs->c[i]);
   }
@@ -409,10 +413,13 @@ inline void scalar_ntt(scalar *s) {
 #undef ITER
 }
 
-// In place inverse number theoretic transform of a given scalar.
+// In place inverse number theoretic transform of a given scalar, but with each
+// term multiplied by an extra factor of R. This is function is intended to be
+// used with products that have gone through `reduce_montgomery` one extra time,
+// so the extra R^-1 term is canceled out.
 //
 // FIPS 204, Algorithm 42 (`NTT^-1`).
-inline void scalar_inverse_ntt(scalar *s) {
+inline void scalar_inverse_ntt_montgomery(scalar *s) {
   // Manually unrolled loop to maximize vectorization.
 #define ITER(step, offset)                                                     \
   {                                                                            \
@@ -448,9 +455,11 @@ inline void scalar_inverse_ntt(scalar *s) {
   static_assert(kDegree == 256);
 #undef ITER
 
+  // `kInverseDegreeDoubleMontgomery` has been double-converted to Montgomery
+  // form, so the result is an extra R term in the final result.
   for (int i = 0; i < kDegree; i++) {
-    s->c[i] = reduce_montgomery((uint64_t)s->c[i] *
-                                (uint64_t)kInverseDegreeMontgomery);
+    s->c[i] = reduce_montgomery(uint64_t{s->c[i]} *
+                                uint64_t{kInverseDegreeDoubleMontgomery});
   }
 }
 
@@ -476,10 +485,10 @@ inline void vector_sub(vector<X> *out, const vector<X> *lhs,
 }
 
 template <int X>
-inline void vector_mult_scalar(vector<X> *out, const vector<X> *lhs,
-                               const scalar *rhs) {
+inline void vector_mult_scalar_montgomery(vector<X> *out, const vector<X> *lhs,
+                                          const scalar *rhs) {
   for (int i = 0; i < X; i++) {
-    scalar_mult(&out->v[i], &lhs->v[i], rhs);
+    scalar_mult_montgomery(&out->v[i], &lhs->v[i], rhs);
   }
 }
 
@@ -491,20 +500,20 @@ inline void vector_ntt(vector<X> *a) {
 }
 
 template <int X>
-inline void vector_inverse_ntt(vector<X> *a) {
+inline void vector_inverse_ntt_montgomery(vector<X> *a) {
   for (int i = 0; i < X; i++) {
-    scalar_inverse_ntt(&a->v[i]);
+    scalar_inverse_ntt_montgomery(&a->v[i]);
   }
 }
 
 template <int K, int L>
-inline void matrix_mult(vector<K> *out, const matrix<K, L> *m,
-                        const vector<L> *a) {
+inline void matrix_mult_montgomery(vector<K> *out, const matrix<K, L> *m,
+                                   const vector<L> *a) {
   vector_zero(out);
   for (int i = 0; i < K; i++) {
     for (int j = 0; j < L; j++) {
       scalar product;
-      scalar_mult(&product, &m->v[i][j], &a->v[j]);
+      scalar_mult_montgomery(&product, &m->v[i][j], &a->v[j]);
       scalar_add(&out->v[i], &out->v[i], &product);
     }
   }
@@ -1775,8 +1784,8 @@ inline int mldsa_finish_keygen(
   OPENSSL_memcpy(&values->s1_ntt, &priv->s1, sizeof(values->s1_ntt));
   vector_ntt(&values->s1_ntt);
 
-  matrix_mult(&values->t, &values->a_ntt, &values->s1_ntt);
-  vector_inverse_ntt(&values->t);
+  matrix_mult_montgomery(&values->t, &values->a_ntt, &values->s1_ntt);
+  vector_inverse_ntt_montgomery(&values->t);
   vector_add(&values->t, &values->t, &priv->s2);
 
   // Step 6-7.
@@ -1892,8 +1901,8 @@ inline int mldsa_sign_mu_no_self_test(
     OPENSSL_memcpy(y_ntt, &values->y, sizeof(*y_ntt));
     vector_ntt(y_ntt);
 
-    matrix_mult(&values->w, &values->a_ntt, y_ntt);
-    vector_inverse_ntt(&values->w);
+    matrix_mult_montgomery(&values->w, &values->a_ntt, y_ntt);
+    vector_inverse_ntt_montgomery(&values->w);
 
     vector_high_bits(&values->w1, &values->w);
     uint8_t w1_encoded[w1_bytes<K>()];
@@ -1910,10 +1919,10 @@ inline int mldsa_sign_mu_no_self_test(
                                   sizeof(values->sign.c_tilde), tau<K>());
     scalar_ntt(&c_ntt);
 
-    vector_mult_scalar(&values->cs1, &values->s1_ntt, &c_ntt);
-    vector_inverse_ntt(&values->cs1);
-    vector_mult_scalar(&values->cs2, &values->s2_ntt, &c_ntt);
-    vector_inverse_ntt(&values->cs2);
+    vector_mult_scalar_montgomery(&values->cs1, &values->s1_ntt, &c_ntt);
+    vector_inverse_ntt_montgomery(&values->cs1);
+    vector_mult_scalar_montgomery(&values->cs2, &values->s2_ntt, &c_ntt);
+    vector_inverse_ntt_montgomery(&values->cs2);
 
     vector_add(&values->sign.z, &values->y, &values->cs1);
 
@@ -1944,8 +1953,8 @@ inline int mldsa_sign_mu_no_self_test(
     }
 
     vector<K> *ct0 = &values->w1;
-    vector_mult_scalar(ct0, &values->t0_ntt, &c_ntt);
-    vector_inverse_ntt(ct0);
+    vector_mult_scalar_montgomery(ct0, &values->t0_ntt, &c_ntt);
+    vector_inverse_ntt_montgomery(ct0);
     vector_make_hint(&values->sign.h, ct0, &values->cs2, &values->w);
 
     // See above.
@@ -2094,16 +2103,16 @@ inline int mldsa_verify_mu_no_self_test(
   OPENSSL_memcpy(&values->z_ntt, &values->sign.z, sizeof(values->z_ntt));
   vector_ntt(&values->z_ntt);
 
-  matrix_mult(&values->az_ntt, &values->a_ntt, &values->z_ntt);
+  matrix_mult_montgomery(&values->az_ntt, &values->a_ntt, &values->z_ntt);
 
   vector_scale_power2_round(&values->ct1_ntt, &pub->t1);
   vector_ntt(&values->ct1_ntt);
 
-  vector_mult_scalar(&values->ct1_ntt, &values->ct1_ntt, &c_ntt);
+  vector_mult_scalar_montgomery(&values->ct1_ntt, &values->ct1_ntt, &c_ntt);
 
   vector<K> *const w1 = &values->az_ntt;
   vector_sub(w1, &values->az_ntt, &values->ct1_ntt);
-  vector_inverse_ntt(w1);
+  vector_inverse_ntt_montgomery(w1);
 
   vector_use_hint_vartime(w1, &values->sign.h, w1);
   uint8_t w1_encoded[w1_bytes<K>()];
