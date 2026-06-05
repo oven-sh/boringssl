@@ -2381,7 +2381,6 @@ set(
   pki/testdata/path_builder_unittest/mtc/mtc-leaf.pem
   pki/testdata/path_builder_unittest/mtc_plants04/leaf.pem
   pki/testdata/path_builder_unittest/mtc_plants04/mtc-ica.pem
-  pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-duplicate_ca_signer.pem
   pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-3cosigners.pem
   pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-cosigner_wrong_order.pem
   pki/testdata/path_builder_unittest/mtc_plants04/mtc-leaf-standalone-duplicate_ca_signer.pem
