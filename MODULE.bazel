@@ -20,14 +20,8 @@ module(
     compatibility_level = 2,
 )
 
-# Periodically update the following dependencies to their latest versions
-# listed on https://registry.bazel.build/. When doing so, run
-# `bazelisk test ...` to update the hashes in MODULE.bazel.lock.
-#
-# Similarly update the dependencies in util/bazel-example/MODULE.bazel
-#
-# After updating dependencies, run bazelisk mod deps --lockfile_mode=refresh
-# from the root and util/bazel-example
+# Periodically run util/update_bazel_deps.go to update the dependencies in this
+# file and util/bazel-example/MODULE.bazel
 
 # In principle, googletest is only needed for tests and could be a
 # dev_dependency. But it would then be impossible for downstream modules to run
