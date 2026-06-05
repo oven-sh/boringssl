@@ -39,7 +39,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #else
@@ -457,28 +457,30 @@ class SocketWaiter {
   // readiness may either be the socket being writable or stdin being readable,
   // depending on `stdin_wait`.
   bool Wait(StdinWait stdin_wait, bool *socket_ready, bool *stdin_ready) {
-    *socket_ready = true;
+    *socket_ready = false;
     *stdin_ready = false;
 
-    fd_set read_fds, write_fds;
-    FD_ZERO(&read_fds);
-    FD_ZERO(&write_fds);
+    pollfd pfds[2] = {};
+    nfds_t num_pfds = 1;
+    pfds[0].fd = sock_;
+    pfds[0].events = POLLIN;
     if (stdin_wait == StdinWait::kSocketWrite) {
-      FD_SET(sock_, &write_fds);
+      pfds[0].events |= POLLOUT;
     } else if (stdin_open_) {
-      FD_SET(STDIN_FILENO, &read_fds);
+      num_pfds = 2;
+      pfds[1].fd = STDIN_FILENO;
+      pfds[1].events = POLLIN;
     }
-    FD_SET(sock_, &read_fds);
-    if (select(sock_ + 1, &read_fds, &write_fds, NULL, NULL) <= 0) {
-      perror("select");
+    if (poll(pfds, num_pfds, /*timeout=*/-1) <= 0) {
+      perror("poll");
       return false;
     }
 
-    if (FD_ISSET(STDIN_FILENO, &read_fds) || FD_ISSET(sock_, &write_fds)) {
-      *stdin_ready = true;
-    }
-    if (FD_ISSET(sock_, &read_fds)) {
-      *socket_ready = true;
+    *socket_ready = (pfds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0;
+    if (stdin_wait == StdinWait::kSocketWrite) {
+      *stdin_ready = (pfds[0].revents & (POLLOUT | POLLERR | POLLHUP)) != 0;
+    } else if (stdin_open_) {
+      *stdin_ready = (pfds[1].revents & (POLLIN | POLLERR | POLLHUP)) != 0;
     }
 
     return true;
@@ -607,7 +609,7 @@ class SocketWaiter {
   }
 
   bool Wait(StdinWait stdin_wait, bool *socket_ready, bool *stdin_ready) {
-    *socket_ready = true;
+    *socket_ready = false;
     *stdin_ready = false;
 
     ScopedWSAEVENT sock_read_event(WSACreateEvent());
