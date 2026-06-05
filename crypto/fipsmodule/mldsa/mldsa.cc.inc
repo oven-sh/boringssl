@@ -1692,9 +1692,7 @@ inline int mldsa_parse_private_key(private_key<K, L> *priv, CBS *in) {
       !CBS_get_bytes(in, &s2_bytes, scalar_bytes * K) ||
       !vector_decode_signed<plus_minus_eta_bitlen<K>(), eta<K>()>(
           &priv->s2, CBS_data(&s2_bytes)) ||
-      !CBS_get_bytes(in, &t0_bytes, 416 * K) ||
-      // Note: Decoding 13 bits into (-2^12, 2^12] cannot fail.
-      !vector_decode_signed<13, (1 << 12)>(&priv->t0, CBS_data(&t0_bytes))) {
+      !CBS_get_bytes(in, &t0_bytes, 416 * K)) {
     return 0;
   }
 
