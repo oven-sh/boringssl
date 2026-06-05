@@ -4,6 +4,17 @@ This directory contains the following certs:
 
 - `mtc-leaf.pem`
   - signatureless MTC issued by an MTC CA
+- `mtc-leaf-standalone.pem`
+  - standalone MTC issued by an MTC CA
+- `mtc-leaf-standalone-3cosigners.pem`
+  - standalone MTC containing the CA cosignature and two other cosignatures.
+- `mtc-leaf-standalone-no_ca_signers.pem`
+  - MTC containing one cosignature, but no CA cosignature.
+- `mtc-leaf-standalone-duplicate_ca_signer.pem`
+  - standalone MTC containing two duplicate CA cosignatures.
+- `mtc-leaf-standalone-cosigner_wrong_order.pem`
+  - standalone MTC containing the CA cosignature and another cosignatures, but
+    the cosignatures are not in sorted order.
 - `mtc-ica.pem`
   - signatureless MTC issued by the same MTC CA
   - its BasicConstraints has `cA=TRUE`
@@ -22,14 +33,8 @@ sign the leaf cert:
 2. Copy the certificate PEM to `leaf.pem`
 3. Copy the ICA SPKI base64 to the first `PublicKey` entry in `mtc-config.json`
 
-The next step is to generate the MTC representation of the ICA:
+The next step is to generate the MTCs:
 
-1. Run `mkdir out`
-2. Run
-   `go run github.com/ietf-plants-wg/merkle-tree-certs.git/demo@9029a99bcfa4e91b8b8e9ba646ac386a6e1c208f -config=mtc-config.json -out=out`
-3. Move `out/cert_0_0.pem` to `mtc-ica.pem`
-4. Move `out/cert_1_0.pem` to `mtc-leaf.pem`
-5. Copy the subtree and hash from the command output into
-   `PathBuilderMTCPlants04Test::SetUp`.
-6. Remove other artifacts created by the merkle-tree-certs/demo tool (e.g.
-   `rm -r out`).
+1. Run `generate_mtcs.sh`
+2. Copy the subtree range and hash from the script output into
+PathBuilderMTCPlants04Test::SetUp.

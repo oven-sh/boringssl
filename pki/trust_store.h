@@ -20,11 +20,13 @@
 #include <optional>
 
 #include <openssl/base.h>
+#include <openssl/pool.h>
 #include <openssl/sha2.h>
 
 #include "cert_issuer_source.h"
 #include "merkle_tree.h"
 #include "parsed_certificate.h"
+#include "signature_algorithm.h"
 
 BSSL_NAMESPACE_BEGIN
 
@@ -157,8 +159,12 @@ class OPENSSL_EXPORT MTCAnchor {
 
   // Create an MTCAnchor with spec version kPlants04 for a trusted CA with
   // `ca_id` containing the DER encoding of the relative OID of the CA's ID.
+  // `ca_signature_algorithm` and `ca_key` configure the CA cosigner key.
+  // `ca_key` should be a DER-encoded SubjectPublicKeyInfo.
   // The `trusted_subtrees` must be sorted by their subtree ranges.
   MTCAnchor(Span<const uint8_t> ca_id,
+            SignatureAlgorithm ca_signature_algorithm,
+            UniquePtr<CRYPTO_BUFFER> ca_key,
             std::map<uint16_t, std::vector<TrustedSubtree>> trusted_subtrees);
 
   // Returns whether this MTCAnchor represents a valid anchor. This function
@@ -173,6 +179,14 @@ class OPENSSL_EXPORT MTCAnchor {
   Span<const uint8_t> ca_id() const {
     BSSL_CHECK(spec_version_ == kPlants04);
     return ca_id_;
+  }
+  SignatureAlgorithm ca_signature_algorithm() const {
+    BSSL_CHECK(spec_version_ == kPlants04);
+    return ca_signature_algorithm_;
+  }
+  const CRYPTO_BUFFER* ca_key() const {
+    BSSL_CHECK(spec_version_ == kPlants04);
+    return ca_key_.get();
   }
   // TODO(nharper): Move this function to TrustAnchor.
   der::Input NormalizedSubject() const;
@@ -194,6 +208,8 @@ class OPENSSL_EXPORT MTCAnchor {
   MtcSpecVersion spec_version_;
   // (If spec_version_ == kDavidben08, `ca_id` is actually the log id.)
   std::vector<uint8_t> ca_id_;
+  SignatureAlgorithm ca_signature_algorithm_;
+  UniquePtr<CRYPTO_BUFFER> ca_key_;
   std::shared_ptr<const ParsedCertificate> synthetic_cert_;
   // If spec_version_ == kDavidben08, the 0th entry in the map will have the
   // trusted subtrees. Otherwise, this maps from the log_number to the trusted

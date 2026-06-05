@@ -203,9 +203,13 @@ MTCAnchor::MTCAnchor(bssl::Span<const uint8_t> log_id,
 
 MTCAnchor::MTCAnchor(
     bssl::Span<const uint8_t> ca_id,
+    SignatureAlgorithm ca_signature_algorithm,
+    bssl::UniquePtr<CRYPTO_BUFFER> ca_key,
     std::map<uint16_t, std::vector<TrustedSubtree>> trusted_subtrees)
     : spec_version_(MTCAnchor::MtcSpecVersion::kPlants04),
       ca_id_(ca_id.begin(), ca_id.end()),
+      ca_signature_algorithm_(ca_signature_algorithm),
+      ca_key_(std::move(ca_key)),
       trusted_subtrees_(std::move(trusted_subtrees)) {
   CreateSyntheticCert(ca_id);
 }
