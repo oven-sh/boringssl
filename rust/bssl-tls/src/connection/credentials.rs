@@ -18,7 +18,10 @@ use alloc::{
 };
 use core::{
     ffi::CStr,
-    ptr::null, //
+    ptr::{
+        NonNull,
+        null, //
+    }, //
 };
 
 use bssl_x509::{
@@ -395,29 +398,14 @@ impl<R, M> TlsConnection<R, M> {
         ty.try_into().ok().and_then(|ty: u8| ty.try_into().ok())
     }
 
-    /// Get the peer's raw public key as DER-encoded SubjectPublicKeyInfo.
+    /// Get the peer's raw public key as DER-encoded `SubjectPublicKeyInfo`.
     pub fn get_peer_raw_public_key(&self) -> Option<Vec<u8>> {
         let pkey = unsafe {
             // Safety:
             // - `self.ptr()` is a valid `SSL` handle.
             // - `pkey` does not escape the current function frame.
-            bssl_sys::SSL_get0_peer_rpk(self.ptr())
+            NonNull::new(bssl_sys::SSL_get0_peer_rpk(self.ptr()))?
         };
-        if pkey.is_null() {
-            return None;
-        }
-
-        let buffer = bssl_crypto::cbb_to_buffer(64, |cbb| {
-            assert_eq!(
-                unsafe {
-                    // Safety:
-                    // - `cbb` is a valid pointer to `CBB` provided by `cbb_to_buffer`.
-                    // - `pkey` is a valid pointer to `EVP_PKEY`.
-                    bssl_sys::EVP_marshal_public_key(cbb, pkey)
-                },
-                1
-            );
-        });
-        Some(buffer.as_ref().to_vec())
+        Some(crate::credentials::marshal_evp_into_spki(pkey))
     }
 }

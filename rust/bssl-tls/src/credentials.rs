@@ -613,6 +613,17 @@ impl VerifyCertificateContext {
         let list = call_slice_getter!(bssl_sys::SSL_get0_signed_cert_timestamp_list, self.ptr())?;
         (!list.is_empty()).then_some(list)
     }
+
+    /// Get the Raw Public Key offered by the peer in the `ClientHello`.
+    pub fn get_peer_raw_public_key(&self) -> Option<Vec<u8>> {
+        let pkey = unsafe {
+            // Safety:
+            // - `self.ptr()` is a valid `SSL` handle.
+            // - `pkey` does not escape the current function frame.
+            NonNull::new(bssl_sys::SSL_get0_peer_rpk(self.ptr()))?
+        };
+        Some(marshal_evp_into_spki(pkey))
+    }
 }
 
 /// Custom certificate verification callback.
@@ -919,6 +930,21 @@ impl TryFrom<c_int> for CertificateVerificationMode {
             Err(mode)
         }
     }
+}
+
+pub(crate) fn marshal_evp_into_spki(pkey: NonNull<bssl_sys::EVP_PKEY>) -> Vec<u8> {
+    let buffer = bssl_crypto::cbb_to_buffer(64, |cbb| {
+        assert_eq!(
+            unsafe {
+                // Safety:
+                // - `cbb` is a valid pointer to `CBB` provided by `cbb_to_buffer`.
+                // - `pkey` is a valid pointer to `EVP_PKEY`.
+                bssl_sys::EVP_marshal_public_key(cbb, pkey.as_ptr())
+            },
+            1
+        );
+    });
+    buffer.as_ref().to_vec()
 }
 
 #[cfg(test)]
