@@ -2004,8 +2004,7 @@ SSL_SESSION_get0_peer_certificates(const SSL_SESSION *session);
 
 // SSL_SESSION_get0_peer_rpk returns the peer raw public key stored in
 // `session`, or NULL if the peer did not send a raw public key.
-OPENSSL_EXPORT const EVP_PKEY *SSL_SESSION_get0_peer_rpk(
-    const SSL_SESSION *session);
+OPENSSL_EXPORT EVP_PKEY *SSL_SESSION_get0_peer_rpk(const SSL_SESSION *session);
 
 // SSL_SESSION_get0_signed_cert_timestamp_list sets `*out` and `*out_len` to
 // point to `*out_len` bytes of SCT information stored in `session`. This is
