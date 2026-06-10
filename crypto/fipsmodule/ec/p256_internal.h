@@ -49,9 +49,16 @@ static inline void p256_coord_sub(br_word_t out, br_word_t x, br_word_t y) {
 #endif
 
 extern "C" {
-#if !defined(OPENSSL_NO_ASM) && defined(__GNUC__) && defined(OPENSSL_X86_64)
+#if !defined(OPENSSL_NO_ASM) && defined(__GNUC__) && \
+    defined(OPENSSL_X86_64) && !defined(OPENSSL_NANOLIBC)
 // These functions are only available with gas and SysV ABI, so limit to
-// __GNUC__.
+// __GNUC__. Unlike most of our SysV assembly, they currently rely on the SysV
+// redzone. This trips one target which looks like it targets SysV but has no
+// redzone. This happens to define `OPENSSL_NANOLIBC`, so gate on that.
+//
+// TODO(crbug.com/522255483): Come up with a clearer story for the redzone
+// situation.
+#define FIAT_P256_ADX_ASM
 void fiat_p256_adx_mul(uint64_t x0[4], const uint64_t x1[4],
                        const uint64_t x2[4]);
 void fiat_p256_adx_sqr(uint64_t x0[4], const uint64_t x1[4]);
@@ -65,7 +72,7 @@ void ecp_nistz256_sqr_mont(uint64_t pr[4], const uint64_t py[4], uint64_t y0,
 
 static inline void p256_coord_mul(fiat_p256_felem out, const fiat_p256_felem x,
                                   const fiat_p256_felem y) {
-#if !defined(OPENSSL_NO_ASM) && defined(__GNUC__) && defined(OPENSSL_X86_64)
+#if defined(FIAT_P256_ADX_ASM)
   if (bssl::CRYPTO_is_BMI1_capable() && bssl::CRYPTO_is_BMI2_capable() &&
       bssl::CRYPTO_is_ADX_capable()) {
     return fiat_p256_adx_mul(out, x, y);
@@ -80,7 +87,7 @@ static inline void p256_coord_mul(fiat_p256_felem out, const fiat_p256_felem x,
 
 static inline void p256_coord_sqr(fiat_p256_felem out,
                                   const fiat_p256_felem x) {
-#if !defined(OPENSSL_NO_ASM) && defined(__GNUC__) && defined(OPENSSL_X86_64)
+#if defined(FIAT_P256_ADX_ASM)
   if (bssl::CRYPTO_is_BMI1_capable() && bssl::CRYPTO_is_BMI2_capable() &&
       bssl::CRYPTO_is_ADX_capable()) {
     return fiat_p256_adx_sqr(out, x);
