@@ -49,12 +49,12 @@ static inline void p256_coord_sub(br_word_t out, br_word_t x, br_word_t y) {
 #endif
 
 extern "C" {
-#if !defined(OPENSSL_NO_ASM) && defined(__GNUC__) && \
+#if !defined(OPENSSL_NO_ASM) && (defined(__ELF__) || defined(__APPLE__)) && \
     defined(OPENSSL_X86_64) && !defined(OPENSSL_NANOLIBC)
-// These functions are only available with gas and SysV ABI, so limit to
-// __GNUC__. Unlike most of our SysV assembly, they currently rely on the SysV
-// redzone. This trips one target which looks like it targets SysV but has no
-// redzone. This happens to define `OPENSSL_NANOLIBC`, so gate on that.
+// These functions are only available with gas and SysV ABI, used by Apple and
+// ELF-based platforms. Unlike most of our SysV assembly, they currently rely on
+// the SysV redzone. This trips one target which looks like it targets SysV but
+// has no redzone. This happens to define `OPENSSL_NANOLIBC`, so gate on that.
 //
 // TODO(crbug.com/522255483): Come up with a clearer story for the redzone
 // situation.
