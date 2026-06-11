@@ -1,7 +1,7 @@
 	.type foo, %function
 	.globl foo
 foo:
-	// aarch64 comments can be written with or without '#'.
+	// aarch64 constants can be written with or without '#'.
 	mov x1, #123
 	mov x1, 123
 	add x0, x1, x2, lsl #2
