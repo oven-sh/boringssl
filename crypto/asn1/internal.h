@@ -312,8 +312,10 @@ typedef struct ASN1_EXTERN_FUNCS_st {
   ASN1_ex_i2d *asn1_ex_i2d;
 } ASN1_EXTERN_FUNCS;
 
-#define IMPLEMENT_EXTERN_ASN1_SIMPLE(name, new_func, free_func, tag,           \
-                                     parse_func, i2d_func)                     \
+// IMPLEMENT_EXTERN_ASN1_PARSE_NEW implements an `ASN1_ITEM` for a type whose
+// parse function returns a new object.
+#define IMPLEMENT_EXTERN_ASN1_PARSE_NEW(name, new_func, free_func, tag,        \
+                                        parse_func, i2d_func)                  \
   static int name##_new_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {           \
     *pval = (ASN1_VALUE *)new_func();                                          \
     return *pval != nullptr;                                                   \
@@ -330,10 +332,12 @@ typedef struct ASN1_EXTERN_FUNCS_st {
       return 1;                                                                \
     }                                                                          \
                                                                                \
-    if ((*pval == nullptr && !name##_new_cb(pval, it)) ||                      \
-        !parse_func(cbs, (name *)*pval)) {                                     \
+    bssl::UniquePtr<name> ret = parse_func(cbs);                               \
+    if (ret == nullptr) {                                                      \
       return 0;                                                                \
     }                                                                          \
+    name##_free_cb(pval, it);                                                  \
+    *pval = (ASN1_VALUE *)ret.release();                                       \
     return 1;                                                                  \
   }                                                                            \
                                                                                \
@@ -346,6 +350,22 @@ typedef struct ASN1_EXTERN_FUNCS_st {
       name##_new_cb, name##_free_cb, name##_parse_cb, name##_i2d_cb};          \
                                                                                \
   IMPLEMENT_EXTERN_ASN1(name, name##_extern_funcs)
+
+// IMPLEMENT_EXTERN_ASN1_PARSE_INTO implements an `ASN1_ITEM` for a type whose
+// parse function writes into an existing object.
+#define IMPLEMENT_EXTERN_ASN1_PARSE_INTO(name, new_func, free_func, tag, \
+                                         parse_func, i2d_func)           \
+                                                                         \
+  static bssl::UniquePtr<name> name##_parse_new(CBS *cbs) {              \
+    bssl::UniquePtr<name> ret(new_func());                               \
+    if (ret == nullptr || !parse_func(cbs, ret.get())) {                 \
+      return 0;                                                          \
+    }                                                                    \
+    return ret;                                                          \
+  }                                                                      \
+                                                                         \
+  IMPLEMENT_EXTERN_ASN1_PARSE_NEW(name, new_func, free_func, tag,        \
+                                  name##_parse_new, i2d_func)
 
 // ASN1_TIME is an `ASN1_ITEM` whose ASN.1 type is X.509 Time (RFC 5280) and C
 // type is `ASN1_TIME*`.
