@@ -26,6 +26,7 @@
 #include <openssl/obj.h>
 #include <openssl/x509.h>
 
+#include "../asn1/internal.h"
 #include "../internal.h"
 #include "internal.h"
 
@@ -288,7 +289,7 @@ static void *v2i_crld(const X509V3_EXT_METHOD *method, const X509V3_CTX *ctx,
 
 static int dpn_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
                   void *exarg) {
-  DIST_POINT_NAME *dpn = (DIST_POINT_NAME *)*pval;
+  DIST_POINT_NAME *dpn = asn1_load_ptr_as<DIST_POINT_NAME>(pval);
 
   switch (operation) {
     case ASN1_OP_NEW_POST:

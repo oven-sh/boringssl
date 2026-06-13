@@ -272,11 +272,6 @@ OPENSSL_EXPORT void ASN1_item_free(ASN1_VALUE *val, const ASN1_ITEM *it);
 // It behaves like `d2i_SAMPLE`, except that `out` and the return value are cast
 // to `ASN1_VALUE` pointers.
 //
-// TODO(https://crbug.com/boringssl/444): C strict aliasing forbids type-punning
-// `T*` and `ASN1_VALUE*` the way this function signature does. When that bug is
-// resolved, we will need to pick which type `*out` is (probably `T*`). Do not
-// use a non-NULL `out` to avoid ending up on the wrong side of this question.
-//
 // This function may not be used with `ASN1_ITEM`s whose C type is
 // `ASN1_BOOLEAN`.
 //

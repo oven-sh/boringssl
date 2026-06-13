@@ -21,6 +21,8 @@
 #include <openssl/asn1t.h>
 #include <openssl/span.h>
 
+#include "../internal.h"
+
 
 BSSL_NAMESPACE_BEGIN
 
@@ -218,6 +220,30 @@ void ASN1_template_free(ASN1_VALUE **pval, const ASN1_TEMPLATE *tt);
 
 void ASN1_primitive_free(ASN1_VALUE **pval, const ASN1_ITEM *it);
 
+// asn1_load_ptr returns `*pval`, but without asserting `*pval`'s underlying
+// type for strict aliasing. This helper must be used when the field's
+// underlying type is not known statically. It must not be used for
+// `ASN1_BOOLEAN` fields, which are not a pointers.
+inline ASN1_VALUE *asn1_load_ptr(ASN1_VALUE **pval) {
+  ASN1_VALUE *ret;
+  OPENSSL_memcpy(&ret, pval, sizeof(ASN1_VALUE *));
+  return ret;
+}
+
+// asn1_load_ptr_as behaves like `asn1_load_ptr`, but casts the result to `T*`.
+template <typename T>
+inline T *asn1_load_ptr_as(ASN1_VALUE **pval) {
+  return reinterpret_cast<T *>(asn1_load_ptr(pval));
+}
+
+// asn1_store_ptr sets `*pval` to `v`, but without asserting `*pval`'s
+// underlying type for strict aliasing. This helper must be used when the
+// field's underlying type is not known statically. It must not be used for
+// `ASN1_BOOLEAN` fields, which are not a pointers.
+inline void asn1_store_ptr(ASN1_VALUE **pval, const void *v) {
+  OPENSSL_memcpy(pval, &v, sizeof(v));
+}
+
 // asn1_get_choice_selector returns the CHOICE selector value for `*pval`, which
 // must of type `it`.
 int asn1_get_choice_selector(ASN1_VALUE **pval, const ASN1_ITEM *it);
@@ -317,13 +343,17 @@ typedef struct ASN1_EXTERN_FUNCS_st {
 #define IMPLEMENT_EXTERN_ASN1_PARSE_NEW(name, new_func, free_func, tag,        \
                                         parse_func, marshal_func)              \
   static int name##_new_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {           \
-    *pval = (ASN1_VALUE *)new_func();                                          \
-    return *pval != nullptr;                                                   \
+    name *obj = new_func();                                                    \
+    if (obj == nullptr) {                                                      \
+      return 0;                                                                \
+    }                                                                          \
+    asn1_store_ptr(pval, obj);                                                 \
+    return 1;                                                                  \
   }                                                                            \
                                                                                \
   static void name##_free_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {         \
-    free_func((name *)*pval);                                                  \
-    *pval = nullptr;                                                           \
+    free_func(asn1_load_ptr_as<name>(pval));                                   \
+    asn1_store_ptr(pval, nullptr);                                             \
   }                                                                            \
                                                                                \
   static int name##_parse_cb(ASN1_VALUE **pval, CBS *cbs, const ASN1_ITEM *it, \
@@ -337,13 +367,13 @@ typedef struct ASN1_EXTERN_FUNCS_st {
       return 0;                                                                \
     }                                                                          \
     name##_free_cb(pval, it);                                                  \
-    *pval = (ASN1_VALUE *)ret.release();                                       \
+    asn1_store_ptr(pval, ret.release());                                       \
     return 1;                                                                  \
   }                                                                            \
                                                                                \
   static int name##_marshal_cb(CBB *cbb, ASN1_VALUE **pval,                    \
                                const ASN1_ITEM *it) {                          \
-    return marshal_func(cbb, (name *)*pval);                                   \
+    return marshal_func(cbb, asn1_load_ptr_as<name>(pval));                    \
   }                                                                            \
                                                                                \
   static const ASN1_EXTERN_FUNCS name##_extern_funcs = {                       \

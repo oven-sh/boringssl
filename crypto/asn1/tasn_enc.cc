@@ -53,20 +53,21 @@ bool asn1_item_has_value(ASN1_VALUE **pval, const ASN1_ITEM *it) {
   // Almost every `ASN1_VALUE` is a pointer, except for types represented as
   // `ASN1_BOOLEAN`.
   if (it->itype != ASN1_ITYPE_PRIMITIVE) {
-    return *pval != nullptr;  // All non-primitive types are pointers.
+    // All non-primitive types are pointers.
+    return asn1_load_ptr(pval) != nullptr;
   }
   if (it->templates != nullptr) {
     // This is an `ASN1_ITEM_TEMPLATE`. Recurse into the template.
     return asn1_template_has_value(pval, it->templates);
   }
   if (it->utype != V_ASN1_BOOLEAN) {
-    return *pval != nullptr;
+    return asn1_load_ptr(pval) != nullptr;
   }
   // `ASN1_BOOLEAN` may be omitted in two ways. -1 indicates an omitted
   // OPTIONAL BOOLEAN. Additionally, if `it` is `ASN1_FBOOLEAN` or
   // `ASN1_TBOOLEAN`, this is DEFAULT FALSE and DEFAULT TRUE, respectively. This
   // is stored in `it->size`.
-  ASN1_BOOLEAN b = *((const ASN1_BOOLEAN *)pval);
+  ASN1_BOOLEAN b = *reinterpret_cast<const ASN1_BOOLEAN *>(pval);
   if (b == ASN1_BOOLEAN_NONE) {
     return false;
   }
@@ -87,7 +88,7 @@ bool asn1_template_has_value(ASN1_VALUE **pval, const ASN1_TEMPLATE *tt) {
   if (tt->flags & ASN1_TFLG_SK_MASK) {
     // If `tt` is a SEQUENCE OF or SET OF type, the C type is `STACK_OF(T)` and
     // is a pointer.
-    return *pval != nullptr;
+    return asn1_load_ptr(pval) != nullptr;
   }
   // Otherwise, `tt`'s representation is the underlying item.
   return asn1_item_has_value(pval, ASN1_ITEM_ptr(tt->item));
@@ -100,7 +101,7 @@ static int asn1_marshal_item(CBB *cbb, ASN1_VALUE **pval, const ASN1_ITEM *it,
                              CBS_ASN1_TAG tag) {
   // All fields are pointers, except for boolean `ASN1_ITYPE_PRIMITIVE`s. Those
   // cases will be checked later.
-  if ((it->itype != ASN1_ITYPE_PRIMITIVE) && !*pval) {
+  if ((it->itype != ASN1_ITYPE_PRIMITIVE) && !asn1_load_ptr(pval)) {
     OPENSSL_PUT_ERROR(ASN1, ASN1_R_MISSING_VALUE);
     return 0;
   }
@@ -124,7 +125,7 @@ static int asn1_marshal_item(CBB *cbb, ASN1_VALUE **pval, const ASN1_ITEM *it,
         OPENSSL_PUT_ERROR(ASN1, ASN1_R_BAD_TEMPLATE);
         return 0;
       }
-      return asn1_marshal_any_string(cbb, (const ASN1_STRING *)*pval);
+      return asn1_marshal_any_string(cbb, asn1_load_ptr_as<ASN1_STRING>(pval));
 
     case ASN1_ITYPE_CHOICE: {
       // CHOICE types cannot be implicitly tagged.
@@ -239,7 +240,7 @@ static int asn1_marshal_template_no_explicit(CBB *cbb, ASN1_VALUE **pval,
 
   if (flags & ASN1_TFLG_SK_MASK) {
     // This is a SET OF or SEQUENCE OF type.
-    STACK_OF(ASN1_VALUE) *sk = (STACK_OF(ASN1_VALUE) *)*pval;
+    STACK_OF(ASN1_VALUE) *sk = asn1_load_ptr_as<STACK_OF(ASN1_VALUE)>(pval);
     if (sk == nullptr) {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_MISSING_VALUE);
       return 0;
@@ -293,14 +294,15 @@ static int asn1_marshal_primitive(CBB *cbb, ASN1_VALUE **pval,
         OPENSSL_PUT_ERROR(ASN1, ASN1_R_BAD_TEMPLATE);
         return 0;
       }
-      return asn1_marshal_any(cbb, (const ASN1_TYPE *)*pval);
+      return asn1_marshal_any(cbb, asn1_load_ptr_as<ASN1_TYPE>(pval));
     case V_ASN1_OBJECT:
-      return asn1_marshal_object(cbb, (const ASN1_OBJECT *)*pval, tag);
+      return asn1_marshal_object(cbb, asn1_load_ptr_as<ASN1_OBJECT>(pval), tag);
     case V_ASN1_NULL:
       tag = tag == 0 ? CBS_ASN1_NULL : tag;
       return CBB_add_asn1_element(cbb, tag, nullptr, 0);
     case V_ASN1_BOOLEAN: {
-      ASN1_BOOLEAN b = *((const ASN1_BOOLEAN *)pval);
+      // `ASN1_BOOLEAN` is not a pointer type.
+      ASN1_BOOLEAN b = *reinterpret_cast<const ASN1_BOOLEAN *>(pval);
       tag = tag == 0 ? CBS_ASN1_BOOLEAN : tag;
       CBB child;
       return CBB_add_asn1(cbb, &child, tag) &&
@@ -310,7 +312,7 @@ static int asn1_marshal_primitive(CBB *cbb, ASN1_VALUE **pval,
   }
 
   // All other supported types are represented as strings.
-  const ASN1_STRING *str = (const ASN1_STRING *)*pval;
+  const ASN1_STRING *str = asn1_load_ptr_as<ASN1_STRING>(pval);
   switch (it->utype) {
     case V_ASN1_BIT_STRING:
       return asn1_marshal_bit_string(cbb, str, tag);
