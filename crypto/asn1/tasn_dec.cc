@@ -768,24 +768,19 @@ static int asn1_d2i_ex_primitive_cbs(ASN1_VALUE **pval, CBS *cbs,
     case V_ASN1_GENERALIZEDTIME:
       return asn1_parse_generalized_time(cbs, str, cbs_tag);
     case V_ASN1_OCTET_STRING:
+      return asn1_parse_octet_string(cbs, str, cbs_tag);
+    case V_ASN1_T61STRING:
+      return asn1_parse_t61_string(cbs, str, cbs_tag);
     case V_ASN1_NUMERICSTRING:
     case V_ASN1_PRINTABLESTRING:
-    case V_ASN1_T61STRING:
     case V_ASN1_VIDEOTEXSTRING:
     case V_ASN1_IA5STRING:
     case V_ASN1_GRAPHICSTRING:
     case V_ASN1_VISIBLESTRING:
     case V_ASN1_GENERALSTRING:
-      // T61String is parsed as Latin-1, so all byte strings are valid. The
-      // others we currently do not enforce.
-      //
       // TODO(crbug.com/42290290): Enforce the encoding of the other string
       // types.
-      if (!asn1_parse_octet_string(cbs, str, cbs_tag)) {
-        return 0;
-      }
-      str->type = utype;
-      return 1;
+      return asn1_parse_string_unchecked(cbs, str, utype, cbs_tag);
     case V_ASN1_SEQUENCE: {
       // Save the entire element in the string.
       CBS elem;

@@ -313,7 +313,9 @@ int bssl::asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
     case CBS_ASN1_GENERALIZEDTIME:
       return asn1_parse_generalized_time(&elem, out, tag);
     case CBS_ASN1_OCTETSTRING:
+      return asn1_parse_octet_string(&elem, out, tag);
     case CBS_ASN1_T61STRING:
+      return asn1_parse_t61_string(&elem, out, tag);
     case CBS_ASN1_IA5STRING:
     case CBS_ASN1_NUMERICSTRING:
     case CBS_ASN1_PRINTABLESTRING:
@@ -321,16 +323,11 @@ int bssl::asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
     case CBS_ASN1_GRAPHICSTRING:
     case CBS_ASN1_VISIBLESTRING:
     case CBS_ASN1_GENERALSTRING:
-      // T61String is parsed as Latin-1, so all byte strings are valid. The
-      // others we currently do not enforce.
-      //
-      // TODO(crbug.com/42290290): Enforce the encoding of the other string
-      // types.
-      if (!asn1_parse_octet_string(&elem, out, tag)) {
-        return 0;
-      }
-      out->type = static_cast<int>(tag);
-      return 1;
+      // |CBS_ASN1_*| and |V_ASN1_*| constants match for universal types.
+      static_assert(CBS_ASN1_IA5STRING == V_ASN1_IA5STRING);
+      // TODO(crbug.com/42290290): Enforce the encoding of these string types.
+      return asn1_parse_string_unchecked(&elem, out, static_cast<int>(tag),
+                                         tag);
     default:
       // All unrecognized types, or types that cannot be represented as
       // `ASN1_STRING`, are represented as the whole element.

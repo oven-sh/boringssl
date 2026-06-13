@@ -104,6 +104,11 @@ void asn1_string_init(ASN1_STRING *str, int type);
 // freeing `str` itself.
 void asn1_string_cleanup(ASN1_STRING *str);
 
+// asn1_parse_string_unchecked parses a DER-encoded string of type `str_type`,
+// tagged with `tag`. It does not check the contents.
+int asn1_parse_string_unchecked(CBS *cbs, ASN1_STRING *out, int str_type,
+                                CBS_ASN1_TAG tag);
+
 // The following functions parse a DER-encoded ASN.1 value of the specified
 // type from `cbs` and write the result to `*out`. If `tag` is non-zero, the
 // value is implicitly tagged with `tag`. On success, they return one and
@@ -113,6 +118,7 @@ int asn1_parse_bit_string(CBS *cbs, ASN1_BIT_STRING *out, CBS_ASN1_TAG tag);
 int asn1_parse_integer(CBS *cbs, ASN1_INTEGER *out, CBS_ASN1_TAG tag);
 int asn1_parse_enumerated(CBS *cbs, ASN1_ENUMERATED *out, CBS_ASN1_TAG tag);
 int asn1_parse_octet_string(CBS *cbs, ASN1_STRING *out, CBS_ASN1_TAG tag);
+int asn1_parse_t61_string(CBS *cbs, ASN1_STRING *out, CBS_ASN1_TAG tag);
 int asn1_parse_bmp_string(CBS *cbs, ASN1_BMPSTRING *out, CBS_ASN1_TAG tag);
 int asn1_parse_universal_string(CBS *cbs, ASN1_UNIVERSALSTRING *out,
                                 CBS_ASN1_TAG tag);
