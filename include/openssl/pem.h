@@ -38,9 +38,6 @@ extern "C" {
 // This library contains functions for reading and writing data encoded in PEM
 // format. This format originated in Privacy-Enhanced Mail (RFC 1421).
 //
-// As an exception to RFC 1421, generally PEM data is limited to 1 GiB by this
-// library. This limit should not affect anyone in practice.
-//
 // TODO(crbug.com/42290574): Finish documenting this header.
 
 
