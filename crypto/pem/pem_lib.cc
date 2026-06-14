@@ -221,7 +221,7 @@ int PEM_bytes_read_bio(unsigned char **pdata, long *plen, char **pnm,
   return 1;
 }
 
-int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp, void *x,
+int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp, const void *x,
                    const EVP_CIPHER *enc, const unsigned char *pass,
                    int pass_len, pem_password_cb *callback, void *u) {
   BIO *b = BIO_new_fp(fp, BIO_NOCLOSE);
@@ -235,9 +235,10 @@ int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp, void *x,
   return ret;
 }
 
-int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name, BIO *bp, void *x,
-                       const EVP_CIPHER *enc, const unsigned char *pass,
-                       int pass_len, pem_password_cb *callback, void *u) {
+int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name, BIO *bp,
+                       const void *x, const EVP_CIPHER *enc,
+                       const unsigned char *pass, int pass_len,
+                       pem_password_cb *callback, void *u) {
   ScopedEVP_CIPHER_CTX ctx;
   int dsize = 0, ret = 0;
   size_t i, j, data_size;

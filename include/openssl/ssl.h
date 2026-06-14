@@ -5738,7 +5738,7 @@ OPENSSL_EXPORT int SSL_get_shared_sigalgs(SSL *ssl, int idx, int *psign,
 // i2d_SSL_SESSION serializes `in`, as described in `i2d_SAMPLE`.
 //
 // Use `SSL_SESSION_to_bytes` instead.
-OPENSSL_EXPORT int i2d_SSL_SESSION(SSL_SESSION *in, uint8_t **pp);
+OPENSSL_EXPORT int i2d_SSL_SESSION(const SSL_SESSION *in, uint8_t **pp);
 
 // d2i_SSL_SESSION parses a serialized session from the `len` bytes pointed to
 // by `*inp`, as described in `d2i_SAMPLE`.

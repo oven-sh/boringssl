@@ -108,7 +108,7 @@ err:
   return ret;
 }
 
-int PEM_write_bio_PrivateKey(BIO *bp, EVP_PKEY *x, const EVP_CIPHER *enc,
+int PEM_write_bio_PrivateKey(BIO *bp, const EVP_PKEY *x, const EVP_CIPHER *enc,
                              const unsigned char *pass, int pass_len,
                              pem_password_cb *cb, void *u) {
   return PEM_write_bio_PKCS8PrivateKey(bp, x, enc, (const char *)pass, pass_len,
@@ -127,7 +127,7 @@ EVP_PKEY *PEM_read_PrivateKey(FILE *fp, EVP_PKEY **x, pem_password_cb *cb,
   return ret;
 }
 
-int PEM_write_PrivateKey(FILE *fp, EVP_PKEY *x, const EVP_CIPHER *enc,
+int PEM_write_PrivateKey(FILE *fp, const EVP_PKEY *x, const EVP_CIPHER *enc,
                          const unsigned char *pass, int pass_len,
                          pem_password_cb *cb, void *u) {
   BIO *b = BIO_new_fp(fp, BIO_NOCLOSE);

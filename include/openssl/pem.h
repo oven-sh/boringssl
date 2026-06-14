@@ -78,39 +78,28 @@ extern "C" {
                                        pem_password_cb *cb, void *u);
 
 #define DECLARE_PEM_write_fp(name, type) \
-  OPENSSL_EXPORT int PEM_write_##name(FILE *fp, type *x);
-
-#define DECLARE_PEM_write_fp_const(name, type) \
   OPENSSL_EXPORT int PEM_write_##name(FILE *fp, const type *x);
 
-#define DECLARE_PEM_write_cb_fp(name, type)                                \
-  OPENSSL_EXPORT int PEM_write_##name(                                     \
-      FILE *fp, type *x, const EVP_CIPHER *enc, const unsigned char *pass, \
-      int pass_len, pem_password_cb *cb, void *u);
+#define DECLARE_PEM_write_cb_fp(name, type)           \
+  OPENSSL_EXPORT int PEM_write_##name(                \
+      FILE *fp, const type *x, const EVP_CIPHER *enc, \
+      const unsigned char *pass, int pass_len, pem_password_cb *cb, void *u);
 
 #define DECLARE_PEM_read_bio(name, type)                      \
   OPENSSL_EXPORT type *PEM_read_bio_##name(BIO *bp, type **x, \
                                            pem_password_cb *cb, void *u);
 
 #define DECLARE_PEM_write_bio(name, type) \
-  OPENSSL_EXPORT int PEM_write_bio_##name(BIO *bp, type *x);
-
-#define DECLARE_PEM_write_bio_const(name, type) \
   OPENSSL_EXPORT int PEM_write_bio_##name(BIO *bp, const type *x);
 
-#define DECLARE_PEM_write_cb_bio(name, type)                              \
-  OPENSSL_EXPORT int PEM_write_bio_##name(                                \
-      BIO *bp, type *x, const EVP_CIPHER *enc, const unsigned char *pass, \
-      int pass_len, pem_password_cb *cb, void *u);
-
+#define DECLARE_PEM_write_cb_bio(name, type)         \
+  OPENSSL_EXPORT int PEM_write_bio_##name(           \
+      BIO *bp, const type *x, const EVP_CIPHER *enc, \
+      const unsigned char *pass, int pass_len, pem_password_cb *cb, void *u);
 
 #define DECLARE_PEM_write(name, type) \
   DECLARE_PEM_write_bio(name, type)   \
   DECLARE_PEM_write_fp(name, type)
-
-#define DECLARE_PEM_write_const(name, type) \
-  DECLARE_PEM_write_bio_const(name, type)   \
-  DECLARE_PEM_write_fp_const(name, type)
 
 #define DECLARE_PEM_write_cb(name, type) \
   DECLARE_PEM_write_cb_bio(name, type)   \
@@ -123,10 +112,6 @@ extern "C" {
 #define DECLARE_PEM_rw(name, type) \
   DECLARE_PEM_read(name, type)     \
   DECLARE_PEM_write(name, type)
-
-#define DECLARE_PEM_rw_const(name, type) \
-  DECLARE_PEM_read(name, type)           \
-  DECLARE_PEM_write_const(name, type)
 
 #define DECLARE_PEM_rw_cb(name, type) \
   DECLARE_PEM_read(name, type)        \
@@ -161,7 +146,8 @@ OPENSSL_EXPORT void *PEM_ASN1_read_bio(d2i_of_void *d2i, const char *name,
                                        BIO *bp, void **x, pem_password_cb *cb,
                                        void *u);
 OPENSSL_EXPORT int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name,
-                                      BIO *bp, void *x, const EVP_CIPHER *enc,
+                                      BIO *bp, const void *x,
+                                      const EVP_CIPHER *enc,
                                       const unsigned char *pass, int pass_len,
                                       pem_password_cb *cb, void *u);
 
@@ -206,7 +192,7 @@ OPENSSL_EXPORT int PEM_write(FILE *fp, const char *name, const char *hdr,
 OPENSSL_EXPORT void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp,
                                    void **x, pem_password_cb *cb, void *u);
 OPENSSL_EXPORT int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
-                                  void *x, const EVP_CIPHER *enc,
+                                  const void *x, const EVP_CIPHER *enc,
                                   const unsigned char *pass, int pass_len,
                                   pem_password_cb *callback, void *u);
 
@@ -237,7 +223,7 @@ DECLARE_PEM_rw(PKCS8_PRIV_KEY_INFO, PKCS8_PRIV_KEY_INFO)
 
 DECLARE_PEM_rw_cb(RSAPrivateKey, RSA)
 
-DECLARE_PEM_rw_const(RSAPublicKey, RSA)
+DECLARE_PEM_rw(RSAPublicKey, RSA)
 DECLARE_PEM_rw(RSA_PUBKEY, RSA)
 
 #ifndef OPENSSL_NO_DSA
@@ -246,7 +232,7 @@ DECLARE_PEM_rw_cb(DSAPrivateKey, DSA)
 
 DECLARE_PEM_rw(DSA_PUBKEY, DSA)
 
-DECLARE_PEM_rw_const(DSAparams, DSA)
+DECLARE_PEM_rw(DSAparams, DSA)
 
 #endif
 
@@ -254,7 +240,7 @@ DECLARE_PEM_rw_cb(ECPrivateKey, EC_KEY)
 DECLARE_PEM_rw(EC_PUBKEY, EC_KEY)
 
 
-DECLARE_PEM_rw_const(DHparams, DH)
+DECLARE_PEM_rw(DHparams, DH)
 
 
 DECLARE_PEM_rw_cb(PrivateKey, EVP_PKEY)
