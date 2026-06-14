@@ -266,7 +266,7 @@ int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name, BIO *bp,
       if (!callback) {
         callback = PEM_def_callback;
       }
-      pass_len = (*callback)(buf, PEM_BUFSIZE, 1, u);
+      pass_len = (*callback)(buf, PEM_BUFSIZE, /*enc=*/1, u);
       if (pass_len < 0) {
         OPENSSL_PUT_ERROR(PEM, PEM_R_READ_KEY);
         goto err;
@@ -337,7 +337,7 @@ int bssl::PEM_do_header(const EVP_CIPHER_INFO *cipher, unsigned char *data,
   if (!callback) {
     callback = PEM_def_callback;
   }
-  pass_len = callback(buf, PEM_BUFSIZE, 0, u);
+  pass_len = callback(buf, PEM_BUFSIZE, /*enc=*/0, u);
   if (pass_len < 0) {
     OPENSSL_PUT_ERROR(PEM, PEM_R_BAD_PASSWORD_READ);
     return 0;
@@ -714,7 +714,7 @@ int PEM_read_bio(BIO *bp, char **name, char **header, unsigned char **data,
   return 1;
 }
 
-int PEM_def_callback(char *buf, int size, int rwflag, void *userdata) {
+int PEM_def_callback(char *buf, int size, int enc, void *userdata) {
   if (!buf || !userdata || size < 0) {
     return -1;
   }
