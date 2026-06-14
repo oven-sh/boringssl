@@ -23,6 +23,9 @@
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
 
+#include "internal.h"
+
+
 static RSA *pkey_get_rsa(EVP_PKEY *key, RSA **rsa);
 static DSA *pkey_get_dsa(EVP_PKEY *key, DSA **dsa);
 static EC_KEY *pkey_get_eckey(EVP_PKEY *key, EC_KEY **eckey);
