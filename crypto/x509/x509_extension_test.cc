@@ -19,8 +19,10 @@
 
 #include <gtest/gtest.h>
 
+#include <openssl/asn1.h>
 #include <openssl/obj.h>
 #include <openssl/span.h>
+#include <openssl/x509v3.h>
 
 #include "../test/der_trailing_data.h"
 #include "../test/test_util.h"
@@ -261,6 +263,125 @@ TEST(X509ExtensionTest, ParseCertificatePolicies) {
     EXPECT_FALSE(UniquePtr<CERTIFICATEPOLICIES>(
         d2i_CERTIFICATEPOLICIES(nullptr, &p, in.size())));
   }
+}
+
+TEST(X509ExtensionTest, ParseCRLDistributionPoints) {
+  // CRL distribution points are very complex. This input is a sequence of
+  // three CRL distribution points that try to exercise various cases.
+  static const uint8_t kInput[] = {
+      0x30, 0x81, 0x87, 0x30, 0x28, 0xa0, 0x26, 0xa0, 0x24, 0x86, 0x10, 0x68,
+      0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x61, 0x2e, 0x65, 0x78, 0x61, 0x6d,
+      0x70, 0x6c, 0x65, 0x86, 0x10, 0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f,
+      0x62, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x30, 0x30, 0xa0,
+      0x0f, 0xa1, 0x0d, 0x30, 0x0b, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x04,
+      0x54, 0x65, 0x73, 0x74, 0x81, 0x02, 0x05, 0x60, 0xa2, 0x19, 0xa4, 0x17,
+      0x30, 0x15, 0x31, 0x13, 0x30, 0x11, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c,
+      0x0a, 0x43, 0x52, 0x4c, 0x20, 0x49, 0x73, 0x73, 0x75, 0x65, 0x72, 0x30,
+      0x29, 0xa2, 0x27, 0x86, 0x12, 0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f,
+      0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x82,
+      0x0b, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d,
+      0x87, 0x04, 0x7f, 0x00, 0x00, 0x01};
+  const uint8_t *inp = kInput;
+  UniquePtr<CRL_DIST_POINTS> crldp(
+      d2i_CRL_DIST_POINTS(nullptr, &inp, sizeof(kInput)));
+  ASSERT_TRUE(crldp);
+  EXPECT_EQ(inp, kInput + sizeof(kInput));
+
+  ASSERT_EQ(sk_DIST_POINT_num(crldp.get()), 3u);
+
+  // A distribution point with two URIs.
+  const DIST_POINT *dp1 = sk_DIST_POINT_value(crldp.get(), 0);
+  ASSERT_NE(dp1->distpoint, nullptr);
+  ASSERT_EQ(dp1->distpoint->type, 0);  // fullName
+  ASSERT_NE(dp1->distpoint->name.fullname, nullptr);
+  ASSERT_EQ(sk_GENERAL_NAME_num(dp1->distpoint->name.fullname), 2u);
+
+  const GENERAL_NAME *gn1_1 =
+      sk_GENERAL_NAME_value(dp1->distpoint->name.fullname, 0);
+  ASSERT_EQ(gn1_1->type, GEN_URI);
+  EXPECT_EQ(ASN1StringAsView(gn1_1->d.uniformResourceIdentifier),
+            "http://a.example");
+
+  const GENERAL_NAME *gn1_2 =
+      sk_GENERAL_NAME_value(dp1->distpoint->name.fullname, 1);
+  ASSERT_EQ(gn1_2->type, GEN_URI);
+  EXPECT_EQ(ASN1StringAsView(gn1_2->d.uniformResourceIdentifier),
+            "http://b.example");
+
+  EXPECT_EQ(dp1->reasons, nullptr);
+  EXPECT_EQ(dp1->CRLissuer, nullptr);
+
+  // A distribution point relative to the CRL issuer, some reason flags, and a
+  // CRL issuer
+  const DIST_POINT *dp2 = sk_DIST_POINT_value(crldp.get(), 1);
+  ASSERT_NE(dp2->distpoint, nullptr);
+  ASSERT_EQ(dp2->distpoint->type, 1);  // relativename
+  ASSERT_NE(dp2->distpoint->name.relativename, nullptr);
+  ASSERT_EQ(sk_X509_NAME_ENTRY_num(dp2->distpoint->name.relativename), 1u);
+
+  const X509_NAME_ENTRY *entry =
+      sk_X509_NAME_ENTRY_value(dp2->distpoint->name.relativename, 0);
+  EXPECT_EQ(OBJ_obj2nid(X509_NAME_ENTRY_get_object(entry)), NID_commonName);
+  EXPECT_EQ(ASN1StringAsView(X509_NAME_ENTRY_get_data(entry)), "Test");
+
+  ASSERT_NE(dp2->reasons, nullptr);
+  UniquePtr<ASN1_BIT_STRING> expected_reasons(ASN1_BIT_STRING_new());
+  ASSERT_TRUE(expected_reasons);
+  ASSERT_TRUE(ASN1_BIT_STRING_set_bit(expected_reasons.get(),
+                                      CRL_REASON_KEY_COMPROMISE, 1));
+  ASSERT_TRUE(ASN1_BIT_STRING_set_bit(expected_reasons.get(),
+                                      CRL_REASON_CA_COMPROMISE, 1));
+  EXPECT_EQ(ASN1_STRING_cmp(dp2->reasons, expected_reasons.get()), 0);
+
+  ASSERT_NE(dp2->CRLissuer, nullptr);
+  ASSERT_EQ(sk_GENERAL_NAME_num(dp2->CRLissuer), 1u);
+  const GENERAL_NAME *issuer_gn = sk_GENERAL_NAME_value(dp2->CRLissuer, 0);
+  ASSERT_EQ(issuer_gn->type, GEN_DIRNAME);
+  ASSERT_NE(issuer_gn->d.directoryName, nullptr);
+  ASSERT_EQ(X509_NAME_entry_count(issuer_gn->d.directoryName), 1);
+  const X509_NAME_ENTRY *issuer_entry =
+      X509_NAME_get_entry(issuer_gn->d.directoryName, 0);
+  EXPECT_EQ(OBJ_obj2nid(X509_NAME_ENTRY_get_object(issuer_entry)),
+            NID_commonName);
+  EXPECT_EQ(ASN1StringAsView(X509_NAME_ENTRY_get_data(issuer_entry)),
+            "CRL Issuer");
+
+  // Only a CRL issuer with various general names.
+  const DIST_POINT *dp3 = sk_DIST_POINT_value(crldp.get(), 2);
+  EXPECT_EQ(dp3->distpoint, nullptr);
+  EXPECT_EQ(dp3->reasons, nullptr);
+  ASSERT_NE(dp3->CRLissuer, nullptr);
+  ASSERT_EQ(sk_GENERAL_NAME_num(dp3->CRLissuer), 3u);
+
+  const GENERAL_NAME *gn3_1 = sk_GENERAL_NAME_value(dp3->CRLissuer, 0);
+  ASSERT_EQ(gn3_1->type, GEN_URI);
+  EXPECT_EQ(ASN1StringAsView(gn3_1->d.uniformResourceIdentifier),
+            "http://example.com");
+
+  const GENERAL_NAME *gn3_2 = sk_GENERAL_NAME_value(dp3->CRLissuer, 1);
+  ASSERT_EQ(gn3_2->type, GEN_DNS);
+  EXPECT_EQ(ASN1StringAsView(gn3_2->d.dNSName), "example.com");
+
+  const GENERAL_NAME *gn3_3 = sk_GENERAL_NAME_value(dp3->CRLissuer, 2);
+  ASSERT_EQ(gn3_3->type, GEN_IPADD);
+  EXPECT_EQ(Bytes(ASN1StringAsBytes(gn3_3->d.iPAddress)),
+            Bytes(std::vector<uint8_t>{127, 0, 0, 1}));
+
+  // The object should roundtrip to the original input.
+  uint8_t *der = nullptr;
+  int der_len = i2d_CRL_DIST_POINTS(crldp.get(), &der);
+  EXPECT_GT(der_len, 0);
+  UniquePtr<uint8_t> free_der(der);
+  EXPECT_EQ(Bytes(der, der_len), Bytes(kInput));
+
+  // Trailing data should be rejected.
+  TestDERTrailingData(kInput, [](Span<const uint8_t> rewritten, size_t n) {
+    SCOPED_TRACE(n);
+    SCOPED_TRACE(EncodeHex(rewritten));
+    const uint8_t *p = rewritten.data();
+    EXPECT_FALSE(UniquePtr<CRL_DIST_POINTS>(
+        d2i_CRL_DIST_POINTS(nullptr, &p, rewritten.size())));
+  });
 }
 
 }  // namespace
