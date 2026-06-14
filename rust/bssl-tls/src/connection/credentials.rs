@@ -21,7 +21,10 @@ use core::{
     ptr::null, //
 };
 
-use bssl_x509::{params::CertificateVerificationParams, store::X509Store};
+use bssl_x509::{
+    params::CertificateVerificationParams,
+    store::X509Store, //
+};
 
 use super::{
     Client,
@@ -60,11 +63,8 @@ where
         &mut self,
         mode: CertificateVerificationMode,
     ) -> &mut Self {
-        let ctx = self.ptr();
-        unsafe {
-            // Safety: this method only updates the mode value.
-            bssl_sys::SSL_set_verify(ctx, mode as _, None);
-        }
+        self.as_in_handshake()
+            .set_certificate_verification_mode(mode);
         self
     }
 
@@ -85,27 +85,14 @@ where
     where
         V: VerifyCertificate + 'static,
     {
-        let ctx = self.ptr();
-        unsafe {
-            // Safety: we only install our own vtable.
-            bssl_sys::SSL_set_custom_verify(
-                ctx,
-                mode as _,
-                Some(cert_cb::<super::methods::RustConnectionMethods<M>>),
-            );
-        }
-        self.get_connection_methods().verify_certificate_methods = Some(Box::new(verifier) as _);
+        self.as_in_handshake()
+            .set_certificate_verifier(mode, verifier);
         self
     }
 
     /// Remove custom certificate verifier.
     pub fn without_certificate_verifier(&mut self, mode: CertificateVerificationMode) -> &mut Self {
-        let ctx = self.ptr();
-        unsafe {
-            // Safety: we only uninstall the vtable.
-            bssl_sys::SSL_set_custom_verify(ctx, mode as _, None);
-        }
-        self.get_connection_methods().verify_certificate_methods = None;
+        self.as_in_handshake().remove_certificate_verifier(mode);
         self
     }
 }
@@ -133,10 +120,56 @@ where
 }
 
 /// # Custom certificate verification
-impl<M> TlsConnectionInHandshake<'_, Client, M>
+impl<R, M> TlsConnectionInHandshake<'_, R, M>
 where
     M: HasTlsConnectionMethod,
 {
+    /// Configure the certificate verification mode.
+    pub fn set_certificate_verification_mode(
+        &mut self,
+        mode: CertificateVerificationMode,
+    ) -> &mut Self {
+        let ctx = self.ptr();
+        unsafe {
+            // Safety: this method only updates the mode value.
+            bssl_sys::SSL_set_verify(ctx, mode as _, None);
+        }
+        self
+    }
+
+    /// Configure the certificate verifier.
+    pub fn set_certificate_verifier<V>(
+        &mut self,
+        mode: CertificateVerificationMode,
+        verifier: V,
+    ) -> &mut Self
+    where
+        V: VerifyCertificate + 'static,
+    {
+        let ctx = self.ptr();
+        unsafe {
+            // Safety: we only install our own vtable.
+            bssl_sys::SSL_set_custom_verify(
+                ctx,
+                mode as _,
+                Some(cert_cb::<super::methods::RustConnectionMethods<M>>),
+            );
+        }
+        self.get_connection_methods().verify_certificate_methods = Some(Box::new(verifier) as _);
+        self
+    }
+
+    /// Remove custom certificate verifier.
+    pub fn remove_certificate_verifier(&mut self, mode: CertificateVerificationMode) -> &mut Self {
+        let ctx = self.ptr();
+        unsafe {
+            // Safety: we only uninstall the vtable.
+            bssl_sys::SSL_set_custom_verify(ctx, mode as _, None);
+        }
+        self.get_connection_methods().verify_certificate_methods = None;
+        self
+    }
+
     /// Get the certificate verification mode set by [`Self::set_certificate_verification_mode`].
     pub fn get_certificate_verification_mode(&self) -> Option<CertificateVerificationMode> {
         unsafe {
@@ -283,6 +316,28 @@ impl<R, M> TlsConnectionInHandshake<'_, R, M> {
             bssl_sys::SSL_set1_param(self.ptr(), params.as_ptr())
         });
         Ok(self)
+    }
+}
+
+/// # Sessions
+impl<R, M> TlsConnectionInHandshake<'_, R, M> {
+    /// Disable session creation.
+    pub fn disable_session(&mut self) -> &mut Self {
+        let ptr = self.ptr();
+        unsafe {
+            // Safety: the validity of the handle `ptr` is witnessed by `self`.
+            bssl_sys::SSL_set_mode(ptr, super::ConnectionMode::MODE_NO_SESSION_CREATION.bits());
+        }
+        self
+    }
+
+    /// Set the session for resumption.
+    pub fn set_session(&mut self, session: &crate::sessions::TlsSession) -> &mut Self {
+        unsafe {
+            // Safety: self.ptr and session.0 are valid.
+            bssl_sys::SSL_set_session(self.ptr.as_ptr(), session.0.as_ptr());
+        }
+        self
     }
 }
 

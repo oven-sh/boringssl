@@ -52,7 +52,10 @@ use crate::{
     call_slice_getter,
     check_lib_error,
     config::ConfigurationError,
-    connection::methods::{verify_cert_task_from_ssl, waker_data_from_ssl},
+    connection::methods::{
+        verify_cert_task_from_ssl,
+        waker_data_from_ssl, //
+    },
     context::CertificateCache,
     crypto_buffer_wrapper,
     errors::{
