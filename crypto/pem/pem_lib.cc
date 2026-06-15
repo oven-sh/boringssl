@@ -43,7 +43,7 @@
 using namespace bssl;
 
 static int load_iv(const char **fromp, unsigned char *to, size_t num);
-static int check_pem(const std::string_view nm, const std::string_view name);
+static bool check_pem(std::string_view name, std::string_view expected);
 
 // PEM_proc_type appends a Proc-Type header to `buf`, determined by `type`.
 static void PEM_proc_type(char buf[PEM_BUFSIZE], int type) {
@@ -100,58 +100,45 @@ void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp, void **x,
   return ret;
 }
 
-static int check_pem(const std::string_view nm, const std::string_view name) {
-  // Normal matching nm and name
-  if (nm == name) {
-    return 1;
+static bool check_pem(std::string_view name, std::string_view expected) {
+  // `PEM_STRING_EVP_PKEY` is not a real PEM type, but a placeholder that
+  // matches one of several private key types.
+  if (expected == PEM_STRING_EVP_PKEY) {
+    return name == PEM_STRING_PKCS8 || name == PEM_STRING_PKCS8INF ||
+           name == PEM_STRING_RSA || name == PEM_STRING_EC ||
+           name == PEM_STRING_DSA;
   }
 
-  // Make PEM_STRING_EVP_PKEY match any private key
-
-  if (name == PEM_STRING_EVP_PKEY) {
-    return nm == PEM_STRING_PKCS8 || nm == PEM_STRING_PKCS8INF ||
-           nm == PEM_STRING_RSA || nm == PEM_STRING_EC || nm == PEM_STRING_DSA;
+  // Normal name matching.
+  if (name == expected) {
+    return true;
   }
 
-  // Permit older strings
-
-  if (nm == PEM_STRING_X509_OLD && name == PEM_STRING_X509) {
-    return 1;
+  // Permit older strings.
+  if (name == PEM_STRING_X509_OLD && expected == PEM_STRING_X509) {
+    return true;
+  }
+  if (name == PEM_STRING_X509_REQ_OLD && expected == PEM_STRING_X509_REQ) {
+    return true;
   }
 
-  if (nm == PEM_STRING_X509_REQ_OLD && name == PEM_STRING_X509_REQ) {
-    return 1;
+  // Allow normal certs to be read as trusted certs.
+  if (name == PEM_STRING_X509 && expected == PEM_STRING_X509_TRUSTED) {
+    return true;
+  }
+  if (name == PEM_STRING_X509_OLD && expected == PEM_STRING_X509_TRUSTED) {
+    return true;
   }
 
-  // Allow normal certs to be read as trusted certs
-  if (nm == PEM_STRING_X509 && name == PEM_STRING_X509_TRUSTED) {
-    return 1;
+  // Some CAs use PKCS#7 with CERTIFICATE headers.
+  if (name == PEM_STRING_X509 && expected == PEM_STRING_PKCS7) {
+    return true;
+  }
+  if (name == PEM_STRING_PKCS7_SIGNED && expected == PEM_STRING_PKCS7) {
+    return true;
   }
 
-  if (nm == PEM_STRING_X509_OLD && name == PEM_STRING_X509_TRUSTED) {
-    return 1;
-  }
-
-  // Some CAs use PKCS#7 with CERTIFICATE headers
-  if (nm == PEM_STRING_X509 && name == PEM_STRING_PKCS7) {
-    return 1;
-  }
-
-  if (nm == PEM_STRING_PKCS7_SIGNED && name == PEM_STRING_PKCS7) {
-    return 1;
-  }
-
-#ifndef OPENSSL_NO_CMS
-  if (nm == PEM_STRING_X509 && name == PEM_STRING_CMS) {
-    return 1;
-  }
-  // Allow CMS to be read from PKCS#7 headers
-  if (nm == PEM_STRING_PKCS7 && name == PEM_STRING_CMS) {
-    return 1;
-  }
-#endif
-
-  return 0;
+  return false;
 }
 
 static const EVP_CIPHER *cipher_by_name(const std::string_view name) {
@@ -174,7 +161,7 @@ static const EVP_CIPHER *cipher_by_name(const std::string_view name) {
 }
 
 int PEM_bytes_read_bio(unsigned char **pdata, long *plen, char **pnm,
-                       const char *name, BIO *bp, pem_password_cb *cb,
+                       const char *expected_name, BIO *bp, pem_password_cb *cb,
                        void *u) {
   EVP_CIPHER_INFO cipher;
   UniquePtr<char> nm;
@@ -186,7 +173,7 @@ int PEM_bytes_read_bio(unsigned char **pdata, long *plen, char **pnm,
   for (;;) {
     if (!PEM_read_bio_inner(bp, &nm, &header, &data)) {
       if (ERR_equals(ERR_peek_error(), ERR_LIB_PEM, PEM_R_NO_START_LINE)) {
-        ERR_add_error_data(2, "Expecting: ", name);
+        ERR_add_error_data(2, "Expecting: ", expected_name);
       }
       return 0;
     }
@@ -194,7 +181,7 @@ int PEM_bytes_read_bio(unsigned char **pdata, long *plen, char **pnm,
       OPENSSL_PUT_ERROR(PEM, ERR_R_OVERFLOW);
       return 0;
     }
-    if (check_pem(nm.get(), name)) {
+    if (check_pem(nm.get(), expected_name)) {
       break;
     }
   }

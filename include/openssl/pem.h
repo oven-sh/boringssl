@@ -140,8 +140,8 @@ OPENSSL_EXPORT int PEM_write_bio(BIO *bp, const char *name, const char *hdr,
                                  const unsigned char *data, long len);
 
 OPENSSL_EXPORT int PEM_bytes_read_bio(unsigned char **pdata, long *plen,
-                                      char **pnm, const char *name, BIO *bp,
-                                      pem_password_cb *cb, void *u);
+                                      char **pnm, const char *expected_name,
+                                      BIO *bp, pem_password_cb *cb, void *u);
 OPENSSL_EXPORT void *PEM_ASN1_read_bio(d2i_of_void *d2i, const char *name,
                                        BIO *bp, void **x, pem_password_cb *cb,
                                        void *u);

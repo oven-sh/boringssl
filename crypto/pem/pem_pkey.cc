@@ -96,7 +96,13 @@ EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x, pem_password_cb *cb,
     ret = d2i_PrivateKey(EVP_PKEY_EC, x, &p, len);
   } else if (strcmp(nm, PEM_STRING_DSA) == 0) {
     ret = d2i_PrivateKey(EVP_PKEY_DSA, x, &p, len);
+  } else {
+    // `PEM_bytes_read_bio` should not have returned a PEM type this function
+    // does not recognized.
+    OPENSSL_PUT_ERROR(PEM, ERR_R_INTERNAL_ERROR);
+    goto err;
   }
+
 p8err:
   if (ret == nullptr) {
     OPENSSL_PUT_ERROR(PEM, ERR_R_ASN1_LIB);
