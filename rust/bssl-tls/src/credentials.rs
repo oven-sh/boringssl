@@ -619,6 +619,9 @@ impl VerifyCertificateContext {
 ///
 /// It is recommended to avoid panicking in the trait implementation.
 /// A panic in this callback will lead to abort.
+///
+/// As a return value, one could use [`VerifyCertificateAccepted`] or [`VerifyCertificateRejected`]
+/// to deliver the results if the decision can be made immediately and synchronously.
 pub trait VerifyCertificate: Send + Sync {
     /// Decide whether a certificate chain is acceptable.
     ///
@@ -648,6 +651,26 @@ pub enum VerifyResult {
     Pending,
     /// The certificate chain is rejected possibly with an alert.
     Reject(Option<AlertDescription>),
+}
+
+/// Certificate verifier accepts the offered certificates.
+#[derive(Debug, Clone, Copy)]
+pub struct VerifyCertificateAccepted;
+
+impl VerifyCertificateTask for VerifyCertificateAccepted {
+    fn complete(&mut self, _: Option<&mut Context<'_>>) -> VerifyResult {
+        VerifyResult::Accept
+    }
+}
+
+/// Certificate verifier rejects the offered certificates.
+#[derive(Debug, Clone, Copy)]
+pub struct VerifyCertificateRejected(pub Option<AlertDescription>);
+
+impl VerifyCertificateTask for VerifyCertificateRejected {
+    fn complete(&mut self, _: Option<&mut Context<'_>>) -> VerifyResult {
+        VerifyResult::Reject(self.0)
+    }
 }
 
 /// Asynchronous custom certificate verification.
