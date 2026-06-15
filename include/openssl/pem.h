@@ -212,12 +212,16 @@ OPENSSL_EXPORT int PEM_write_X509_CRL(FILE *fp, const X509_CRL *in);
 OPENSSL_EXPORT int PEM_write_X509_AUX(FILE *fp, const X509 *in);
 
 
-// Not yet documented functions.
+// Reading and writing raw PEM blocks.
 //
-// TODO(crbug.com/42290574): Finish documenting and organizing this header.
+// The functions in this section read and write PEM blocks without decoding
+// their contents.
 
+// PEM_BUFSIZE is an arbitrary buffer size used within the library. Some
+// external callers depend on it being defined.
 #define PEM_BUFSIZE 1024
 
+// The following constants are a collection of known PEM types.
 #define PEM_STRING_X509_OLD "X509 CERTIFICATE"
 #define PEM_STRING_X509 "CERTIFICATE"
 #define PEM_STRING_X509_PAIR "CERTIFICATE PAIR"
@@ -225,7 +229,6 @@ OPENSSL_EXPORT int PEM_write_X509_AUX(FILE *fp, const X509 *in);
 #define PEM_STRING_X509_REQ_OLD "NEW CERTIFICATE REQUEST"
 #define PEM_STRING_X509_REQ "CERTIFICATE REQUEST"
 #define PEM_STRING_X509_CRL "X509 CRL"
-#define PEM_STRING_EVP_PKEY "ANY PRIVATE KEY"
 #define PEM_STRING_PUBLIC "PUBLIC KEY"
 #define PEM_STRING_RSA "RSA PRIVATE KEY"
 #define PEM_STRING_RSA_PUBLIC "RSA PUBLIC KEY"
@@ -242,6 +245,129 @@ OPENSSL_EXPORT int PEM_write_X509_AUX(FILE *fp, const X509 *in);
 #define PEM_STRING_ECDSA_PUBLIC "ECDSA PUBLIC KEY"
 #define PEM_STRING_ECPRIVATEKEY "EC PRIVATE KEY"
 #define PEM_STRING_CMS "CMS"
+
+// PEM_STRING_EVP_PKEY is not a PEM type, but is an implementation detail of
+// `PEM_read_bio_PrivateKey`.
+#define PEM_STRING_EVP_PKEY "ANY PRIVATE KEY"
+
+// PEM_read_bio reads from `bio` until the next PEM block. If one is found, it
+// returns one and sets `*out_name`, `*out_header`, and `*out_data` to
+// newly-allocated buffers containing the PEM type, the header block, and the
+// decoded data, respectively. `*out_name` and `*out_header` are NUL-terminated
+// C strings, while `*out_data` has `*out_len` bytes. The caller must release
+// each of `*out_name`, `*out_header`, and `*out_data` with `OPENSSL_free` when
+// done.
+//
+// If no PEM block is found, this function returns zero and pushes
+// `PEM_R_NO_START_LINE` to the error queue. If one is found, but there is an
+// error decoding it, it returns zero and pushes some other error to the error
+// queue.
+//
+// This function does not decrypt encrypted PEM blocks and instead returns the
+// header and (possibly encrypted) data unprocessed. See `PEM_bytes_read_bio` to
+// decrypt blocks.
+OPENSSL_EXPORT int PEM_read_bio(BIO *bio, char **out_name, char **out_header,
+                                uint8_t **out_data, long *out_len);
+
+// PEM_read behaves like `PEM_read_bio` but reads from `fp`.
+OPENSSL_EXPORT int PEM_read(FILE *fp, char **out_name, char **out_header,
+                            uint8_t **out_data, long *out_len);
+
+// PEM_write_bio writes a PEM block to `bio`, containing `len` bytes from `data`
+// as data. `name` and `hdr` are NUL-terminated C strings containing the PEM
+// type and header block, respectively. This function returns zero on error and
+// the number of bytes written on success.
+OPENSSL_EXPORT int PEM_write_bio(BIO *bio, const char *name, const char *hdr,
+                                 const uint8_t *data, long len);
+
+// PEM_write behaves like `PEM_write_bio` but reads from `fp`.
+OPENSSL_EXPORT int PEM_write(FILE *fp, const char *name, const char *hdr,
+                             const uint8_t *data, long len);
+
+// PEM_bytes_read_bio reads from `bio` until it finds a PEM block whose name
+// matches `expected_name`. If one is found, it sets `*out_name` and `*out_data`
+// to newly-allocated buffers containing the PEM type and (possibly decrypted)
+// PEM data. `*out_name` is a NUL-terminated C string, while `*out_data` has
+// `*out_len` bytes. The caller must release `*out_name` and `*out_data` with
+// `OPENSSL_free` when done.
+//
+// If the PEM block is encrypted, `cb` will be called to look up the password.
+// See `pem_password_cb` for details. If `cb` is NULL, `PEM_def_callback` is
+// used and `userdata` should be a NUL-terminated C string containing the
+// password. Set both `cb` and `userdata` to NULL to only handle plaintext
+// blocks.
+//
+// `expected_name` and `*out_name` may not necessarily be the same value, so
+// callers must check `*out_name` before decoding `*out_data`. In addition to an
+// exact match, the following values are also accepted:
+//
+// - If `expected_name` is "CERTIFICATE", the older "X509 CERTIFICATE" type is
+//   also accepted.
+//
+// - If `expected_name` is "CERTIFICATE REQUEST", the older "NEW CERTIFICATE
+//   REQUEST" type is also accepted.
+//
+// - If `expected_name` is "TRUSTED CERTIFICATE", "CERTIFICATE" and the older
+//   "X509 CERTIFICATE" are also accepted.
+//
+// - If `expected_name` is "PKCS7", "PKCS #7 SIGNED DATA" is also accepted.
+//
+// - If `expected_name` is "PKCS7", "CERTIFICATE" is also accepted. This is an
+//   exposed implementation detail of `PKCS7_get_PEM_certificates`, which works
+//   around a 2000-era mistake by some CAs.
+//
+// - If `expected_name` is "ANY PRIVATE KEY", the type "ANY PRIVATE KEY" is not
+//   accepted and, instead, the function accepts "PRIVATE KEY", "ENCRYPTED
+//   PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", and "DSA PRIVATE KEY".
+//   This is an exposed implementation detail of `PEM_read_bio_PrivateKey`.
+//
+// TODO(davidben): Can some of the older aliases and workarounds be removed now?
+//
+// If no PEM block is found, this function returns zero and pushes
+// `PEM_R_NO_START_LINE` to the error queue. If one is found, but there is an
+// error decoding it, it returns zero and pushes some other error to the error
+// queue.
+OPENSSL_EXPORT int PEM_bytes_read_bio(uint8_t **out_data, long *out_len,
+                                      char **out_name,
+                                      const char *expected_name, BIO *bio,
+                                      pem_password_cb *cb, void *userdata);
+
+
+// Internal functions.
+//
+// The following functions are used to implement `PEM_read_bio_*` and
+// `PEM_write_bio_*`. They should not be used outside the library.
+
+// PEM_ASN1_read_bio calls `PEM_bytes_read_bio` and then decodes the resulting
+// data with `d2i`, which should behave as in `d2i_SAMPLE`.
+OPENSSL_EXPORT void *PEM_ASN1_read_bio(d2i_of_void *d2i, const char *name,
+                                       BIO *bio, void **out,
+                                       pem_password_cb *cb, void *userdata);
+
+// PEM_ASN1_read behaves like `PEM_ASN1_read_bio` but reads from `fp`.
+OPENSSL_EXPORT void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp,
+                                   void **out, pem_password_cb *cb,
+                                   void *userdata);
+
+// PEM_ASN1_write_bio encodes `in` with `i2d`, which should behave as in
+// `i2d_SAMPLE`. It then writes the result to `bio` as in
+// `PEM_write_bio_SAMPLE`.
+OPENSSL_EXPORT int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name,
+                                      BIO *bio, const void *in,
+                                      const EVP_CIPHER *enc,
+                                      const uint8_t *pass, int pass_len,
+                                      pem_password_cb *cb, void *userdata);
+
+// PEM_ASN1_write behaves like `PEM_ASN1_write_bio` but reads from `fp`.
+OPENSSL_EXPORT int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
+                                  const void *in, const EVP_CIPHER *enc,
+                                  const uint8_t *pass, int pass_len,
+                                  pem_password_cb *callback, void *userdata);
+
+
+// Not yet documented functions.
+//
+// TODO(crbug.com/42290574): Finish documenting and organizing this header.
 
 #define PEM_TYPE_ENCRYPTED 10
 #define PEM_TYPE_MIC_ONLY 20
@@ -293,48 +419,6 @@ OPENSSL_EXPORT int PEM_write_X509_AUX(FILE *fp, const X509 *in);
 #define DECLARE_PEM_rw_cb(name, type) \
   DECLARE_PEM_read(name, type)        \
   DECLARE_PEM_write_cb(name, type)
-
-// PEM_read_bio reads from `bp`, until the next PEM block. If one is found, it
-// returns one and sets `*name`, `*header`, and `*data` to newly-allocated
-// buffers containing the PEM type, the header block, and the decoded data,
-// respectively. `*name` and `*header` are NUL-terminated C strings, while
-// `*data` has `*len` bytes. The caller must release each of `*name`, `*header`,
-// and `*data` with `OPENSSL_free` when done. If no PEM block is found, this
-// function returns zero and pushes `PEM_R_NO_START_LINE` to the error queue. If
-// one is found, but there is an error decoding it, it returns zero and pushes
-// some other error to the error queue.
-OPENSSL_EXPORT int PEM_read_bio(BIO *bp, char **name, char **header,
-                                unsigned char **data, long *len);
-
-// PEM_write_bio writes a PEM block to `bp`, containing `len` bytes from `data`
-// as data. `name` and `hdr` are NUL-terminated C strings containing the PEM
-// type and header block, respectively. This function returns zero on error and
-// the number of bytes written on success.
-OPENSSL_EXPORT int PEM_write_bio(BIO *bp, const char *name, const char *hdr,
-                                 const unsigned char *data, long len);
-
-OPENSSL_EXPORT int PEM_bytes_read_bio(unsigned char **pdata, long *plen,
-                                      char **pnm, const char *expected_name,
-                                      BIO *bp, pem_password_cb *cb, void *u);
-OPENSSL_EXPORT void *PEM_ASN1_read_bio(d2i_of_void *d2i, const char *name,
-                                       BIO *bp, void **x, pem_password_cb *cb,
-                                       void *u);
-OPENSSL_EXPORT int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name,
-                                      BIO *bp, const void *x,
-                                      const EVP_CIPHER *enc,
-                                      const unsigned char *pass, int pass_len,
-                                      pem_password_cb *cb, void *u);
-
-OPENSSL_EXPORT int PEM_read(FILE *fp, char **name, char **header,
-                            unsigned char **data, long *len);
-OPENSSL_EXPORT int PEM_write(FILE *fp, const char *name, const char *hdr,
-                             const unsigned char *data, long len);
-OPENSSL_EXPORT void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp,
-                                   void **x, pem_password_cb *cb, void *u);
-OPENSSL_EXPORT int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
-                                  const void *x, const EVP_CIPHER *enc,
-                                  const unsigned char *pass, int pass_len,
-                                  pem_password_cb *callback, void *u);
 
 
 DECLARE_PEM_rw(X509_REQ, X509_REQ)
