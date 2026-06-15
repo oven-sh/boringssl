@@ -475,12 +475,9 @@ impl Certificate {
                 bssl_sys::CRYPTO_BUFFER_len(self.ptr()),
             )
         };
-        if data.is_null() || len == 0 || len >= isize::MAX as usize {
-            return &[];
-        }
         unsafe {
             // Safety: `data` will be outlived by `self`
-            core::slice::from_raw_parts(data, len)
+            sanitize_slice(data, len).expect("buffer is too large")
         }
     }
 }
