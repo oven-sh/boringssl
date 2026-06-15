@@ -369,11 +369,6 @@ OPENSSL_EXPORT int PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
 //
 // TODO(crbug.com/42290574): Finish documenting and organizing this header.
 
-#define PEM_TYPE_ENCRYPTED 10
-#define PEM_TYPE_MIC_ONLY 20
-#define PEM_TYPE_MIC_CLEAR 30
-#define PEM_TYPE_CLEAR 40
-
 #define DECLARE_PEM_read_fp(name, type)                      \
   OPENSSL_EXPORT type *PEM_read_##name(FILE *fp, type **out, \
                                        pem_password_cb *cb, void *userdata);
