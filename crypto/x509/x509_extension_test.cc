@@ -114,7 +114,7 @@ TEST(X509ExtensionTest, ParseCertificatePolicies) {
             "1.2.840.113554.4.1.72585.2.1");
   EXPECT_EQ(policy->qualifiers, nullptr);
 
-  // The second policy has a wide range of qualfiers, to exercise the encoding.
+  // The second policy has a wide range of qualifiers, to exercise the encoding.
   policy = sk_POLICYINFO_value(policies.get(), 1);
   EXPECT_EQ(ASN1ObjectToString(policy->policyid),
             "1.2.840.113554.4.1.72585.2.2");

@@ -15,7 +15,7 @@
 #ifndef OPENSSL_HEADER_ASN1_H
 #define OPENSSL_HEADER_ASN1_H
 
-#include <openssl/base.h>   // IWYU pragma: export
+#include <openssl/base.h>  // IWYU pragma: export
 
 #include <time.h>
 
@@ -916,7 +916,8 @@ DECLARE_ASN1_ITEM(ASN1_BIT_STRING)
 OPENSSL_EXPORT uint8_t ASN1_BIT_STRING_unused_bits(const ASN1_BIT_STRING *str);
 
 // ASN1_BIT_STRING_set calls `ASN1_STRING_set`.
-OPENSSL_EXPORT int ASN1_BIT_STRING_set(ASN1_BIT_STRING *str, const uint8_t *data,
+OPENSSL_EXPORT int ASN1_BIT_STRING_set(ASN1_BIT_STRING *str,
+                                       const uint8_t *data,
                                        ossl_ssize_t length);
 
 // ASN1_BIT_STRING_set1 sets `str` to a BIT STRING containing `length` bytes
@@ -1324,8 +1325,8 @@ OPENSSL_EXPORT int ASN1_TIME_to_posix(const ASN1_TIME *t, int64_t *out);
 // non-standard four-digit timezone offsets on UTC times. On success, one is
 // returned. On failure, zero is returned. `ASN1_TIME_to_posix` should normally
 // be used instead of this function.
-OPENSSL_EXPORT int ASN1_TIME_to_posix_nonstandard(
-    const ASN1_TIME *t, int64_t *out);
+OPENSSL_EXPORT int ASN1_TIME_to_posix_nonstandard(const ASN1_TIME *t,
+                                                  int64_t *out);
 
 // TODO(davidben): Expand and document function prototypes generated in macros.
 
@@ -1359,7 +1360,7 @@ DECLARE_ASN1_ITEM(ASN1_NULL)
 
 // Object identifiers.
 //
-// An `ASN1_OBJECT` represents a ASN.1 OBJECT IDENTIFIER. See also obj.h for
+// An `ASN1_OBJECT` represents an ASN.1 OBJECT IDENTIFIER. See also obj.h for
 // additional functions relating to `ASN1_OBJECT`.
 //
 // TODO(davidben): What's the relationship between asn1.h and obj.h? Most of

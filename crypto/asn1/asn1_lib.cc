@@ -111,7 +111,7 @@ int ASN1_get_object(const unsigned char **inp, long *out_len, int *out_tag,
   return constructed;
 }
 
-// class 0 is constructed constructed == 2 for indefinite length constructed
+// class 0 is constructed, constructed == 2 for indefinite length constructed
 void ASN1_put_object(unsigned char **pp, int constructed, int length, int tag,
                      int xclass) {
   unsigned char *p = *pp;

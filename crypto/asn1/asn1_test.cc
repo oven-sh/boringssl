@@ -976,8 +976,7 @@ TEST(ASN1Test, SetBitString) {
   UniquePtr<ASN1_BIT_STRING> val(ASN1_BIT_STRING_new());
   ASSERT_TRUE(val);
   const uint8_t kBytesf000[] = {0xf0, 0x00};
-  ASSERT_TRUE(
-      ASN1_STRING_set(val.get(), kBytesf000, sizeof(kBytesf000)));
+  ASSERT_TRUE(ASN1_STRING_set(val.get(), kBytesf000, sizeof(kBytesf000)));
   static const uint8_t kBitStringf000[] = {0x03, 0x03, 0x00, 0xf0, 0x00};
   TestSerialize(val.get(), i2d_ASN1_BIT_STRING, kBitStringf000);
 
@@ -1052,7 +1051,7 @@ TEST(ASN1Test, StringToUTF8) {
       {{0, 0, 0, 88, 0, 0, 0xfe, 0xff},
        V_ASN1_UNIVERSALSTRING,
        "X\xef\xbb\xbf"},
-      // The maximum code-point should pass though.
+      // The maximum code-point should pass through.
       {{0, 16, 0xff, 0xfd}, V_ASN1_UNIVERSALSTRING, "\xf4\x8f\xbf\xbd"},
       // Values outside the Unicode space should not.
       {{0, 17, 0, 0}, V_ASN1_UNIVERSALSTRING, nullptr},
@@ -3087,7 +3086,7 @@ TEST(ASN1Test, OptionalAndDefaultBooleans) {
   EXPECT_EQ(obj->default_true, ASN1_BOOLEAN_TRUE);
   EXPECT_EQ(obj->default_false, ASN1_BOOLEAN_FALSE);
 
-  // Include the optinonal fields instead.
+  // Include the optional fields instead.
   static const uint8_t kFieldsIncluded[] = {0x30, 0x0c, 0x01, 0x01, 0xff,
                                             0x81, 0x01, 0x00, 0x82, 0x01,
                                             0x00, 0x83, 0x01, 0xff};

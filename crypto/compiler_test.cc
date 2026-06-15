@@ -232,7 +232,7 @@ static uintptr_t aba(uintptr_t *a, void **b) {
 TEST(CompilerTest, NoStrictAliasing) {
   // Sequential memory access must be sequentially consistent across types.
   // Compilers such as clang and gcc need to be passed -fno-strict-aliasing
-  // for this to remain true at at higher optimization levels. Use with the
+  // for this to remain true at higher optimization levels. Use with the
   // opposite configuration, -fstrict-aliasing, is not supported.
   // Even though some subset of type punning through memory is considered
   // undefined behavior, the subtlety of exactly which subset that is and the

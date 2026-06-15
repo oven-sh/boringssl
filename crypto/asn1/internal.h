@@ -192,11 +192,11 @@ int asn1_parse_any(CBS *cbs, ASN1_TYPE *out);
 int asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out);
 
 // asn1_marshal_any marshals `in` as a DER-encoded ASN.1 value and writes the
-// result to `out`. It returns one on success and zeron on error.
+// result to `out`. It returns one on success and zero on error.
 int asn1_marshal_any(CBB *out, const ASN1_TYPE *in);
 
 // asn1_marshal_any_string marshals `in` as a DER-encoded ASN.1 value and writes
-// the result to `out`. It returns one on success and zeron on error.
+// the result to `out`. It returns one on success and zero on error.
 int asn1_marshal_any_string(CBB *out, const ASN1_STRING *in);
 
 

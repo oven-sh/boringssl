@@ -942,7 +942,7 @@ static int CBS_parse_rfc5280_time_internal(const CBS *cbs, int is_gentime,
   // If allow_timezone_offset is non-zero, allow for a four digit timezone
   // offset to be specified even though this is not allowed by RFC 5280. We are
   // permissive of this for UTCTimes due to the unfortunate existence of
-  // artisinally rolled long lived certificates that were baked into places that
+  // artisanally rolled long lived certificates that were baked into places that
   // are now difficult to change. These certificates were generated with the
   // 'openssl' command that permissively allowed the creation of certificates
   // with notBefore and notAfter times specified as strings for direct
