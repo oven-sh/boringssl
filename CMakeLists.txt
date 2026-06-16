@@ -828,6 +828,9 @@ if(BUILD_TESTING)
     if(GO_EXECUTABLE)
       add_custom_target(
           run_tests
+          COMMAND ${CMAKE_COMMAND} -E echo "Checking pregenerated files"
+          COMMAND ${GO_EXECUTABLE} run ./util/pregenerate -check
+          COMMAND ${CMAKE_COMMAND} -E echo
           COMMAND ${CMAKE_COMMAND} -E echo "Running Go tests"
           COMMAND ${GO_EXECUTABLE} test ${GO_TESTS}
           COMMAND ${CMAKE_COMMAND} -E echo
