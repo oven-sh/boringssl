@@ -550,6 +550,12 @@ TEST(ASN1Test, SerializeEmbeddedBoolean) {
   val->ca = 0;
   TestSerialize(val.get(), i2d_BASIC_CONSTRAINTS, kLeaf);
 
+  const uint8_t *inp = kLeaf;
+  UniquePtr<BASIC_CONSTRAINTS> parsed(
+      d2i_BASIC_CONSTRAINTS(nullptr, &inp, sizeof(kLeaf)));
+  ASSERT_TRUE(parsed);
+  EXPECT_EQ(parsed->ca, ASN1_BOOLEAN_FALSE);
+
   // TRUE should always be encoded as 0xff, independent of what value the caller
   // placed in the `ASN1_BOOLEAN`.
   static const uint8_t kCA[] = {0x30, 0x03, 0x01, 0x01, 0xff};
@@ -559,6 +565,19 @@ TEST(ASN1Test, SerializeEmbeddedBoolean) {
   TestSerialize(val.get(), i2d_BASIC_CONSTRAINTS, kCA);
   val->ca = 0x100;
   TestSerialize(val.get(), i2d_BASIC_CONSTRAINTS, kCA);
+
+  inp = kCA;
+  parsed.reset(d2i_BASIC_CONSTRAINTS(nullptr, &inp, sizeof(kCA)));
+  ASSERT_TRUE(parsed);
+  EXPECT_EQ(parsed->ca, ASN1_BOOLEAN_TRUE);
+
+  // We currently allow non-DER encodings of TRUE. (We should reject these.)
+  // When this happens, the in-memory representation is still uniform.
+  static const uint8_t kCAWrong[] = {0x30, 0x03, 0x01, 0x01, 0x01};
+  inp = kCAWrong;
+  parsed.reset(d2i_BASIC_CONSTRAINTS(nullptr, &inp, sizeof(kCAWrong)));
+  ASSERT_TRUE(parsed);
+  EXPECT_EQ(parsed->ca, ASN1_BOOLEAN_TRUE);
 }
 
 static std::vector<uint8_t> EmbedParamInAlgorithmIdentifier(

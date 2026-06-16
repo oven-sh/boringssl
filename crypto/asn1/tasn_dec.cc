@@ -548,7 +548,8 @@ static int asn1_parse_item_primitive(ASN1_VALUE **pval, CBS *cbs,
         OPENSSL_PUT_ERROR(ASN1, ASN1_R_BOOLEAN_IS_WRONG_LENGTH);
         return 0;
       }
-      *reinterpret_cast<ASN1_BOOLEAN *>(pval) = CBS_data(&child)[0];
+      *reinterpret_cast<ASN1_BOOLEAN *>(pval) =
+          CBS_data(&child)[0] ? ASN1_BOOLEAN_TRUE : ASN1_BOOLEAN_FALSE;
       return 1;
     }
   }
