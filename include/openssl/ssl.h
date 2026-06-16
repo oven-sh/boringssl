@@ -1906,8 +1906,6 @@ OPENSSL_EXPORT int SSL_export_keying_material(const SSL *ssl, uint8_t *out,
 // connections within an application-level session will reuse TLS sessions. TLS
 // sessions may be dropped by the client or ignored by the server at any time.
 
-DECLARE_PEM_rw(SSL_SESSION, SSL_SESSION)
-
 // SSL_SESSION_new returns a newly-allocated blank `SSL_SESSION` or NULL on
 // error. This may be useful when writing tests but should otherwise not be
 // used.
@@ -1939,6 +1937,27 @@ OPENSSL_EXPORT int SSL_SESSION_to_bytes_for_ticket(const SSL_SESSION *in,
 OPENSSL_EXPORT SSL_SESSION *SSL_SESSION_from_bytes(const uint8_t *in,
                                                    size_t in_len,
                                                    const SSL_CTX *ctx);
+
+// PEM_read_bio_SSL_SESSION reads an `SSL_SESSION` as a PEM block of type "SSL
+// SESSION PARAMETERS", as described in `PEM_read_bio_SAMPLE`.
+OPENSSL_EXPORT SSL_SESSION *PEM_read_bio_SSL_SESSION(BIO *bio,
+                                                     SSL_SESSION **out,
+                                                     pem_password_cb *cb,
+                                                     void *userdata);
+
+// PEM_read_SSL_SESSION behaves like `PEM_read_bio_SSL_SESSION` but reads from
+// `fp`.
+OPENSSL_EXPORT SSL_SESSION *PEM_read_SSL_SESSION(FILE *fp, SSL_SESSION **out,
+                                                 pem_password_cb *cb,
+                                                 void *userdata);
+
+// PEM_write_bio_SSL_SESSION writes `in` to `bio` as a PEM block of type "SSL
+// SESSION PARAMETERS", as described in `PEM_write_bio_SAMPLE`.
+OPENSSL_EXPORT int PEM_write_bio_SSL_SESSION(BIO *bio, const SSL_SESSION *in);
+
+// PEM_write_SSL_SESSION behaves like `PEM_write_bio_SSL_SESSION` but writes to
+// `fp`.
+OPENSSL_EXPORT int PEM_write_SSL_SESSION(FILE *fp, const SSL_SESSION *in);
 
 // SSL_SESSION_get_version returns a string describing the TLS or DTLS version
 // `session` was established at. For example, "TLSv1.2" or "DTLSv1".
