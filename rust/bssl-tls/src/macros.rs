@@ -20,8 +20,8 @@ macro_rules! check_tls_error {
         unsafe {
             // Safety: we have exclusive access to the connection state.
             match ::bssl_sys::SSL_get_error($tls, $e) {
-                0 => {}
-                rc => return Err($crate::errors::Error::extract_tls_err(rc)),
+                0 => None,
+                rc => Some($crate::errors::Error::extract_tls_err(rc)?),
             }
         }
     };
@@ -131,4 +131,24 @@ macro_rules! crypto_buffer_wrapper {
             }
         }
     };
+}
+
+// Safety: `$obj` must outlive the returned slice.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! call_slice_getter {
+    ($fn:path, $obj:expr) => {{
+        let mut data = ::core::ptr::null();
+        let mut len = 0;
+        #[allow(unused_unsafe)]
+        unsafe {
+            // Safety: `obj`, `data` and `len` are all valid.
+            $fn($obj, &raw mut data, &raw mut len);
+        }
+        #[allow(unused_unsafe)]
+        unsafe {
+            // Safety: data and len are returned by BoringSSL and are valid.
+            $crate::ffi::sanitize_slice(data, len)
+        }
+    }};
 }

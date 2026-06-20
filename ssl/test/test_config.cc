@@ -30,9 +30,12 @@
 
 #include <openssl/aead.h>
 #include <openssl/base64.h>
+#include <openssl/bytestring.h>
+#include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/hpke.h>
 #include <openssl/rand.h>
+#include <openssl/sha2.h>
 #include <openssl/span.h>
 #include <openssl/ssl.h>
 
@@ -90,7 +93,7 @@ template <typename T>
 bool StringToInt(T *out, const char *str) {
   static_assert(std::is_integral_v<T>, "not an integral type");
 
-  // |strtoull| allows leading '-' with wraparound. Additionally, both
+  // `strtoull` allows leading '-' with wraparound. Additionally, both
   // functions accept empty strings and leading whitespace.
   if (!OPENSSL_isdigit(static_cast<unsigned char>(*str)) &&
       (!std::is_signed_v<T> || *str != '-')) {
@@ -383,10 +386,15 @@ const Flag<TestConfig> *FindFlag(const char *name) {
         BoolFlag("-no-tls11", &TestConfig::no_tls11),
         BoolFlag("-no-tls1", &TestConfig::no_tls1),
         BoolFlag("-no-ticket", &TestConfig::no_ticket),
+        BoolFlag("-no-legacy-server-connect",
+                 &TestConfig::no_legacy_server_connect),
         Base64Flag("-expect-channel-id", &TestConfig::expect_channel_id),
         BoolFlag("-enable-channel-id", &TestConfig::enable_channel_id),
         StringFlag("-send-channel-id", &TestConfig::send_channel_id),
         BoolFlag("-shim-writes-first", &TestConfig::shim_writes_first),
+        StringFlag("-shim-initial-write", &TestConfig::shim_initial_write),
+        IntFlag("-repeat-shim-initial-write",
+                &TestConfig::repeat_shim_initial_write),
         StringFlag("-host-name", &TestConfig::host_name),
         StringFlag("-advertise-alpn", &TestConfig::advertise_alpn),
         StringFlag("-expect-alpn", &TestConfig::expect_alpn),
@@ -530,9 +538,6 @@ const Flag<TestConfig> *FindFlag(const char *name) {
         IntFlag("-install-one-cert-compression-alg",
                 &TestConfig::install_one_cert_compression_alg),
         BoolFlag("-reverify-on-resume", &TestConfig::reverify_on_resume),
-        BoolFlag("-ignore-rsa-key-usage", &TestConfig::ignore_rsa_key_usage),
-        BoolFlag("-expect-key-usage-invalid",
-                 &TestConfig::expect_key_usage_invalid),
         BoolFlag("-is-handshaker-supported",
                  &TestConfig::is_handshaker_supported),
         BoolFlag("-handshaker-resume", &TestConfig::handshaker_resume),
@@ -566,6 +571,8 @@ const Flag<TestConfig> *FindFlag(const char *name) {
                            &TestConfig::expect_peer_available_trust_anchors),
         OptionalBase64Flag("-requested-trust-anchors",
                            &TestConfig::requested_trust_anchors),
+        Base64Flag("-available-trust-anchors",
+                   &TestConfig::available_trust_anchors),
         OptionalIntFlag("-expect-selected-credential",
                         &TestConfig::expect_selected_credential),
         // Credential flags are stateful. First, use one of the
@@ -639,6 +646,12 @@ const Flag<TestConfig> *FindFlag(const char *name) {
                         &TestConfig::expect_peer_certificate_type),
         Base64Flag("-expect-peer-rpk-sha256",
                    &TestConfig::expect_peer_rpk_sha256),
+        OptionalIntFlag("-request-server-padding",
+                        &TestConfig::request_server_padding),
+        BoolFlag("-expect-server-sent-requested-padding",
+                 &TestConfig::expect_server_sent_requested_padding),
+        BoolFlag("-server-supports-padding",
+                 &TestConfig::server_supports_padding),
     };
     std::sort(ret.begin(), ret.end(), FlagNameComparator{});
     return ret;
@@ -651,9 +664,9 @@ const Flag<TestConfig> *FindFlag(const char *name) {
   return &*iter;
 }
 
-// RemovePrefix checks if |*str| begins with |prefix| + "-". If so, it advances
-// |*str| past |prefix| (but not past the "-") and returns true. Otherwise, it
-// returns false and leaves |*str| unmodified.
+// RemovePrefix checks if `*str` begins with `prefix` + "-". If so, it advances
+// `*str` past `prefix` (but not past the "-") and returns true. Otherwise, it
+// returns false and leaves `*str` unmodified.
 bool RemovePrefix(const char **str, const char *prefix) {
   size_t prefix_len = strlen(prefix);
   if (strncmp(*str, prefix, strlen(prefix)) == 0 && (*str)[prefix_len] == '-') {
@@ -812,7 +825,7 @@ static bool SetCredentialInfo(SSL_CREDENTIAL *cred,
                                   info.get())) {
     return false;
   }
-  info.release();  // |cred| takes ownership on success.
+  info.release();  // `cred` takes ownership on success.
   return true;
 }
 
@@ -1019,8 +1032,8 @@ static int TicketKeyCallback(SSL *ssl, uint8_t *key_name, uint8_t *iv,
 }
 
 static int NewSessionCallback(SSL *ssl, SSL_SESSION *session) {
-  // This callback is called as the handshake completes. |SSL_get_session|
-  // must continue to work and, historically, |SSL_in_init| returned false at
+  // This callback is called as the handshake completes. `SSL_get_session`
+  // must continue to work and, historically, `SSL_in_init` returned false at
   // this point.
   if (SSL_in_init(ssl) || SSL_get_session(ssl) == nullptr) {
     fprintf(stderr, "Invalid state for NewSessionCallback.\n");
@@ -1041,8 +1054,8 @@ static void InfoCallback(const SSL *ssl, int type, int val) {
       abort();
     }
 
-    // This callback is called when the handshake completes. |SSL_get_session|
-    // must continue to work and |SSL_in_init| must return false.
+    // This callback is called when the handshake completes. `SSL_get_session`
+    // must continue to work and `SSL_in_init` must return false.
     if (SSL_in_init(ssl) || SSL_get_session(ssl) == nullptr) {
       fprintf(stderr, "Invalid state for SSL_CB_HANDSHAKE_DONE.\n");
       abort();
@@ -1298,7 +1311,7 @@ static ssl_private_key_result_t AsyncPrivateKeySign(
     }
   }
 
-  // Write the signature into |test_state|.
+  // Write the signature into `test_state`.
   size_t len = 0;
   if (!EVP_DigestSign(ctx.get(), nullptr, &len, in, in_len)) {
     return ssl_private_key_failure;
@@ -1354,7 +1367,7 @@ static ssl_private_key_result_t AsyncPrivateKeyComplete(SSL *ssl, uint8_t *out,
 
   if (GetTestConfig(ssl)->async && test_state->private_key_retries < 2) {
     // Only return the decryption on the second attempt, to test both incomplete
-    // |sign|/|decrypt| and |complete|.
+    // `sign`/`decrypt` and `complete`.
     return ssl_private_key_retry;
   }
 
@@ -2024,7 +2037,7 @@ bssl::UniquePtr<SSL_CTX> TestConfig::SetupCtx(SSL_CTX *old_ctx) const {
     return nullptr;
   }
 
-  SSL_CTX_set0_buffer_pool(ssl_ctx.get(), BufferPool());
+  SSL_CTX_set1_buffer_pool(ssl_ctx.get(), BufferPool());
 
   std::string cipher_list = "ALL";
   // Explicitly add deprecated ciphers that are otherwise not included.
@@ -2158,7 +2171,7 @@ bssl::UniquePtr<SSL_CTX> TestConfig::SetupCtx(SSL_CTX *old_ctx) const {
   }
 
   // These mock compression algorithms match the corresponding ones in
-  // |addCertCompressionTests|.
+  // `addCertCompressionTests`.
   if (!MaybeInstallCertCompressionAlg(
           this, ssl_ctx.get(), 0xff02,
           [](SSL *ssl, CBB *out, const uint8_t *in, size_t in_len) -> int {
@@ -2412,9 +2425,6 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   if (reverify_on_resume) {
     SSL_CTX_set_reverify_on_resume(ssl_ctx, 1);
   }
-  if (ignore_rsa_key_usage) {
-    SSL_set_enforce_rsa_key_usage(ssl.get(), 0);
-  }
   if (no_tls13) {
     SSL_set_options(ssl.get(), SSL_OP_NO_TLSv1_3);
   }
@@ -2429,6 +2439,9 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
   }
   if (no_ticket) {
     SSL_set_options(ssl.get(), SSL_OP_NO_TICKET);
+  }
+  if (no_legacy_server_connect) {
+    SSL_clear_options(ssl.get(), SSL_OP_LEGACY_SERVER_CONNECT);
   }
   if (!expect_channel_id.empty() || enable_channel_id) {
     SSL_set_tls_channel_id_enabled(ssl.get(), 1);
@@ -2514,6 +2527,12 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
                                         requested_trust_anchors->size())) {
     return nullptr;
   }
+  if (!available_trust_anchors.empty() &&
+      !SSL_set1_available_trust_anchors(ssl.get(),
+                                        available_trust_anchors.data(),
+                                        available_trust_anchors.size())) {
+    return nullptr;
+  }
   if (enable_ocsp_stapling) {
     SSL_enable_ocsp_stapling(ssl.get());
   }
@@ -2546,7 +2565,7 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
     SSL_set_renegotiate_mode(ssl.get(), ssl_renegotiate_once);
   }
   if (renegotiate_freely || forbid_renegotiation_after_handshake) {
-    // |forbid_renegotiation_after_handshake| will disable renegotiation later.
+    // `forbid_renegotiation_after_handshake` will disable renegotiation later.
     SSL_set_renegotiate_mode(ssl.get(), ssl_renegotiate_freely);
   }
   if (renegotiate_ignore) {
@@ -2643,6 +2662,13 @@ bssl::UniquePtr<SSL> TestConfig::NewSSL(
           reinterpret_cast<const uint8_t *>(quic_early_data_context.data()),
           quic_early_data_context.size())) {
     return nullptr;
+  }
+
+  if (request_server_padding) {
+    SSL_set_server_padding_request(ssl.get(), request_server_padding.value());
+  }
+  if (server_supports_padding) {
+    SSL_set_server_padding_enabled(ssl.get(), 1);
   }
 
   // The compliance policy must be the last thing configured to have defined

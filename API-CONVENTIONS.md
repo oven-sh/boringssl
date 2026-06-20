@@ -153,7 +153,7 @@ Some types, such as `RSA`, are heap-allocated. All instances will be allocated
 and returned from BoringSSL's APIs. It is an error to instantiate a heap-
 allocated type on the stack or embedded within another object.
 
-Heap-allocated types may have functioned named like `RSA_new` which allocates a
+Heap-allocated types may have functions named like `RSA_new` which allocates a
 fresh blank `RSA`. Other functions may also return newly-allocated instances.
 For example, `RSA_parse_public_key` is documented to return a newly-allocated
 `RSA` object.
@@ -205,7 +205,7 @@ failure. For example:
              EVP_DigestUpdate(&ctx, "hello ", 6) &&
              EVP_DigestUpdate(&ctx, "world", 5) &&
              EVP_DigestFinal_ex(&ctx, md, &md_len);
-    EVP_MD_CTX_cleanup(&ctx);  /* Release |ctx|. */
+    EVP_MD_CTX_cleanup(&ctx);  /* Release `ctx`. */
 
 Note that `EVP_MD_CTX_cleanup` is called whether or not the `EVP_Digest*`
 operations succeeded. More complex C functions may use the `goto err` pattern:

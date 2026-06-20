@@ -44,6 +44,7 @@
 //! );
 //! ```
 
+use alloc::vec::Vec;
 use core::{
     ffi::{c_char, c_int, c_void},
     mem::transmute,
@@ -54,7 +55,7 @@ use core::{
 use bssl_crypto::{FfiSlice, cbb_to_buffer};
 use bssl_macros::bssl_enum;
 
-use crate::ffi::maybe_panic;
+use crate::ffi::abort_on_panic;
 use crate::{errors::PkiError, ffi::Bio};
 
 bssl_enum! {
@@ -127,7 +128,7 @@ impl PrivateKey {
                 }
                 len
             };
-            maybe_panic(get_password)
+            abort_on_panic(get_password)
         }
 
         let evp_pkey = unsafe {

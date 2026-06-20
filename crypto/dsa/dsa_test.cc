@@ -135,7 +135,7 @@ static bssl::UniquePtr<DSA> GetFIPSDSAGroup() {
   if (!p || !q || !g || !DSA_set0_pqg(dsa.get(), p.get(), q.get(), g.get())) {
     return nullptr;
   }
-  // |DSA_set0_pqg| takes ownership.
+  // `DSA_set0_pqg` takes ownership.
   p.release();
   q.release();
   g.release();
@@ -153,7 +153,7 @@ static bssl::UniquePtr<DSA> GetFIPSDSA() {
       !DSA_set0_key(dsa.get(), pub_key.get(), priv_key.get())) {
     return nullptr;
   }
-  // |DSA_set0_key| takes ownership.
+  // `DSA_set0_key` takes ownership.
   pub_key.release();
   priv_key.release();
   return dsa;
@@ -208,7 +208,7 @@ TEST(DSATest, GenerateKeyTooLarge) {
   ASSERT_TRUE(BN_set_bit(large_p.get(), 0));
   ASSERT_TRUE(DSA_set0_pqg(dsa.get(), /*p=*/large_p.get(), /*q=*/nullptr,
                            /*g=*/nullptr));
-  large_p.release();  // |DSA_set0_pqg| takes ownership on success.
+  large_p.release();  // `DSA_set0_pqg` takes ownership on success.
 
   // Don't generate DSA keys if the group is too large.
   EXPECT_FALSE(DSA_generate_key(dsa.get()));
@@ -230,6 +230,47 @@ TEST(DSATest, Verify) {
                        sizeof(fips_sig_bad_length), dsa.get()));
   EXPECT_EQ(0, DSA_verify(0, fips_digest, sizeof(fips_digest), fips_sig_bad_r,
                           sizeof(fips_sig_bad_r), dsa.get()));
+}
+
+TEST(DSATest, CheckSignature) {
+  bssl::UniquePtr<DSA> dsa = GetFIPSDSA();
+  ASSERT_TRUE(dsa);
+
+  int valid;
+
+  // Valid signature
+  valid = 42;
+  EXPECT_EQ(1, DSA_check_signature(&valid, fips_digest, sizeof(fips_digest),
+                                   fips_sig, sizeof(fips_sig), dsa.get()));
+  EXPECT_EQ(1, valid);
+
+  // Bad r (invalid signature, not error)
+  valid = 42;
+  EXPECT_EQ(1, DSA_check_signature(&valid, fips_digest, sizeof(fips_digest),
+                                   fips_sig_bad_r, sizeof(fips_sig_bad_r),
+                                   dsa.get()));
+  EXPECT_EQ(0, valid);
+
+  // Negative signature (error)
+  valid = 42;
+  EXPECT_EQ(0, DSA_check_signature(&valid, fips_digest, sizeof(fips_digest),
+                                   fips_sig_negative, sizeof(fips_sig_negative),
+                                   dsa.get()));
+  EXPECT_EQ(0, valid);
+
+  // Extra data (error)
+  valid = 42;
+  EXPECT_EQ(0, DSA_check_signature(&valid, fips_digest, sizeof(fips_digest),
+                                   fips_sig_extra, sizeof(fips_sig_extra),
+                                   dsa.get()));
+  EXPECT_EQ(0, valid);
+
+  // Bad length (error)
+  valid = 42;
+  EXPECT_EQ(0, DSA_check_signature(&valid, fips_digest, sizeof(fips_digest),
+                                   fips_sig_bad_length,
+                                   sizeof(fips_sig_bad_length), dsa.get()));
+  EXPECT_EQ(0, valid);
 }
 
 TEST(DSATest, InvalidGroup) {
@@ -366,7 +407,7 @@ s2lmkAIcLIFUDFrbC2nViaB5ATM9ARKk6F2QwnCfGCyZ6A==
   bssl::UniquePtr<BIGNUM> g(BN_bin2bn(fips_g, sizeof(fips_g), nullptr));
   ASSERT_TRUE(g);
   ASSERT_TRUE(DSA_set0_pqg(dsa.get(), p.get(), q.get(), g.get()));
-  // |DSA_set0_pqg| takes ownership on success.
+  // `DSA_set0_pqg` takes ownership on success.
   p.release();
   q.release();
   g.release();
@@ -375,7 +416,7 @@ s2lmkAIcLIFUDFrbC2nViaB5ATM9ARKk6F2QwnCfGCyZ6A==
   bssl::UniquePtr<BIGNUM> priv_key(BN_bin2bn(fips_x, sizeof(fips_x), nullptr));
   ASSERT_TRUE(priv_key);
   ASSERT_TRUE(DSA_set0_key(dsa.get(), pub_key.get(), priv_key.get()));
-  // |DSA_set0_key| takes ownership on success.
+  // `DSA_set0_key` takes ownership on success.
   pub_key.release();
   priv_key.release();
 

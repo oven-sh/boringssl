@@ -29,14 +29,14 @@
 using namespace bssl;
 
 struct stack_st {
-  // num contains the number of valid pointers in |data|.
+  // num contains the number of valid pointers in `data`.
   size_t num;
   void **data;
-  // sorted is non-zero if the values pointed to by |data| are in ascending
-  // order, based on |comp|.
+  // sorted is non-zero if the values pointed to by `data` are in ascending
+  // order, based on `comp`.
   int sorted;
   // num_alloc contains the number of pointers allocated in the buffer pointed
-  // to by |data|, which may be larger than |num|.
+  // to by `data`, which may be larger than `num`.
   size_t num_alloc;
   // comp is an optional comparison function.
   OPENSSL_sk_cmp_func comp;
@@ -97,6 +97,7 @@ void *OPENSSL_sk_set(OPENSSL_STACK *sk, size_t i, void *value) {
   if (!sk || i >= sk->num) {
     return nullptr;
   }
+  sk->sorted = 0;
   return sk->data[i] = value;
 }
 
@@ -123,8 +124,8 @@ void OPENSSL_sk_pop_free_ex(OPENSSL_STACK *sk,
   OPENSSL_sk_free(sk);
 }
 
-// Historically, |sk_pop_free| called the function as |OPENSSL_sk_free_func|
-// directly. This is undefined in C. Some callers called |sk_pop_free| directly,
+// Historically, `sk_pop_free` called the function as `OPENSSL_sk_free_func`
+// directly. This is undefined in C. Some callers called `sk_pop_free` directly,
 // so we must maintain a compatibility version for now.
 static void call_free_func_legacy(OPENSSL_sk_free_func func, void *ptr) {
   func(ptr);
@@ -270,20 +271,20 @@ int OPENSSL_sk_find(const OPENSSL_STACK *sk, size_t *out_index, const void *p,
 
   // The stack is sorted, so binary search to find the element.
   //
-  // |lo| and |hi| maintain a half-open interval of where the answer may be. All
-  // indices such that |lo <= idx < hi| are candidates.
+  // `lo` and `hi` maintain a half-open interval of where the answer may be. All
+  // indices such that `lo <= idx < hi` are candidates.
   size_t lo = 0, hi = sk->num;
   while (lo < hi) {
-    // Bias |mid| towards |lo|. See the |r == 0| case below.
+    // Bias `mid` towards `lo`. See the `r == 0` case below.
     size_t mid = lo + (hi - lo - 1) / 2;
     assert(lo <= mid && mid < hi);
     int r = call_cmp_func(sk->comp, p, sk->data[mid]);
     if (r > 0) {
-      lo = mid + 1;  // |mid| is too low.
+      lo = mid + 1;  // `mid` is too low.
     } else if (r < 0) {
-      hi = mid;  // |mid| is too high.
+      hi = mid;  // `mid` is too high.
     } else {
-      // |mid| matches. However, this function returns the earliest match, so we
+      // `mid` matches. However, this function returns the earliest match, so we
       // can only return if the range has size one.
       if (hi - lo == 1) {
         if (out_index != nullptr) {
@@ -291,8 +292,8 @@ int OPENSSL_sk_find(const OPENSSL_STACK *sk, size_t *out_index, const void *p,
         }
         return 1;
       }
-      // The sample is biased towards |lo|. |mid| can only be |hi - 1| if
-      // |hi - lo| was one, so this makes forward progress.
+      // The sample is biased towards `lo`. `mid` can only be `hi - 1` if
+      // `hi - lo` was one, so this makes forward progress.
       assert(mid + 1 < hi);
       hi = mid + 1;
     }
@@ -359,10 +360,30 @@ void OPENSSL_sk_sort(OPENSSL_STACK *sk,
     return;
   }
 
-  std::stable_sort(sk->data, sk->data + sk->num, [&](void *a, void *b) {
+  std::sort(sk->data, sk->data + sk->num, [&](void *a, void *b) {
     return call_cmp_func(sk->comp, a, b) < 0;
   });
   sk->sorted = 1;
+}
+
+void OPENSSL_sk_sort_and_dedup(
+    OPENSSL_STACK *sk, OPENSSL_sk_call_cmp_func call_cmp_func,
+    OPENSSL_sk_call_free_func call_free_func, OPENSSL_sk_free_func free_func) {
+  OPENSSL_sk_sort(sk, call_cmp_func);
+  if (sk == nullptr || sk->comp == nullptr || sk->num <= 1) {
+    return;
+  }
+
+  size_t new_num = 1;
+  for (size_t i = 1; i < sk->num; i++) {
+    if (call_cmp_func(sk->comp, sk->data[i], sk->data[new_num - 1]) != 0) {
+      sk->data[new_num] = sk->data[i];
+      new_num++;
+    } else if (free_func != nullptr) {
+      call_free_func(free_func, sk->data[i]);
+    }
+  }
+  sk->num = new_num;
 }
 
 int OPENSSL_sk_is_sorted(const OPENSSL_STACK *sk) {

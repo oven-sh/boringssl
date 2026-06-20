@@ -68,7 +68,7 @@ enum ssl_client_hs_state_t {
   state_done,
 };
 
-// ssl_get_client_disabled sets |*out_mask_a| and |*out_mask_k| to masks of
+// ssl_get_client_disabled sets `*out_mask_a` and `*out_mask_k` to masks of
 // disabled algorithms.
 static void ssl_get_client_disabled(const SSL_HANDSHAKE *hs,
                                     uint32_t *out_mask_a,
@@ -270,7 +270,7 @@ static bool parse_server_version(const SSL_HANDSHAKE *hs, uint16_t *out_version,
   return true;
 }
 
-// should_offer_early_data returns |ssl_early_data_accepted| if |hs| should
+// should_offer_early_data returns `ssl_early_data_accepted` if `hs` should
 // offer early data, and some other reason code otherwise.
 static ssl_early_data_reason_t should_offer_early_data(
     const SSL_HANDSHAKE *hs) {
@@ -299,7 +299,7 @@ static ssl_early_data_reason_t should_offer_early_data(
 
   if (!ssl->session->early_alpn.empty()) {
     if (!ssl_is_alpn_protocol_allowed(hs, ssl->session->early_alpn)) {
-      // Avoid reporting a confusing value in |SSL_get0_alpn_selected|.
+      // Avoid reporting a confusing value in `SSL_get0_alpn_selected`.
       return ssl_early_data_alpn_mismatch;
     }
 
@@ -354,7 +354,7 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
 
   ssl_do_info_callback(ssl, SSL_CB_HANDSHAKE_START, 1);
-  // |session_reused| must be reset in case this is a renegotiation.
+  // `session_reused` must be reset in case this is a renegotiation.
   ssl->s3->session_reused = false;
 
   // Freeze the version range.
@@ -462,7 +462,7 @@ static enum ssl_hs_wait_t do_enter_early_data(SSL_HANDSHAKE *hs) {
   }
 
   // Stash the early data session and activate the early version. This must
-  // happen before |do_early_reverify_server_certificate|, so early connection
+  // happen before `do_early_reverify_server_certificate`, so early connection
   // properties are available to the callback. Note the early version may be
   // overwritten later by the final version.
   hs->early_session = UpRef(ssl->session);
@@ -641,9 +641,9 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     // soon as we detect this. The caller may use this error code to implement
     // the fallback described in RFC 8446 appendix D.3.
     //
-    // Disconnect early writes. This ensures subsequent |SSL_write| calls query
+    // Disconnect early writes. This ensures subsequent `SSL_write` calls query
     // the handshake which, in turn, will replay the error code rather than fail
-    // at the |write_shutdown| check. See https://crbug.com/1078515.
+    // at the `write_shutdown` check. See https://crbug.com/1078515.
     // TODO(davidben): Should all handshake errors do this? What about record
     // decryption failures?
     //
@@ -733,7 +733,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     // the session was only offered in ECH ClientHelloInner), this was the
     // TLS 1.3 compatibility mode session ID. As we know this is not a session
     // the server knows about, any server resuming it is in error. Reject the
-    // first connection deterministicly, rather than installing an invalid
+    // first connection deterministically, rather than installing an invalid
     // session into the session cache. https://crbug.com/796910
     if (ssl->session == nullptr || ssl->s3->ech_status == ssl_ech_rejected) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_SERVER_ECHOED_INVALID_SESSION_ID);
@@ -770,7 +770,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
 
     // Save the session ID from the server. This may be empty if the session
     // isn't resumable, or if we'll receive a session ticket later. The
-    // ServerHello parser ensures |server_hello.session_id| is within bounds.
+    // ServerHello parser ensures `server_hello.session_id` is within bounds.
     hs->new_session->session_id.CopyFrom(server_hello.session_id);
     hs->new_session->cipher = hs->new_cipher;
   }
@@ -871,7 +871,7 @@ static enum ssl_hs_wait_t do_read_server_certificate(SSL_HANDSHAKE *hs) {
     hs->new_session->peer_cert_type = TLSEXT_cert_type_x509;
     parse_ok =
         ssl_parse_cert_chain(&alert, &hs->new_session->certs, &hs->peer_pubkey,
-                             nullptr, &body, ssl->ctx->pool);
+                             nullptr, &body, ssl->ctx->pool.get());
   }
 
   if (!parse_ok) {
@@ -937,7 +937,7 @@ static enum ssl_hs_wait_t do_read_certificate_status(SSL_HANDSHAKE *hs) {
   }
 
   hs->new_session->ocsp_response.reset(
-      CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool));
+      CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool.get()));
   if (hs->new_session->ocsp_response == nullptr) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
     return ssl_hs_error;
@@ -1083,8 +1083,8 @@ static enum ssl_hs_wait_t do_read_server_key_exchange(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  // At this point, |server_key_exchange| contains the signature, if any, while
-  // |msg.body| contains the entire message. From that, derive a CBS containing
+  // At this point, `server_key_exchange` contains the signature, if any, while
+  // `msg.body` contains the entire message. From that, derive a CBS containing
   // just the parameter.
   CBS parameter;
   CBS_init(&parameter, CBS_data(&msg.body),
@@ -1113,7 +1113,7 @@ static enum ssl_hs_wait_t do_read_server_key_exchange(SSL_HANDSHAKE *hs) {
       return ssl_hs_error;
     }
 
-    // The last field in |server_key_exchange| is the signature.
+    // The last field in `server_key_exchange` is the signature.
     CBS signature;
     if (!CBS_get_u16_length_prefixed(&server_key_exchange, &signature) ||
         CBS_len(&server_key_exchange) != 0) {
@@ -1264,7 +1264,7 @@ static enum ssl_hs_wait_t do_read_server_hello_done(SSL_HANDSHAKE *hs) {
   return ssl_hs_ok;
 }
 
-static bool check_credential(SSL_HANDSHAKE *hs, const SSL_CREDENTIAL *cred,
+static bool check_credential(SSL_HANDSHAKE *hs, const SSLCredential *cred,
                              uint16_t *out_sigalg) {
   bool cert_type_ok = false;
   if (hs->client_cert_type == TLSEXT_cert_type_x509) {
@@ -1332,14 +1332,14 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
     }
   }
 
-  Array<SSL_CREDENTIAL *> creds;
+  Array<SSLCredential *> creds;
   if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
 
   // Select the credential, if any, to use.
   bool may_proceed_anonymously = true;
-  for (SSL_CREDENTIAL *cred : creds) {
+  for (SSLCredential *cred : creds) {
     if (!cred->UsesPrivateKey()) {
       // Non-certificate credentials (e.g. PSKs) do not participate in deciding
       // whether to error or proceed anonymously.
@@ -1400,23 +1400,13 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
     CBS leaf_cbs;
     CRYPTO_BUFFER_init_CBS(leaf, &leaf_cbs);
 
-    // Check the key usage matches the cipher suite. We do this unconditionally
-    // for non-RSA certificates. In particular, it's needed to distinguish ECDH
-    // certificates, which we do not support, from ECDSA certificates.
-    // Historically, we have not checked RSA key usages, so it is controlled by
-    // a flag for now. See https://crbug.com/795089.
-    // Key usage is only checked for X.509 certs. (RPKs have no keyUsage to
-    // enforce.)
+    // Check the key usage matches the cipher suite. Key usage is only checked
+    // for X.509 certs. (RPKs have no keyUsage to enforce.)
     ssl_key_usage_t intended_use = (alg_k & SSL_kRSA)
                                        ? key_usage_encipherment
                                        : key_usage_digital_signature;
     if (!ssl_cert_check_key_usage(&leaf_cbs, intended_use)) {
-      if (hs->config->enforce_rsa_key_usage ||
-          EVP_PKEY_id(hs->peer_pubkey.get()) != EVP_PKEY_RSA) {
-        return ssl_hs_error;
-      }
-      ERR_clear_error();
-      ssl->s3->was_key_usage_invalid = true;
+      return ssl_hs_error;
     }
   }
 
@@ -1456,7 +1446,7 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
     }
   }
 
-  // Depending on the key exchange method, compute |pms|.
+  // Depending on the key exchange method, compute `pms`.
   if (alg_k & SSL_kRSA) {
     RSA *rsa = EVP_PKEY_get0_RSA(hs->peer_pubkey.get());
     if (rsa == nullptr) {
@@ -1747,8 +1737,8 @@ static enum ssl_hs_wait_t do_read_session_ticket(SSL_HANDSHAKE *hs) {
 
   if (CBS_len(&ticket) == 0) {
     // RFC 5077 allows a server to change its mind and send no ticket after
-    // negotiating the extension. The value of |ticket_expected| is checked in
-    // |ssl_update_cache| so is cleared here to avoid an unnecessary update.
+    // negotiating the extension. The value of `ticket_expected` is checked in
+    // `ssl_update_cache` so is cleared here to avoid an unnecessary update.
     hs->ticket_expected = false;
     ssl->method->next_message(ssl);
     hs->state = state_process_change_cipher_spec;
@@ -1767,7 +1757,7 @@ static enum ssl_hs_wait_t do_read_session_ticket(SSL_HANDSHAKE *hs) {
     }
   }
 
-  // |ticket_lifetime_hint| is measured from when the ticket was issued.
+  // `ticket_lifetime_hint` is measured from when the ticket was issued.
   ssl_session_rebase_time(ssl, hs->new_session.get());
 
   if (!hs->new_session->ticket.CopyFrom(ticket)) {
@@ -1823,15 +1813,15 @@ static enum ssl_hs_wait_t do_finish_client_handshake(SSL_HANDSHAKE *hs) {
 
   ssl->method->on_handshake_complete(ssl);
 
-  // Note TLS 1.2 resumptions with ticket renewal have both |ssl->session| (the
-  // resumed session) and |hs->new_session| (the session with the new ticket).
+  // Note TLS 1.2 resumptions with ticket renewal have both `ssl->session` (the
+  // resumed session) and `hs->new_session` (the session with the new ticket).
   bool has_new_session = hs->new_session != nullptr;
   if (has_new_session) {
     // When False Start is enabled, the handshake reports completion early. The
-    // caller may then have passed the (then unresuable) |hs->new_session| to
-    // another thread via |SSL_get0_session| for resumption. To avoid potential
+    // caller may then have passed the (then unresuable) `hs->new_session` to
+    // another thread via `SSL_get0_session` for resumption. To avoid potential
     // race conditions in such callers, we duplicate the session before
-    // clearing |not_resumable|.
+    // clearing `not_resumable`.
     ssl->s3->established_session =
         SSL_SESSION_dup(hs->new_session.get(), SSL_SESSION_DUP_ALL);
     if (!ssl->s3->established_session) {

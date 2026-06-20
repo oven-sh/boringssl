@@ -170,7 +170,7 @@ pub enum ParsedPrivateKey {
 }
 
 impl ParsedPrivateKey {
-    /// Parses an ECPrivateKey structure froma DER encoded structure per [RFC 5915],
+    /// Parses an ECPrivateKey structure from a DER encoded structure per [RFC 5915],
     /// whose curve is specified by the `ECParameters`.
     ///
     /// Unless the curve group is one of the variants of [`Group`], this method returns [`None`].
@@ -242,7 +242,7 @@ impl<C: ec::Curve> PrivateKey<C> {
     // Caller must make sure that the group of the key matches `C`,
     // or else it panics.
     pub(crate) fn from_ec_key(key: ec::Key) -> Self {
-        assert_eq!(key.get_group().unwrap(), C::group());
+        assert_eq!(key.get_group(), Some(C::group()));
         Self {
             key,
             marker: PhantomData,

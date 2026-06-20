@@ -386,8 +386,29 @@ TEST(DigestTest, TransformBlocks) {
   SHA256_CTX ctx2;
   SHA256_Init(&ctx2);
   SHA256_TransformBlocks(ctx2.h, blocks, sizeof(blocks) / SHA256_CBLOCK);
+  SHA256_TransformBlocks(ctx2.h, nullptr, 0);
 
   EXPECT_TRUE(0 == OPENSSL_memcmp(ctx1.h, ctx2.h, sizeof(ctx1.h)));
+}
+
+// |EVP_MD_CTX| is a caller-allocatable C struct. Some APIs are required to work
+// when the struct is uninitialized.
+TEST(DigestTest, Uninitialized) {
+  // |EVP_MD_CTX_init| initializes its input from an arbitrary state.
+  {
+    EVP_MD_CTX ctx;
+    EVP_MD_CTX_init(&ctx);
+    EVP_DigestInit_ex(&ctx, EVP_sha256(), nullptr);
+    EVP_MD_CTX_cleanup(&ctx);
+  }
+
+  // |EVP_DigestInit| internally calls |EVP_MD_CTX_init| and thus initializes it
+  // from an arbitrary state.
+  {
+    EVP_MD_CTX ctx;
+    EVP_DigestInit(&ctx, EVP_sha256());
+    EVP_MD_CTX_cleanup(&ctx);
+  }
 }
 
 }  // namespace

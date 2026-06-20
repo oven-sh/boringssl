@@ -106,10 +106,13 @@ struct TestConfig {
   bool no_tls11 = false;
   bool no_tls1 = false;
   bool no_ticket = false;
+  bool no_legacy_server_connect = false;
   std::vector<uint8_t> expect_channel_id;
   bool enable_channel_id = false;
   std::string send_channel_id;
   bool shim_writes_first = false;
+  std::string shim_initial_write = "hello";
+  int repeat_shim_initial_write = 1;
   std::string host_name;
   std::string advertise_alpn;
   std::string expect_alpn;
@@ -223,8 +226,6 @@ struct TestConfig {
   bool install_cert_compression_algs = false;
   int install_one_cert_compression_alg = 0;
   bool reverify_on_resume = false;
-  bool ignore_rsa_key_usage = false;
-  bool expect_key_usage_invalid = false;
   bool is_handshaker_supported = false;
   bool handshaker_resume = false;
   std::string handshaker_path;
@@ -247,6 +248,7 @@ struct TestConfig {
   std::optional<bool> expect_peer_match_trust_anchor;
   std::optional<std::vector<uint8_t>> expect_peer_available_trust_anchors;
   std::optional<std::vector<uint8_t>> requested_trust_anchors;
+  std::vector<uint8_t> available_trust_anchors;
   std::optional<int> expect_selected_credential;
   std::vector<CredentialConfig> credentials;
   int private_key_delay_ms = 0;
@@ -257,6 +259,9 @@ struct TestConfig {
   std::vector<uint8_t> available_client_cert_types;
   std::optional<uint8_t> expect_peer_certificate_type;
   std::vector<uint8_t> expect_peer_rpk_sha256;
+  std::optional<uint16_t> request_server_padding;
+  bool expect_server_sent_requested_padding = false;
+  bool server_supports_padding = false;
 
   std::vector<const char *> handshaker_args;
 

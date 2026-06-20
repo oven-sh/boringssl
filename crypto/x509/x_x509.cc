@@ -134,7 +134,7 @@ X509 *X509_parse_with_algorithms(CRYPTO_BUFFER *buf,
       return nullptr;
     }
     // The version must be one of v1(0), v2(1), or v3(2).
-    // TODO(https://crbug.com/42290225): Also reject |X509_VERSION_1|. v1 is
+    // TODO(https://crbug.com/42290225): Also reject `X509_VERSION_1`. v1 is
     // DEFAULT, so DER requires it be omitted.
     if (version != X509_VERSION_1 && version != X509_VERSION_2 &&
         version != X509_VERSION_3) {
@@ -227,8 +227,8 @@ static UniquePtr<X509> x509_parse(CBS *cbs) {
 int bssl::x509_marshal_tbs_cert(CBB *cbb, const X509 *x509) {
   auto *impl = FromOpaque(x509);
   if (impl->buf != nullptr) {
-    // Replay the saved TBSCertificate from the |CRYPTO_BUFFER|, to verify
-    // exactly what we parsed. The |CRYPTO_BUFFER| contains the full
+    // Replay the saved TBSCertificate from the `CRYPTO_BUFFER`, to verify
+    // exactly what we parsed. The `CRYPTO_BUFFER` contains the full
     // Certificate, so we need to find the TBSCertificate portion.
     CBS cbs, cert, tbs;
     CRYPTO_BUFFER_init_CBS(impl->buf, &cbs);
@@ -304,40 +304,8 @@ int i2d_X509(const X509 *x509, uint8_t **outp) {
       [&](CBB *cbb) -> bool { return x509_marshal(cbb, x509); });
 }
 
-static int x509_new_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {
-  *pval = (ASN1_VALUE *)X509_new();
-  return *pval != nullptr;
-}
-
-static void x509_free_cb(ASN1_VALUE **pval, const ASN1_ITEM *it) {
-  X509_free((X509 *)*pval);
-  *pval = nullptr;
-}
-
-static int x509_parse_cb(ASN1_VALUE **pval, CBS *cbs, const ASN1_ITEM *it,
-                         int opt) {
-  if (opt && !CBS_peek_asn1_tag(cbs, CBS_ASN1_SEQUENCE)) {
-    return 1;
-  }
-
-  UniquePtr<X509> ret = x509_parse(cbs);
-  if (ret == nullptr) {
-    return 0;
-  }
-
-  X509_free((X509 *)*pval);
-  *pval = (ASN1_VALUE *)ret.release();
-  return 1;
-}
-
-static int x509_i2d_cb(ASN1_VALUE **pval, unsigned char **out,
-                       const ASN1_ITEM *it) {
-  return i2d_X509((X509 *)*pval, out);
-}
-
-static const ASN1_EXTERN_FUNCS x509_extern_funcs = {x509_new_cb, x509_free_cb,
-                                                    x509_parse_cb, x509_i2d_cb};
-IMPLEMENT_EXTERN_ASN1(X509, x509_extern_funcs)
+IMPLEMENT_EXTERN_ASN1_PARSE_NEW(X509, X509_new, X509_free, CBS_ASN1_SEQUENCE,
+                                x509_parse, x509_marshal)
 
 X509 *X509_dup(const X509 *x509) {
   uint8_t *der = nullptr;
@@ -356,6 +324,13 @@ int X509_up_ref(X509 *x) {
   auto *impl = FromOpaque(x);
   impl->UpRefInternal();
   return 1;
+}
+
+X509 *X509_dup_ref(const X509 *x) {
+  auto *x_ref = const_cast<X509 *>(x);
+  // We know that this call always returns one.
+  X509_up_ref(x_ref);
+  return x_ref;
 }
 
 int X509_get_ex_new_index(long argl, void *argp, CRYPTO_EX_unused *unused,
@@ -500,13 +475,7 @@ int X509_set1_signature_algo(X509 *x509, const X509_ALGOR *algo) {
 }
 
 int X509_set1_signature_value(X509 *x509, const uint8_t *sig, size_t sig_len) {
-  auto *impl = FromOpaque(x509);
-  if (!ASN1_STRING_set(&impl->signature, sig, sig_len)) {
-    return 0;
-  }
-  impl->signature.flags &= ~(ASN1_STRING_FLAG_BITS_LEFT | 0x07);
-  impl->signature.flags |= ASN1_STRING_FLAG_BITS_LEFT;
-  return 1;
+  return ASN1_STRING_set(&FromOpaque(x509)->signature, sig, sig_len);
 }
 
 void X509_get0_signature(const ASN1_BIT_STRING **psig, const X509_ALGOR **palg,

@@ -17,8 +17,8 @@
 #include <openssl/asn1.h>
 #include <openssl/digest.h>
 #include <openssl/err.h>
-#include <openssl/mem.h>
 #include <openssl/md5.h>
+#include <openssl/mem.h>
 #include <openssl/obj.h>
 #include <openssl/sha.h>
 #include <openssl/stack.h>
@@ -101,9 +101,9 @@ uint32_t X509_subject_name_hash_old(const X509 *x) {
 int X509_cmp(const X509 *a, const X509 *b) {
   const auto *a_impl = FromOpaque(a);
   const auto *b_impl = FromOpaque(b);
-  // Fill in the |cert_hash| fields.
+  // Fill in the `cert_hash` fields.
   //
-  // TODO(davidben): This may fail, in which case the the hash will be all
+  // TODO(davidben): This may fail, in which case the hash will be all
   // zeros. This produces a consistent comparison (failures are sticky), but
   // not a good one. OpenSSL now returns -2, but this is not a consistent
   // comparison and may cause misbehaving sorts by transitivity. For now, we
@@ -241,12 +241,5 @@ int X509_check_private_key(const X509 *x, const EVP_PKEY *k) {
 // count but it has the same effect by duping the STACK and upping the ref of
 // each X509 structure.
 STACK_OF(X509) *X509_chain_up_ref(STACK_OF(X509) *chain) {
-  STACK_OF(X509) *ret = sk_X509_dup(chain);
-  if (ret == nullptr) {
-    return nullptr;
-  }
-  for (size_t i = 0; i < sk_X509_num(ret); i++) {
-    X509_up_ref(sk_X509_value(ret, i));
-  }
-  return ret;
+  return sk_X509_deep_copy(chain, X509_dup_ref, X509_free);
 }

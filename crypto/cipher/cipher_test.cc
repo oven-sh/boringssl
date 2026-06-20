@@ -141,7 +141,7 @@ static const char *APIToString(API api) {
   abort();
 }
 
-// MaybeCopyCipherContext, if |copy| is true, replaces |*ctx| with a, hopefully
+// MaybeCopyCipherContext, if `copy` is true, replaces `*ctx` with a, hopefully
 // equivalent, copy of it.
 static bool MaybeCopyCipherContext(bool copy, UniquePtr<EVP_CIPHER_CTX> *ctx) {
   if (!copy) {
@@ -170,7 +170,7 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
   Span<const uint8_t> expected = encrypt ? ciphertext : plaintext;
   bool is_aead = EVP_CIPHER_mode(cipher) == EVP_CIPH_GCM_MODE;
 
-  // Some |EVP_CIPHER|s take a variable-length key, and need to first be
+  // Some `EVP_CIPHER`s take a variable-length key, and need to first be
   // configured with the key length, which requires configuring the cipher.
   UniquePtr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new());
   ASSERT_TRUE(ctx);
@@ -190,7 +190,7 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
 
   // Configure the IV to run the actual operation. Callers that wish to use a
   // key for multiple, potentially concurrent, operations will likely copy at
-  // this point. The |EVP_CIPHER_CTX| API uses the same type to represent a
+  // this point. The `EVP_CIPHER_CTX` API uses the same type to represent a
   // pre-computed key schedule and a streaming operation.
   ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
   if (is_aead) {
@@ -211,9 +211,9 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
                                     const_cast<uint8_t *>(tag.data())));
   }
 
-  // Note: the deprecated |EVP_CIPHER|-based AEAD API is sensitive to whether
-  // parameters are NULL, so it is important to skip the |in| and |aad|
-  // |EVP_CipherUpdate| calls when empty.
+  // Note: the deprecated `EVP_CIPHER`-based AEAD API is sensitive to whether
+  // parameters are NULL, so it is important to skip the `in` and `aad`
+  // `EVP_CipherUpdate` calls when empty.
   while (!aad.empty()) {
     size_t todo =
         chunk_size == 0 ? aad.size() : std::min(aad.size(), chunk_size);
@@ -229,7 +229,7 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
         int len;
         ASSERT_TRUE(
             EVP_CipherUpdate(ctx.get(), nullptr, &len, aad.data(), todo));
-        // Although it doesn't output anything, |EVP_CipherUpdate| should claim
+        // Although it doesn't output anything, `EVP_CipherUpdate` should claim
         // to output the input length.
         EXPECT_EQ(len, static_cast<int>(todo));
         break;
@@ -262,10 +262,11 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
     size_t todo = chunk_size == 0 ? in.size() : std::min(in.size(), chunk_size);
     EXPECT_LE(todo, static_cast<size_t>(INT_MAX));
     ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+    size_t max = EVP_CIPHER_CTX_max_next_update(ctx.get(), todo);
     switch (api) {
       case API::kCipher:
-        // |EVP_Cipher| sometimes returns the number of bytes written, or -1 on
-        // error, and sometimes 1 or 0, implicitly writing |in_len| bytes.
+        // `EVP_Cipher` sometimes returns the number of bytes written, or -1 on
+        // error, and sometimes 1 or 0, implicitly writing `in_len` bytes.
         if (is_custom_cipher) {
           len = EVP_Cipher(ctx.get(), result.data() + total, in.data(), todo);
         } else {
@@ -288,6 +289,9 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
     ASSERT_GE(len, 0);
+    // `EVP_CIPHER_CTX_max_next_update` is, for all currently-implemented
+    // ciphers, exact.
+    EXPECT_EQ(static_cast<size_t>(len), max);
     total += static_cast<size_t>(len);
     in = in.subspan(todo);
   }
@@ -295,13 +299,13 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
     switch (api) {
       case API::kCipher:
         // Only the "custom cipher" return value convention can report failures.
-        // Passing all nulls should act like |EVP_CipherFinal_ex|.
+        // Passing all nulls should act like `EVP_CipherFinal_ex`.
         ASSERT_TRUE(is_custom_cipher);
         EXPECT_EQ(-1, EVP_Cipher(ctx.get(), nullptr, nullptr, 0));
         break;
       case API::kSized:
         // Invalid padding and invalid tags all appear as a failed
-        // |EVP_CipherFinal_ex|.
+        // `EVP_CipherFinal_ex`.
         EXPECT_FALSE(
             EVP_CipherFinal_ex(ctx.get(), result.data() + total, &len));
         break;
@@ -314,10 +318,12 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
   } else {
+    ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+    size_t max = EVP_CIPHER_CTX_max_final(ctx.get());
     switch (api) {
       case API::kCipher:
         if (is_custom_cipher) {
-          // Only the "custom cipher" convention has an |EVP_CipherFinal_ex|
+          // Only the "custom cipher" convention has an `EVP_CipherFinal_ex`
           // equivalent.
           len = EVP_Cipher(ctx.get(), nullptr, nullptr, 0);
         } else {
@@ -336,6 +342,13 @@ static void TestCipherAPI(const EVP_CIPHER *cipher, Operation op, bool padding,
       }
     }
     ASSERT_GE(len, 0);
+    // `EVP_CIPHER_CTX_max_final` is, for currently-implemented ciphers, exact
+    // for all but padded decrypt.
+    if (op == Operation::kDecrypt && padding) {
+      EXPECT_LE(static_cast<size_t>(len), max);
+    } else {
+      EXPECT_EQ(static_cast<size_t>(len), max);
+    }
     total += static_cast<size_t>(len);
     result.resize(total);
     EXPECT_EQ(Bytes(expected), Bytes(result));
@@ -412,7 +425,7 @@ static void TestLowLevelAPI(const EVP_CIPHER *cipher, Operation op,
     }
     EXPECT_EQ(Bytes(expected), Bytes(result));
   } else if (is_cbc && chunk_size % AES_BLOCK_SIZE == 0) {
-    // Note |AES_cbc_encrypt| requires block-aligned chunks.
+    // Note `AES_cbc_encrypt` requires block-aligned chunks.
     if (chunk_size == 0) {
       AES_cbc_encrypt(in.data(), out.data(), in.size(), &aes, ivec, encrypt);
     } else {
@@ -472,7 +485,7 @@ static void TestSizedAPIRangeChecks(const EVP_CIPHER *cipher, Operation op,
   Span<const uint8_t> expected = encrypt ? ciphertext : plaintext;
   bool is_aead = EVP_CIPHER_mode(cipher) == EVP_CIPH_GCM_MODE;
 
-  // Some |EVP_CIPHER|s take a variable-length key, and need to first be
+  // Some `EVP_CIPHER`s take a variable-length key, and need to first be
   // configured with the key length, which requires configuring the cipher.
   UniquePtr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new());
   ASSERT_TRUE(ctx);
@@ -492,7 +505,7 @@ static void TestSizedAPIRangeChecks(const EVP_CIPHER *cipher, Operation op,
 
   // Configure the IV to run the actual operation. Callers that wish to use
   // a key for multiple, potentially concurrent, operations will likely copy
-  // at this point. The |EVP_CIPHER_CTX| API uses the same type to represent
+  // at this point. The `EVP_CIPHER_CTX` API uses the same type to represent
   // a pre-computed key schedule and a streaming operation.
   if (is_aead) {
     ASSERT_LE(iv.size(), size_t{INT_MAX});
@@ -771,7 +784,7 @@ TEST(CipherTest, SHA1WithSecretSuffix) {
   // length wraps to the next block.
   static_assert(kSkip < 8, "kSkip is too large");
 
-  // |EVP_sha1_final_with_secret_suffix| is sensitive to the public length of
+  // `EVP_sha1_final_with_secret_suffix` is sensitive to the public length of
   // the partial block previously hashed. In TLS, this is the HMAC prefix, the
   // header, and the public minimum padding length.
   for (size_t prefix = 0; prefix < SHA_CBLOCK; prefix += kSkip) {
@@ -818,7 +831,7 @@ TEST(CipherTest, SHA256WithSecretSuffix) {
   // length wraps to the next block.
   static_assert(kSkip < 8, "kSkip is too large");
 
-  // |EVP_sha256_final_with_secret_suffix| is sensitive to the public length of
+  // `EVP_sha256_final_with_secret_suffix` is sensitive to the public length of
   // the partial block previously hashed. In TLS, this is the HMAC prefix, the
   // header, and the public minimum padding length.
   for (size_t prefix = 0; prefix < SHA256_CBLOCK; prefix += kSkip) {
@@ -927,7 +940,7 @@ TEST(CipherTest, GCMIncrementingIV) {
 
   {
     // Passing in a fixed IV length of -1 sets the whole IV, but then configures
-    // |EVP_CIPHER_CTX| to increment the bottom 8 bytes of the IV.
+    // `EVP_CIPHER_CTX` to increment the bottom 8 bytes of the IV.
     static const uint8_t kIV1[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     static const uint8_t kIV2[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13};
     static const uint8_t kIV3[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14};
@@ -1162,7 +1175,7 @@ TEST(CipherTest, GCMIncrementingIV) {
     ASSERT_NO_FATAL_FAILURE(expect_iv(ctx.get(), iv, /*enc=*/true));
   }
 
-    {
+  {
     // Same as above, but with a larger IV.
     const uint8_t kFixedIV[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     ScopedEVP_CIPHER_CTX ctx;
@@ -1189,7 +1202,218 @@ TEST(CipherTest, GCMIncrementingIV) {
     EXPECT_EQ(CRYPTO_load_u64_be(counter2), CRYPTO_load_u64_be(counter) + 1);
     memcpy(iv + sizeof(kFixedIV), counter2, sizeof(counter2));
     ASSERT_NO_FATAL_FAILURE(expect_iv(ctx.get(), iv, /*enc=*/true));
+  }
+
+  {
+    // If GCM IV length is less than 8, SET_IV_FIXED(-1) restores the whole IV,
+    // but a subsequent EVP_CTRL_GCM_IV_GEN call must fail rather than
+    // underflow.
+    const uint8_t kIV[7] = {1, 2, 3, 4, 5, 6, 7};
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    ASSERT_TRUE(
+        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, 7, nullptr));
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IV_FIXED, -1,
+                                    const_cast<uint8_t *>(kIV)));
+    uint8_t counter[8];
+    EXPECT_FALSE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_IV_GEN,
+                                     sizeof(counter), counter));
+  }
+
+  {
+    // EVP_CTRL_GCM_SET_IV_INV should not overflow the IV.
+    const uint8_t kFixedIV[4] = {1, 2, 3, 4};
+    const uint8_t kIVInvTooLarge[13] = {1, 2, 3,  4,  5,  6, 7,
+                                        8, 9, 10, 11, 12, 13};
+
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_DecryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IV_FIXED, 4,
+                                    const_cast<uint8_t *>(kFixedIV)));
+    // Negative lengths are invalid.
+    EXPECT_FALSE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IV_INV, -1,
+                                     const_cast<uint8_t *>(kIVInvTooLarge)));
+    // Overflows the IV.
+    EXPECT_FALSE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IV_INV, 13,
+                                     const_cast<uint8_t *>(kIVInvTooLarge)));
+  }
+}
+
+TEST(CipherTest, SetIVLengthResets) {
+  const EVP_CIPHER *kCipher = EVP_aes_128_gcm();
+  static const uint8_t kKey[16] = {};
+  static const uint8_t kIV[12] = {};
+
+  {
+    // Set an IV...
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr,
+                                   /*key=*/nullptr, kIV));
+    // But then change the length, invalidating the IV.
+    ASSERT_TRUE(
+        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, 64, nullptr));
+    // Configuring the key should not be enough...
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), /*cipher=*/nullptr,
+                                   /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    // ...to perform any operation.
+    uint8_t in[1] = {0};
+    uint8_t out[1];
+    int out_len;
+    EXPECT_FALSE(EVP_EncryptUpdate(ctx.get(), out, &out_len, in, sizeof(in)));
+  }
+
+  {
+    // Changing IV length should also reset the unusual IV generation feature.
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IV_FIXED, 4,
+                                    const_cast<uint8_t *>(kIV)));
+    ASSERT_TRUE(
+        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, 64, nullptr));
+    uint8_t counter[8];
+    EXPECT_FALSE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_IV_GEN,
+                                     sizeof(counter), counter));
+  }
+
+  {
+    // Set an IV...
+    ScopedEVP_CIPHER_CTX ctx;
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), kCipher, /*impl=*/nullptr,
+                                   /*key=*/nullptr, kIV));
+    // ...and then perform a no-op IV length change.
+    ASSERT_TRUE(
+        EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr));
+    // This time the IV is left alone. Some applications expect this to work.
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), /*cipher=*/nullptr,
+                                   /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    uint8_t in[1] = {0};
+    uint8_t out[1];
+    int out_len;
+    EXPECT_TRUE(EVP_EncryptUpdate(ctx.get(), out, &out_len, in, sizeof(in)));
+  }
+}
+
+// EVP_CIPHER's buffer management for AES-GCM's variable-length IV is messy.
+// Ensure it is correct even if the caller encrypts in a contrived way.
+TEST(CipherTest, GCMRepeatedlyChangeIVLength) {
+  const uint8_t kKey[16] = {0, 1, 2,  3,  4,  5,  6,  7,
+                            8, 9, 10, 11, 12, 13, 14, 15};
+  const uint8_t kInput[] = {'h', 'e', 'l', 'l', 'o'};
+  const std::vector<int> kLengthSequences[] = {
+      // Keep making it bigger, all allocated.
+      {64, 128, 256},
+      // Keep making it bigger, all within the built-in buffer.
+      {12, 13, 14, 15, 16},
+      // Make it smaller, all allocated.
+      {256, 128, 64},
+      // Make it smaller, all within the built-in buffer.
+      {12, 11, 10, 9},
+      // As we go down and back up, don't lose track of which buffer it is.
+      {256, 128, 64, 32, 16, 8, 4, 8, 16},
+      {256, 128, 64, 32, 16, 8, 4, 8, 16, 32, 64, 128},
+  };
+  for (const auto &length_seq : kLengthSequences) {
+    SCOPED_TRACE(testing::PrintToString(length_seq));
+
+    // Compute the expected output.
+    UniquePtr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new());
+    ASSERT_TRUE(ctx);
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_gcm(),
+                                   /*impl=*/nullptr, kKey,
+                                   /*iv=*/nullptr));
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN,
+                                    length_seq.back(), nullptr));
+    std::vector<uint8_t> iv(length_seq.back());
+    ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), /*cipher=*/nullptr,
+                                   /*impl=*/nullptr, /*key=*/nullptr,
+                                   iv.data()));
+    uint8_t expected_ciphertext[sizeof(kInput)];
+    size_t len;
+    ASSERT_TRUE(EVP_EncryptUpdate_ex(ctx.get(), expected_ciphertext, &len,
+                                     sizeof(expected_ciphertext), kInput,
+                                     sizeof(kInput)));
+    ASSERT_EQ(len, sizeof(expected_ciphertext));
+    ASSERT_TRUE(EVP_EncryptFinal_ex2(ctx.get(), nullptr, &len, 0));
+    uint8_t expected_tag[12];
+    ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG,
+                                    sizeof(expected_tag), expected_tag));
+
+    for (bool copy : {false, true}) {
+      SCOPED_TRACE(copy);
+
+      ctx.reset(EVP_CIPHER_CTX_new());
+      ASSERT_TRUE(ctx);
+      ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_gcm(),
+                                     /*impl=*/nullptr, kKey,
+                                     /*iv=*/nullptr));
+      ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+      // Simulate a caller that cannot make up its mind about the IV length.
+      for (int iv_len : length_seq) {
+        ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_SET_IVLEN,
+                                        iv_len, nullptr));
+        ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+      }
+      // Finish the encryption.
+      ASSERT_TRUE(EVP_EncryptInit_ex(ctx.get(), /*cipher=*/nullptr,
+                                     /*impl=*/nullptr, /*key=*/nullptr,
+                                     iv.data()));
+      ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+      uint8_t ciphertext[sizeof(kInput)];
+      ASSERT_TRUE(EVP_EncryptUpdate_ex(ctx.get(), ciphertext, &len,
+                                       sizeof(ciphertext), kInput,
+                                       sizeof(kInput)));
+      ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+      ASSERT_EQ(len, sizeof(ciphertext));
+      ASSERT_TRUE(EVP_EncryptFinal_ex2(ctx.get(), nullptr, &len, 0));
+      ASSERT_TRUE(MaybeCopyCipherContext(copy, &ctx));
+      uint8_t tag[12];
+      ASSERT_TRUE(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_AEAD_GET_TAG,
+                                      sizeof(tag), tag));
+
+      // The answer should have been the same.
+      EXPECT_EQ(Bytes(ciphertext), Bytes(expected_ciphertext));
+      EXPECT_EQ(Bytes(tag), Bytes(expected_tag));
     }
+  }
+}
+
+TEST(CipherTest, RC2KeyLengthOverflow) {
+  const EVP_CIPHER *cipher = EVP_rc2_cbc();
+  UniquePtr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new());
+  ASSERT_TRUE(ctx);
+
+  ASSERT_TRUE(EVP_DecryptInit_ex(ctx.get(), cipher, nullptr, nullptr, nullptr));
+
+  if (EVP_CIPHER_CTX_set_key_length(ctx.get(), 0x80000000)) {
+    std::vector<uint8_t> key(128, 0);
+    // This should not crash.
+    EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nullptr);
+  }
+}
+
+// |EVP_CIPHER_CTX| is a caller-allocatable C struct. Some APIs are required to
+// work when the struct is uninitialized.
+TEST(CipherTest, Uninitialized) {
+  // |EVP_CIPHER_CTX_init| initializes its input from an arbitrary state.
+  {
+    EVP_CIPHER_CTX ctx;
+    EVP_CIPHER_CTX_init(&ctx);
+    EVP_CipherInit_ex(&ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr, -1);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+  }
+
+  // |EVP_CipherInit| internally calls |EVP_CIPHER_CTX_init| and thus
+  // initializes it from an arbitrary state.
+  {
+    EVP_CIPHER_CTX ctx;
+    EVP_CipherInit(&ctx, EVP_aes_128_gcm(), nullptr, nullptr, -1);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+  }
 }
 
 }  // namespace

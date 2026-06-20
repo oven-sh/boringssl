@@ -45,6 +45,7 @@ import (
 	"time"
 
 	"boringssl.googlesource.com/boringssl.git/util/testresult"
+	"filippo.io/mldsa"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -139,6 +140,10 @@ var (
 
 	ed25519Key ed25519.PrivateKey
 
+	mldsa44Key *mldsa.PrivateKey
+	mldsa65Key *mldsa.PrivateKey
+	mldsa87Key *mldsa.PrivateKey
+
 	channelIDKey ecdsa.PrivateKey
 )
 
@@ -187,6 +192,21 @@ func initKeys() {
 	}
 	ed25519Key = k.(ed25519.PrivateKey)
 
+	for _, k := range []struct {
+		params *mldsa.Parameters
+		key    **mldsa.PrivateKey
+	}{
+		{mldsa.MLDSA44(), &mldsa44Key},
+		{mldsa.MLDSA65(), &mldsa65Key},
+		{mldsa.MLDSA87(), &mldsa87Key},
+	} {
+		key, err := mldsa.GenerateKey(k.params)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to generate ML-DSA test key: %s", err))
+		}
+		*k.key = key
+	}
+
 	channelIDKeyPath = writeTempKeyFile(&channelIDKey)
 }
 
@@ -214,6 +234,9 @@ var (
 	ecdsaP384Certificate Credential
 	ecdsaP521Certificate Credential
 	ed25519Certificate   Credential
+	mldsa44Certificate   Credential
+	mldsa65Certificate   Credential
+	mldsa87Certificate   Credential
 	garbageCertificate   Credential
 	pssCertificate       Credential
 )
@@ -230,6 +253,9 @@ func initCertificates() {
 		{"ECDSA P-384", &ecdsaP384Key, &ecdsaP384Certificate},
 		{"ECDSA P-521", &ecdsaP521Key, &ecdsaP521Certificate},
 		{"Ed25519", ed25519Key, &ed25519Certificate},
+		{"ML-DSA 44", mldsa44Key, &mldsa44Certificate},
+		{"ML-DSA 65", mldsa65Key, &mldsa65Certificate},
+		{"ML-DSA 87", mldsa87Key, &mldsa87Certificate},
 	} {
 		// For each test key, make a self-signed root that issues a leaf, using
 		// the same algorithm.
@@ -606,9 +632,11 @@ type testCase struct {
 	testTLSUnique bool
 	// sendEmptyRecords is the number of consecutive empty records to send
 	// before each test message.
+	// If both this and `sendWarningAlerts` are set, they alternate at the end.
 	sendEmptyRecords int
 	// sendWarningAlerts is the number of consecutive warning alerts to send
 	// before each test message.
+	// If both this and `sendWarningAlerts` are set, they alternate at the end.
 	sendWarningAlerts int
 	// sendUserCanceledAlerts is the number of consecutive user_canceled alerts to
 	// send before each test message.
@@ -1167,15 +1195,17 @@ func doExchange(test *testCase, config *Config, conn net.Conn, isResume bool, tr
 			}
 		}
 
-		for i := 0; i < test.sendEmptyRecords; i++ {
-			if _, err := tlsConn.Write(nil); err != nil {
-				return err
+		// Count _down_, so that in case of differing values for the two counters, the alternating takes place at the _end_.
+		for i := max(test.sendEmptyRecords, test.sendWarningAlerts); i > 0; i-- {
+			if i <= test.sendEmptyRecords {
+				if _, err := tlsConn.Write(nil); err != nil {
+					return err
+				}
 			}
-		}
-
-		for i := 0; i < test.sendWarningAlerts; i++ {
-			if err := tlsConn.SendAlert(alertLevelWarning, alertUnexpectedMessage); err != nil {
-				return err
+			if i <= test.sendWarningAlerts {
+				if err := tlsConn.SendAlert(alertLevelWarning, alertUnexpectedMessage); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -1335,7 +1365,7 @@ type shimProcess struct {
 }
 
 // newShimProcess starts a new shim with the specified executable, flags, and
-// environment. It internally creates a TCP listener and adds the the -port
+// environment. It internally creates a TCP listener and adds the -port
 // flag.
 func newShimProcess(dispatcher *shimDispatcher, shimPath string, flags []string, env []string) (*shimProcess, error) {
 	listener, err := dispatcher.NewShim()
@@ -2333,6 +2363,7 @@ func main() {
 	addSignatureAlgorithmTests()
 	addDTLSRetransmitTests()
 	addDTLSReorderTests()
+	addDTLSFragmentWindowTests()
 	addExportKeyingMaterialTests()
 	addExportTrafficSecretsTests()
 	addTLSUniqueTests()
@@ -2356,6 +2387,7 @@ func main() {
 	addRSAKeyUsageTests()
 	addExtraHandshakeTests()
 	addOmitExtensionsTests()
+	addExtensionTrailingDataTests()
 	addCertCompressionTests()
 	addJDK11WorkaroundTests()
 	addDelegatedCredentialTests()
@@ -2368,6 +2400,7 @@ func main() {
 	addTrustAnchorTests()
 	addPSKTests()
 	addRawPublicKeyTests()
+	addServerPaddingTests()
 
 	toAppend, err := convertToSplitHandshakeTests(testCases)
 	if err != nil {

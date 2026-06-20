@@ -32,6 +32,7 @@
 #include <openssl/md5.h>
 #include <openssl/mem.h>
 #include <openssl/nid.h>
+#include <openssl/pool.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
 
@@ -160,12 +161,12 @@ static const SSL_CIPHER *choose_cipher(SSL_HANDSHAKE *hs,
   SSL *const ssl = hs->ssl;
   const STACK_OF(SSL_CIPHER) *prio, *allow;
   // in_group_flags will either be NULL, or will point to an array of bytes
-  // which indicate equal-preference groups in the |prio| stack. See the
-  // comment about |in_group_flags| in the |SSLCipherPreferenceList|
+  // which indicate equal-preference groups in the `prio` stack. See the
+  // comment about `in_group_flags` in the `SSLCipherPreferenceList`
   // struct.
   const bool *in_group_flags;
   // best_index contains the index of the best matching cipher suite found so
-  // far, indexed into |allow|. If |best_index| is |SIZE_MAX|, no matching
+  // far, indexed into `allow`. If `best_index` is `SIZE_MAX`, no matching
   // cipher suite has been found yet.
   size_t best_index = SIZE_MAX;
 
@@ -193,9 +194,9 @@ static const SSL_CIPHER *choose_cipher(SSL_HANDSHAKE *hs,
         // Check the cipher is supported for the server configuration.
         (c->algorithm_mkey & mask_k) &&  //
         (c->algorithm_auth & mask_a) &&  //
-        // Check the cipher is in the |allow| list.
+        // Check the cipher is in the `allow` list.
         sk_SSL_CIPHER_find(allow, &cipher_index, c)) {
-      // Within a group, |allow|'s preference order applies.
+      // Within a group, `allow`'s preference order applies.
       if (best_index == SIZE_MAX || best_index > cipher_index) {
         best_index = cipher_index;
       }
@@ -223,7 +224,7 @@ struct TLS12ServerParams {
 };
 
 static TLS12ServerParams choose_params(SSL_HANDSHAKE *hs,
-                                       const SSL_CREDENTIAL *cred,
+                                       const SSLCredential *cred,
                                        Span<const uint8_t> allowed_cert_types,
                                        const STACK_OF(SSL_CIPHER) *client_pref,
                                        bool has_ecdhe_group) {
@@ -298,7 +299,7 @@ static enum ssl_hs_wait_t do_start_accept(SSL_HANDSHAKE *hs) {
   return ssl_hs_ok;
 }
 
-// is_probably_jdk11_with_tls13 returns whether |client_hello| was probably sent
+// is_probably_jdk11_with_tls13 returns whether `client_hello` was probably sent
 // from a JDK 11 client with both TLS 1.3 and a prior version enabled.
 static bool is_probably_jdk11_with_tls13(const SSL_CLIENT_HELLO *client_hello) {
   // JDK 11 ClientHellos contain a number of unusual properties which should
@@ -458,8 +459,8 @@ static bool decrypt_ech(SSL_HANDSHAKE *hs, uint8_t *out_alert,
       if (is_decrypt_error) {
         // Ignore the error and try another ECHConfig.
         ERR_clear_error();
-        // The |out_alert| calling convention currently relies on a default of
-        // |SSL_AD_DECODE_ERROR|. https://crbug.com/boringssl/373 tracks
+        // The `out_alert` calling convention currently relies on a default of
+        // `SSL_AD_DECODE_ERROR`. https://crbug.com/boringssl/373 tracks
         // switching to sum types, which avoids this.
         *out_alert = SSL_AD_DECODE_ERROR;
         continue;
@@ -506,6 +507,7 @@ static bool extract_sni(SSL_HANDSHAKE *hs, uint8_t *out_alert,
       !CBS_get_u16_length_prefixed(&server_name_list, &host_name) ||  //
       CBS_len(&server_name_list) != 0 ||                              //
       CBS_len(&sni) != 0) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_ERROR_PARSING_EXTENSION);
     *out_alert = SSL_AD_DECODE_ERROR;
     return false;
   }
@@ -514,6 +516,7 @@ static bool extract_sni(SSL_HANDSHAKE *hs, uint8_t *out_alert,
       CBS_len(&host_name) == 0 ||                       //
       CBS_len(&host_name) > TLSEXT_MAXLEN_host_name ||  //
       CBS_contains_zero_byte(&host_name)) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_ERROR_PARSING_EXTENSION);
     *out_alert = SSL_AD_UNRECOGNIZED_NAME;
     return false;
   }
@@ -568,8 +571,8 @@ static enum ssl_hs_wait_t do_read_client_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  // ECH may have changed which ClientHello we process. Update |msg| and
-  // |client_hello| in case.
+  // ECH may have changed which ClientHello we process. Update `msg` and
+  // `client_hello` in case.
   if (!hs->GetClientHello(&msg, &client_hello)) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
     return ssl_hs_error;
@@ -652,6 +655,14 @@ static enum ssl_hs_wait_t do_read_client_hello_after_ech(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
+  // The legacy cookie should never be sent in DTLS 1.3.
+  if (ssl_protocol_version(ssl) >= TLS1_3_VERSION &&
+      client_hello.dtls_cookie_len != 0) {
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    return ssl_hs_error;
+  }
+
   // TLS extensions.
   if (!ssl_parse_clienthello_tlsext(hs, &client_hello)) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_PARSE_TLSEXT);
@@ -665,7 +676,7 @@ static enum ssl_hs_wait_t do_read_client_hello_after_ech(SSL_HANDSHAKE *hs) {
 static enum ssl_hs_wait_t do_cert_callback(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
 
-  // Call |cert_cb| to update server certificates if required.
+  // Call `cert_cb` to update server certificates if required.
   if (hs->config->cert->cert_cb != nullptr) {
     int rv = hs->config->cert->cert_cb(ssl, hs->config->cert->cert_cb_arg);
     if (rv == 0) {
@@ -733,7 +744,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
   uint16_t group_id = 0;
   bool has_ecdhe_group = tls1_get_shared_group(hs, &group_id);
 
-  // Select the credential and cipher suite. This must be done after |cert_cb|
+  // Select the credential and cipher suite. This must be done after `cert_cb`
   // runs, so the final credential list is known.
   //
   // TODO(davidben): In the course of picking these, we also pick the ECDHE
@@ -744,7 +755,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
   if (client_pref == nullptr) {
     return ssl_hs_error;
   }
-  Array<SSL_CREDENTIAL *> creds;
+  Array<SSLCredential *> creds;
   if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
@@ -762,7 +773,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
                            client_pref.get(), has_ecdhe_group);
   } else {
     // Select the first credential which works.
-    for (SSL_CREDENTIAL *cred : creds) {
+    for (SSLCredential *cred : creds) {
       ERR_clear_error();
       params = choose_params(hs, cred, *allowed_cert_types, client_pref.get(),
                              has_ecdhe_group);
@@ -781,7 +792,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
   hs->new_cipher = params.cipher;
   hs->signature_algorithm = params.signature_algorithm;
 
-  // |SSL_parse_client_hello| checks that |client_hello.session_id| is not too
+  // `SSL_parse_client_hello` checks that `client_hello.session_id` is not too
   // large.
   hs->session_id.CopyFrom(
       Span(client_hello.session_id, client_hello.session_id_len));
@@ -1114,7 +1125,7 @@ static enum ssl_hs_wait_t do_send_server_key_exchange(SSL_HANDSHAKE *hs) {
   CBB body, child;
   if (!ssl->method->init_message(ssl, cbb.get(), &body,
                                  SSL3_MT_SERVER_KEY_EXCHANGE) ||
-      // |hs->server_params| contains a prefix for signing.
+      // `hs->server_params` contains a prefix for signing.
       hs->server_params.size() < 2 * SSL3_RANDOM_SIZE ||
       !CBB_add_bytes(&body, hs->server_params.data() + 2 * SSL3_RANDOM_SIZE,
                      hs->server_params.size() - 2 * SSL3_RANDOM_SIZE)) {
@@ -1248,9 +1259,9 @@ static enum ssl_hs_wait_t do_read_client_certificate(SSL_HANDSHAKE *hs) {
   } else {
     assert(hs->peer_cert_type == TLSEXT_cert_type_x509);
     hs->new_session->peer_cert_type = TLSEXT_cert_type_x509;
-    parse_ok =
-        ssl_parse_cert_chain(&alert, &hs->new_session->certs, &hs->peer_pubkey,
-                             out_sha256, &certificate_msg, ssl->ctx->pool);
+    parse_ok = ssl_parse_cert_chain(&alert, &hs->new_session->certs,
+                                    &hs->peer_pubkey, out_sha256,
+                                    &certificate_msg, ssl->ctx->pool.get());
   }
 
   if (!parse_ok) {
@@ -1347,7 +1358,7 @@ static enum ssl_hs_wait_t do_read_client_key_exchange(SSL_HANDSHAKE *hs) {
     hs->new_session->psk_identity.reset(raw);
   }
 
-  // Depending on the key exchange method, compute |premaster_secret|.
+  // Depending on the key exchange method, compute `premaster_secret`.
   Array<uint8_t> premaster_secret;
   if (alg_k & SSL_kRSA) {
     CBS encrypted_premaster_secret;
@@ -1412,7 +1423,7 @@ static enum ssl_hs_wait_t do_read_client_key_exchange(SSL_HANDSHAKE *hs) {
     }
     good &= constant_time_is_zero_8(decrypt_buf[padding_len - 1]);
 
-    // The premaster secret must begin with |client_version|. This too must be
+    // The premaster secret must begin with `client_version`. This too must be
     // checked in constant time (http://eprint.iacr.org/2003/052/).
     good &= constant_time_eq_8(decrypt_buf[padding_len],
                                (unsigned)(hs->client_version >> 8));
@@ -1420,7 +1431,7 @@ static enum ssl_hs_wait_t do_read_client_key_exchange(SSL_HANDSHAKE *hs) {
                                (unsigned)(hs->client_version & 0xff));
 
     // Select, in constant time, either the decrypted premaster or the random
-    // premaster based on |good|.
+    // premaster based on `good`.
     for (size_t i = 0; i < premaster_secret.size(); i++) {
       premaster_secret[i] = constant_time_select_8(
           good, decrypt_buf[padding_len + i], premaster_secret[i]);
@@ -1694,7 +1705,7 @@ static enum ssl_hs_wait_t do_read_client_finished(SSL_HANDSHAKE *hs) {
   }
 
   // If this is a full handshake with ChannelID then record the handshake
-  // hashes in |hs->new_session| in case we need them to verify a
+  // hashes in `hs->new_session` in case we need them to verify a
   // ChannelID signature on a resumption of this session in the future.
   if (ssl->session == nullptr && ssl->s3->channel_id_valid &&
       !tls1_record_handshake_hashes_for_channel_id(hs)) {
@@ -1734,7 +1745,7 @@ static enum ssl_hs_wait_t do_send_server_finished(SSL_HANDSHAKE *hs) {
         !CBB_add_u32(&body, session->timeout) ||
         !CBB_add_u16_length_prefixed(&body, &ticket) ||
         !ssl_encrypt_ticket(hs, &ticket, session) ||
-        // |ticket| may be empty to skip sending a ticket. In TLS 1.2, servers
+        // `ticket` may be empty to skip sending a ticket. In TLS 1.2, servers
         // skip sending tickets by sending empty NewSessionTicket, so no special
         // handling is needed.
         !ssl_add_message_cbb(ssl, cbb.get())) {

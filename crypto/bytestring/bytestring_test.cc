@@ -59,7 +59,8 @@ TEST(CBSTest, Skip) {
 
 TEST(CBSTest, GetUint) {
   static const uint8_t kData[] = {1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
-                                  11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+                                  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                                  21, 22, 23, 24, 25, 26};
   uint8_t u8;
   uint16_t u16;
   uint32_t u32;
@@ -75,12 +76,14 @@ TEST(CBSTest, GetUint) {
   EXPECT_EQ(0x40506u, u32);
   ASSERT_TRUE(CBS_get_u32(&data, &u32));
   EXPECT_EQ(0x708090au, u32);
+  ASSERT_TRUE(CBS_get_u48(&data, &u64));
+  EXPECT_EQ(0xb0c0d0e0f10u, u64);
   ASSERT_TRUE(CBS_get_u64(&data, &u64));
-  EXPECT_EQ(0xb0c0d0e0f101112u, u64);
+  EXPECT_EQ(0x1112131415161718u, u64);
   ASSERT_TRUE(CBS_get_last_u8(&data, &u8));
-  EXPECT_EQ(0x14u, u8);
+  EXPECT_EQ(0x1au, u8);
   ASSERT_TRUE(CBS_get_last_u8(&data, &u8));
-  EXPECT_EQ(0x13u, u8);
+  EXPECT_EQ(0x19u, u8);
   EXPECT_FALSE(CBS_get_u8(&data, &u8));
   EXPECT_FALSE(CBS_get_last_u8(&data, &u8));
 
@@ -153,6 +156,54 @@ TEST(CBSTest, GetUntilFirst) {
   EXPECT_EQ(CBS_len(&data), sizeof(kData) - 2);
 }
 
+TEST(CBSTest, GetUntilFirstOf) {
+  static const uint8_t kData[] = {0, 'a', 'b', 'c', 0, 'a', 'b', 'c'};
+  CBS data;
+  CBS_init(&data, kData, sizeof(kData));
+
+  CBS prefix;
+  EXPECT_FALSE(CBS_get_until_first_of(&data, &prefix, "A"));
+  EXPECT_EQ(CBS_data(&data), kData);
+  EXPECT_EQ(CBS_len(&data), sizeof(kData));
+
+  ASSERT_TRUE(CBS_get_until_first_of(&data, &prefix, "Abc"));
+  EXPECT_EQ(CBS_data(&prefix), kData);
+  EXPECT_EQ(CBS_len(&prefix), 2u);
+  EXPECT_EQ(CBS_data(&data), kData + 2);
+  EXPECT_EQ(CBS_len(&data), sizeof(kData) - 2);
+}
+
+TEST(CBSTest, GetUntilFirstNotOf) {
+  {
+    static const uint8_t kData[] = {'a', 'b', 'c', 'd', 'a', 'b', 'c'};
+    CBS data;
+    CBS_init(&data, kData, sizeof(kData));
+
+    CBS prefix;
+    EXPECT_FALSE(CBS_get_until_first_not_of(&data, &prefix, "abcd"));
+    EXPECT_EQ(CBS_data(&data), kData);
+    EXPECT_EQ(CBS_len(&data), sizeof(kData));
+
+    ASSERT_TRUE(CBS_get_until_first_not_of(&data, &prefix, "abcD"));
+    EXPECT_EQ(CBS_data(&prefix), kData);
+    EXPECT_EQ(CBS_len(&prefix), 3u);
+    EXPECT_EQ(CBS_data(&data), kData + 3);
+    EXPECT_EQ(CBS_len(&data), sizeof(kData) - 3);
+  }
+  {
+    static const uint8_t kData[] = {'a', 'b', 'c', 0, 'a', 'b', 'c'};
+    CBS data;
+    CBS_init(&data, kData, sizeof(kData));
+
+    CBS prefix;
+    EXPECT_TRUE(CBS_get_until_first_not_of(&data, &prefix, "abcd"));
+    EXPECT_EQ(CBS_data(&prefix), kData);
+    EXPECT_EQ(CBS_len(&prefix), 3u);
+    EXPECT_EQ(CBS_data(&data), kData + 3);
+    EXPECT_EQ(CBS_len(&data), sizeof(kData) - 3);
+  }
+}
+
 TEST(CBSTest, GetASN1) {
   static const uint8_t kData1[] = {0x30, 2, 1, 2};
   static const uint8_t kData2[] = {0x30, 3, 1, 2};
@@ -171,6 +222,7 @@ TEST(CBSTest, GetASN1) {
   CBS_init(&data, kData1, sizeof(kData1));
   EXPECT_FALSE(CBS_peek_asn1_tag(&data, CBS_ASN1_BOOLEAN));
   EXPECT_TRUE(CBS_peek_asn1_tag(&data, CBS_ASN1_SEQUENCE));
+  EXPECT_EQ(CBS_peek_any_asn1_tag(&data), CBS_ASN1_SEQUENCE);
 
   ASSERT_TRUE(CBS_get_asn1(&data, &contents, CBS_ASN1_SEQUENCE));
   EXPECT_EQ(Bytes("\x01\x02"), Bytes(CBS_data(&contents), CBS_len(&contents)));
@@ -198,6 +250,10 @@ TEST(CBSTest, GetASN1) {
   CBS_init(&data, nullptr, 0);
   // peek at empty data.
   EXPECT_FALSE(CBS_peek_asn1_tag(&data, CBS_ASN1_SEQUENCE));
+  EXPECT_EQ(CBS_peek_any_asn1_tag(&data), 0u);
+  // Zero is not a valid tag. Make sure the function does not get confused by
+  // |CBS_peek_any_asn1_tag|'s return value.
+  EXPECT_FALSE(CBS_peek_asn1_tag(&data, 0));
 
   CBS_init(&data, nullptr, 0);
   // optional elements at empty data.
@@ -305,9 +361,9 @@ TEST(CBSTest, ParseASN1Tag) {
       {true,
        CBS_ASN1_PRIVATE | CBS_ASN1_CONSTRUCTED | 0x1fffffff,
        {0xff, 0x81, 0xff, 0xff, 0xff, 0x7f, 0}},
-      // Tag number fits in |uint32_t| but not |CBS_ASN1_TAG_NUMBER_MASK|.
+      // Tag number fits in `uint32_t` but not `CBS_ASN1_TAG_NUMBER_MASK`.
       {false, 0, {0xff, 0x82, 0xff, 0xff, 0xff, 0x7f, 0}},
-      // Tag number does not fit in |uint32_t|.
+      // Tag number does not fit in `uint32_t`.
       {false, 0, {0xff, 0x90, 0x80, 0x80, 0x80, 0, 0}},
       // Tag number is not minimally-encoded
       {false, 0, {0x5f, 0x80, 0x1f, 0}},
@@ -423,11 +479,11 @@ TEST(CBBTest, Fixed) {
   ASSERT_TRUE(CBB_init_fixed(&cbb, buf, 1));
   ASSERT_TRUE(CBB_add_u8(&cbb, 1));
   EXPECT_FALSE(CBB_add_u8(&cbb, 2));
-  // We do not need |CBB_cleanup| or |bssl::ScopedCBB| here because a fixed
-  // |CBB| has no allocations. Leak-checking tools will confirm there was
+  // We do not need `CBB_cleanup` or |bssl::ScopedCBB| here because a fixed
+  // `CBB` has no allocations. Leak-checking tools will confirm there was
   // nothing to clean up.
 
-  // However, it should be harmless to call |CBB_cleanup|.
+  // However, it should be harmless to call `CBB_cleanup`.
   CBB cbb2;
   ASSERT_TRUE(CBB_init_fixed(&cbb2, buf, 1));
   ASSERT_TRUE(CBB_add_u8(&cbb2, 1));
@@ -491,7 +547,7 @@ TEST(CBBTest, DiscardChild) {
   ASSERT_TRUE(CBB_init(cbb.get(), 0));
   ASSERT_TRUE(CBB_add_u8(cbb.get(), 0xaa));
 
-  // Discarding |cbb|'s children preserves the byte written.
+  // Discarding `cbb`'s children preserves the byte written.
   CBB_discard_child(cbb.get());
 
   ASSERT_TRUE(CBB_add_u8_length_prefixed(cbb.get(), &contents));
@@ -509,7 +565,7 @@ TEST(CBBTest, DiscardChild) {
       CBB_add_u16_length_prefixed(&inner_contents, &inner_inner_contents));
   ASSERT_TRUE(CBB_add_u8(&inner_inner_contents, 0x99));
 
-  // Discard everything from |inner_contents| down.
+  // Discard everything from `inner_contents` down.
   CBB_discard_child(&contents);
 
   uint8_t *buf;
@@ -572,7 +628,7 @@ TEST(CBBDeathTest, DiscardMisuse) {
   EXPECT_DEATH_IF_SUPPORTED(CBB_discard(cbb.get(), 5), "");
   CBB child;
   ASSERT_TRUE(CBB_add_u8_length_prefixed(cbb.get(), &child));
-  // Discard from a |cbb| with an unflushed child.
+  // Discard from a `cbb` with an unflushed child.
   EXPECT_DEATH_IF_SUPPORTED(CBB_discard(cbb.get(), 1), "");
   EXPECT_DEATH_IF_SUPPORTED(CBB_discard(&child, 1), "");
   ASSERT_TRUE(CBB_add_u8(&child, 1));
@@ -593,7 +649,7 @@ TEST(CBBTest, Misuse) {
   ASSERT_TRUE(CBB_add_u8(&child, 1));
   ASSERT_TRUE(CBB_add_u8(cbb.get(), 2));
 
-  // Since we wrote to |cbb|, |child| is now invalid and attempts to write to
+  // Since we wrote to `cbb`, `child` is now invalid and attempts to write to
   // it should fail.
   EXPECT_FALSE(CBB_add_u8(&child, 1));
   EXPECT_FALSE(CBB_add_u16(&child, 1));
@@ -911,7 +967,7 @@ static const ImplicitStringTest kImplicitStringTests[] = {
     {"\x80\x03\x61\x61\x61", 5, true, "aaa", 3},
     // An implicit-tagged string.
     {"\xa0\x09\x04\x01\x61\x04\x01\x61\x04\x01\x61", 11, true, "aaa", 3},
-    // |CBS_get_asn1_implicit_string| only accepts one level deep of nesting.
+    // `CBS_get_asn1_implicit_string` only accepts one level deep of nesting.
     {"\xa0\x0b\x24\x06\x04\x01\x61\x04\x01\x61\x04\x01\x61", 13, false, nullptr,
      0},
     // The outer tag must match.
@@ -1246,8 +1302,16 @@ TEST(CBSTest, ASN1Int64) {
 TEST(CBBTest, Zero) {
   CBB cbb;
   CBB_zero(&cbb);
-  // Calling |CBB_cleanup| on a zero-state |CBB| must not crash.
+  // Calling `CBB_cleanup` on a zero-state `CBB` must not crash.
   CBB_cleanup(&cbb);
+}
+
+TEST(CBBTest, ScopedCBBCleanup) {
+  // It is valid to `CBB_cleanup` a `ScopedCBB`.
+  ScopedCBB cbb;
+  ASSERT_TRUE(CBB_init(cbb.get(), 32));
+  CBB_cleanup(cbb.get());
+  // ASAN should not detect a double free here.
 }
 
 TEST(CBBTest, Reserve) {
@@ -1428,7 +1492,7 @@ TEST(CBBTest, AddOIDFromText) {
 
   const struct {
     std::vector<uint8_t> der;
-    // If true, |der| is valid but has a component that exceeds 2^64-1.
+    // If true, `der` is valid but has a component that exceeds 2^64-1.
     bool overflow;
   } kInvalidDER[] = {
       // The empty string is not an OID.
@@ -1519,7 +1583,7 @@ TEST(CBBTest, AddRelativeOIDFromText) {
 
   const struct {
     std::vector<uint8_t> der;
-    // If true, |der| is valid but has a component that exceeds 2^64-1.
+    // If true, `der` is valid but has a component that exceeds 2^64-1.
     bool overflow;
   } kInvalidDER[] = {
       // The empty string is not a relative OID.
@@ -2016,6 +2080,60 @@ TEST(CBSTest, BogusTime) {
     EXPECT_FALSE(
         CBS_parse_utc_time(&cbs, nullptr, /*allow_timezone_offset=*/1));
   }
+}
+
+TEST(CBSTest, ParseTime) {
+  tm expected = {};
+  expected.tm_year = 70; // 1970
+  expected.tm_mon = 0;   // January
+  expected.tm_mday = 1;
+  expected.tm_hour = 4;
+  expected.tm_min = 0;
+  expected.tm_sec = 0;
+
+  // 1970-01-01 00:00:00 -0400 should be 1970-01-01 04:00:00 UTC
+  CBS cbs;
+  tm tm;
+  cbs = StringAsBytes("700101000000-0400");
+  ASSERT_TRUE(CBS_parse_utc_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  cbs = StringAsBytes("19700101000000-0400");
+  ASSERT_TRUE(
+      CBS_parse_generalized_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  // 1970-01-01 08:00:00 +0400 should be 1970-01-01 04:00:00 UTC
+  expected.tm_hour = 4;
+  cbs = StringAsBytes("700101080000+0400");
+  ASSERT_TRUE(CBS_parse_utc_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
+
+  expected.tm_hour = 4;
+  cbs = StringAsBytes("19700101080000+0400");
+  ASSERT_TRUE(
+      CBS_parse_generalized_time(&cbs, &tm, /*allow_timezone_offset=*/1));
+  EXPECT_EQ(tm.tm_year, expected.tm_year);
+  EXPECT_EQ(tm.tm_mon, expected.tm_mon);
+  EXPECT_EQ(tm.tm_mday, expected.tm_mday);
+  EXPECT_EQ(tm.tm_hour, expected.tm_hour);
+  EXPECT_EQ(tm.tm_min, expected.tm_min);
+  EXPECT_EQ(tm.tm_sec, expected.tm_sec);
 }
 
 TEST(CBSTest, GetU64Decimal) {

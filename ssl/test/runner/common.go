@@ -223,6 +223,7 @@ const (
 	extensionQUICTransportParams        uint16 = 57
 	extensionTLSFlags                   uint16 = 62
 	extensionCustom                     uint16 = 1234  // not IANA assigned
+	extensionServerPaddingRequest       uint16 = 4832  // not IANA assigned
 	extensionNextProtoNeg               uint16 = 13172 // not IANA assigned
 	extensionApplicationSettingsOld     uint16 = 17513 // not IANA assigned
 	extensionApplicationSettings        uint16 = 17613 // not IANA assigned
@@ -329,7 +330,12 @@ const (
 	signatureEd25519 signatureAlgorithm = 0x0807
 	signatureEd448   signatureAlgorithm = 0x0808
 
-	// draft-ietf-tls-tls13-pkcs1-00
+	// ML-DSA algorithms (draft-ietf-tls-mldsa-02)
+	signatureMLDSA44 signatureAlgorithm = 0x0904
+	signatureMLDSA65 signatureAlgorithm = 0x0905
+	signatureMLDSA87 signatureAlgorithm = 0x0906
+
+	// RFC 9963
 	signatureRSAPKCS1WithSHA256Legacy signatureAlgorithm = 0x0420
 
 	// signatureRSAPKCS1WithMD5AndSHA1 is the internal value BoringSSL uses to
@@ -776,6 +782,10 @@ type Config struct {
 	// server should be marked as compatible with cross-name resumption.
 	ResumptionAcrossNames bool
 
+	// RequestServerPadding, if not nil, configures a client to request the
+	// specified number of bytes of padding from the server.
+	RequestServerPadding *uint16
+
 	// Bugs specifies optional misbehaviour to be used for testing other
 	// implementations.
 	Bugs ProtocolBugs
@@ -873,6 +883,10 @@ type ProtocolBugs struct {
 	// EmptyHelloVerifyRequestCookie, if true, causes a DTLS server to request
 	// an empty cookie in HelloVerifyRequest.
 	EmptyHelloVerifyRequestCookie bool
+
+	// SendLegacyDTLSCookie, if not nil, contains the legacy DTLS 1.2 cookie
+	// to be sent in the ClientHello (not the TLS 1.3 cookie extension).
+	SendLegacyDTLSCookie []byte
 
 	// SkipCertificateStatus, if true, causes the server to skip the
 	// CertificateStatus message. This is legal because CertificateStatus is
@@ -1262,7 +1276,7 @@ type ProtocolBugs struct {
 	EmptyTicketSessionID bool
 
 	// NewSessionIDLength, if non-zero is the length of the session ID to use
-	// when issung new sessions.
+	// when issuing new sessions.
 	NewSessionIDLength int
 
 	// SendClientHelloSessionID, if not nil, is the session ID sent in the
@@ -2028,7 +2042,7 @@ type ProtocolBugs struct {
 	// extension to indicate a match.
 	SendNonEmptyTrustAnchorMatch bool
 
-	// AlwaysSendAvailableTrustAnchors, if true, causese the server to always
+	// AlwaysSendAvailableTrustAnchors, if true, causes the server to always
 	// send available trust anchors in EncryptedExtensions, even if unsolicited.
 	AlwaysSendAvailableTrustAnchors bool
 
@@ -2269,6 +2283,27 @@ type ProtocolBugs struct {
 	// send a server_certificate_type extension containing the given values.
 	// For a server, this may not contain more than 1 value.
 	SendServerCertificateTypes []CertificateType
+
+	// SendEmptyCertificateAuthorities, if true, causes a TLS 1.3 client or
+	// server to send an empty certificate_authorities extension, instead of
+	// omitting the extension.
+	SendEmptyCertificateAuthorities bool
+
+	// ExtensionsWithTrailingData specifies a list of extensions to include
+	// trailing data in.
+	// TODO(crbug.com/505803427): Currently only implemented for ClientHello and
+	// CertificateRequest.
+	ExtensionsWithTrailingData []uint16
+
+	// If SendServerPaddingLength, if not nil, sends the amount of padding
+	// specified in the server padding extension. If this is not set, the
+	// server padding extension will not be sent.
+	SendServerPaddingLength *uint16
+
+	// ExpectedServerPadding, if true, will expect that the server sent back
+	// exactly the amount of padding requested by the client through server
+	// padding extension.
+	ExpectedServerPadding bool
 }
 
 func (c *Config) serverInit() {

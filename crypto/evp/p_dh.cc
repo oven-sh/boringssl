@@ -57,6 +57,12 @@ static int dh_param_copy(EvpPkey *to, const EvpPkey *from) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_MISSING_PARAMETERS);
     return 0;
   }
+  if (to->pkey == nullptr) {
+    to->pkey = DH_new();
+    if (to->pkey == nullptr) {
+      return 0;
+    }
+  }
 
   const DH *dh = reinterpret_cast<DH *>(from->pkey);
   const BIGNUM *q_old = DH_get0_q(dh);
@@ -71,7 +77,7 @@ static int dh_param_copy(EvpPkey *to, const EvpPkey *from) {
     return 0;
   }
 
-  // |DH_set0_pqg| took ownership of |p|, |q|, and |g|.
+  // `DH_set0_pqg` took ownership of `p`, `q`, and `g`.
   return 1;
 }
 
@@ -183,9 +189,7 @@ static int pkey_dh_copy(EvpPkeyCtx *dst, EvpPkeyCtx *src) {
 }
 
 static void pkey_dh_cleanup(EvpPkeyCtx *ctx) {
-  DH_PKEY_CTX *dctx = reinterpret_cast<DH_PKEY_CTX *>(ctx->data);
-  Delete(dctx);
-  ctx->data = nullptr;
+  Delete(reinterpret_cast<DH_PKEY_CTX *>(ctx->data));
 }
 
 static int pkey_dh_keygen(EvpPkeyCtx *ctx, EvpPkey *pkey) {
@@ -248,7 +252,7 @@ static int pkey_dh_ctrl(EvpPkeyCtx *ctx, int type, int p1, void *p2) {
   DH_PKEY_CTX *dctx = reinterpret_cast<DH_PKEY_CTX *>(ctx->data);
   switch (type) {
     case EVP_PKEY_CTRL_PEER_KEY:
-      // |EVP_PKEY_derive_set_peer| requires the key implement this command,
+      // `EVP_PKEY_derive_set_peer` requires the key implement this command,
       // even if it is a no-op.
       return 1;
 

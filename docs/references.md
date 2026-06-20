@@ -8,7 +8,7 @@ This document collects links to useful references. It is currently incomplete, b
 
 * [AES (FIPS 197)](https://csrc.nist.gov/pubs/fips/197/final)
 * [GCM (SP 800-38D)](https://csrc.nist.gov/pubs/sp/800/38/d/final)
-* [ChaCha20-Poly1305 (RFC 7539)](https://www.rfc-editor.org/rfc/rfc7539.html)
+* [ChaCha20-Poly1305 (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439.html)
 * [AES-GCM-SIV (RFC 8452)](https://www.rfc-editor.org/rfc/rfc8452.html)
 * [RSA (PKCS #1, RFC 8017)](https://www.rfc-editor.org/rfc/rfc8017.html)
 * [X25519 (RFC 7748)](https://www.rfc-editor.org/rfc/rfc7748.html)
@@ -43,6 +43,8 @@ This document collects links to useful references. It is currently incomplete, b
    * PKCS#1 v1.5 with SHA-2 in X.509
    * RSA-PSS in X.509
 * [Algorithm Identifiers for Ed25519 and X25519 (RFC 8410)](https://www.rfc-editor.org/rfc/rfc8410.html)
+* [Algorithm Identifiers for ML-DSA (RFC 9881)](https://www.rfc-editor.org/rfc/rfc9881.html)
+* [Algorithm Identifiers for ML-KEM (RFC 9935)](https://www.rfc-editor.org/rfc/rfc9935.html)
 
 ## TLS
 

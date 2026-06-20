@@ -24,6 +24,7 @@
 #include <openssl/evp.h>
 #include <openssl/hkdf.h>
 #include <openssl/mem.h>
+#include <openssl/pool.h>
 #include <openssl/stack.h>
 #include <openssl/x509.h>
 
@@ -83,7 +84,7 @@ bool tls13_get_cert_verify_signature_input(
     return false;
   }
 
-  // Note |context| includes the NUL byte separator.
+  // Note `context` includes the NUL byte separator.
   if (!CBB_add_bytes(cbb.get(),
                      reinterpret_cast<const uint8_t *>(context.data()),
                      context.size())) {
@@ -243,7 +244,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
 
     if (hs->peer_cert_type == TLSEXT_cert_type_x509) {
       UniquePtr<CRYPTO_BUFFER> buf(
-          CRYPTO_BUFFER_new_from_CBS(&certificate, ssl->ctx->pool));
+          CRYPTO_BUFFER_new_from_CBS(&certificate, ssl->ctx->pool.get()));
       if (!buf ||  //
           !PushToStack(certs.get(), std::move(buf))) {
         ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
@@ -290,7 +291,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
 
       if (sk_CRYPTO_BUFFER_num(certs.get()) == 1) {
         hs->new_session->ocsp_response.reset(
-            CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool));
+            CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool.get()));
         if (hs->new_session->ocsp_response == nullptr) {
           ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
           return false;
@@ -307,7 +308,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
 
       if (sk_CRYPTO_BUFFER_num(certs.get()) == 1) {
         hs->new_session->signed_cert_timestamp_list.reset(
-            CRYPTO_BUFFER_new_from_CBS(&sct.data, ssl->ctx->pool));
+            CRYPTO_BUFFER_new_from_CBS(&sct.data, ssl->ctx->pool.get()));
         if (hs->new_session->signed_cert_timestamp_list == nullptr) {
           ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
           return false;
@@ -437,7 +438,7 @@ bool tls13_process_finished(SSL_HANDSHAKE *hs, const SSLMessage &msg,
 
 bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
-  const SSL_CREDENTIAL *cred = hs->credential.get();
+  const SSLCredential *cred = hs->credential.get();
 
   ScopedCBB cbb;
   CBB *body, body_storage, certificate_list;
