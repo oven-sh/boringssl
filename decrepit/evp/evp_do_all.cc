@@ -25,17 +25,20 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
   // Return only lowercase names to match Node.js behavior.
   // Cipher lookups are case-insensitive, so uppercase names are not needed.
   callback(EVP_aes_128_cbc(), "aes-128-cbc", nullptr, arg);
+  callback(EVP_aes_128_ccm(), "aes-128-ccm", nullptr, arg);
   callback(EVP_aes_128_cfb128(), "aes-128-cfb", nullptr, arg);
   callback(EVP_aes_128_ctr(), "aes-128-ctr", nullptr, arg);
   callback(EVP_aes_128_ecb(), "aes-128-ecb", nullptr, arg);
   callback(EVP_aes_128_gcm(), "aes-128-gcm", nullptr, arg);
   callback(EVP_aes_128_ofb(), "aes-128-ofb", nullptr, arg);
   callback(EVP_aes_192_cbc(), "aes-192-cbc", nullptr, arg);
+  callback(EVP_aes_192_ccm(), "aes-192-ccm", nullptr, arg);
   callback(EVP_aes_192_ctr(), "aes-192-ctr", nullptr, arg);
   callback(EVP_aes_192_ecb(), "aes-192-ecb", nullptr, arg);
   callback(EVP_aes_192_gcm(), "aes-192-gcm", nullptr, arg);
   callback(EVP_aes_192_ofb(), "aes-192-ofb", nullptr, arg);
   callback(EVP_aes_256_cbc(), "aes-256-cbc", nullptr, arg);
+  callback(EVP_aes_256_ccm(), "aes-256-ccm", nullptr, arg);
   callback(EVP_aes_256_cfb128(), "aes-256-cfb", nullptr, arg);
   callback(EVP_aes_256_ctr(), "aes-256-ctr", nullptr, arg);
   callback(EVP_aes_256_ecb(), "aes-256-ecb", nullptr, arg);

@@ -618,6 +618,18 @@ OPENSSL_EXPORT const EVP_CIPHER *EVP_get_cipherbyname(const char *name);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_128_gcm(void);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_256_gcm(void);
 
+// These AEADs are deprecated AES-CCM implementations that set
+// |EVP_CIPH_FLAG_CUSTOM_CIPHER|. Use |EVP_aead_aes_128_ccm_bluetooth|,
+// |EVP_aead_aes_128_ccm_bluetooth_8|, or |EVP_aead_aes_128_ccm_matter| instead.
+//
+// WARNING: Although these APIs allow streaming an individual AES-CCM operation,
+// this is not secure. Until calling |EVP_DecryptFinal_ex|, the tag has not yet
+// been checked and output released by |EVP_DecryptUpdate| is unauthenticated
+// and easily manipulated by attackers.
+OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_128_ccm(void);
+OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_192_ccm(void);
+OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_256_ccm(void);
+
 // These are deprecated, 192-bit version of AES.
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_192_ecb(void);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_192_cbc(void);
