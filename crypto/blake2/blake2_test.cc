@@ -58,5 +58,39 @@ TEST(BLAKE2B256Test, TestVectors) {
   });
 }
 
+TEST(BLAKE2S256Test, ABC) {
+  // https://tools.ietf.org/html/rfc7693#appendix-B
+  const uint8_t kExpected[] = {
+      0x50, 0x8c, 0x5e, 0x8c, 0x32, 0x7c, 0x14, 0xe2, 0xe1, 0xa7, 0x2b,
+      0xa3, 0x4e, 0xeb, 0x45, 0x2f, 0x37, 0x45, 0x8b, 0x20, 0x9e, 0xd6,
+      0x3a, 0x29, 0x4d, 0x99, 0x9b, 0x4c, 0x86, 0x67, 0x59, 0x82,
+  };
+
+  uint8_t digest[BLAKE2S256_DIGEST_LENGTH];
+  BLAKE2S256((const uint8_t *)"abc", 3, digest);
+  EXPECT_EQ(Bytes(kExpected), Bytes(digest));
+}
+
+TEST(BLAKE2S256Test, TestVectors) {
+  FileTestGTest("crypto/blake2/blake2s256_tests.txt", [](FileTest *t) {
+    std::vector<uint8_t> msg, expected;
+    ASSERT_TRUE(t->GetBytes(&msg, "IN"));
+    ASSERT_TRUE(t->GetBytes(&expected, "HASH"));
+
+    uint8_t digest[BLAKE2S256_DIGEST_LENGTH];
+    BLAKE2S256(msg.data(), msg.size(), digest);
+    EXPECT_EQ(Bytes(digest), Bytes(expected)) << msg.size();
+
+    OPENSSL_memset(digest, 0, sizeof(digest));
+    BLAKE2S_CTX b2s;
+    BLAKE2S256_Init(&b2s);
+    for (uint8_t b : msg) {
+      BLAKE2S256_Update(&b2s, &b, 1);
+    }
+    BLAKE2S256_Final(digest, &b2s);
+    EXPECT_EQ(Bytes(digest), Bytes(expected)) << msg.size();
+  });
+}
+
 }  // namespace
 BSSL_NAMESPACE_END

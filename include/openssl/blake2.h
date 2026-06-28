@@ -76,6 +76,40 @@ OPENSSL_EXPORT void BLAKE2B512(const uint8_t *data, size_t len,
                                uint8_t out[BLAKE2B512_DIGEST_LENGTH]);
 
 
+// Blake2s.
+
+
+#define BLAKE2S256_DIGEST_LENGTH (256 / 8)
+#define BLAKE2S_CBLOCK 64
+
+struct blake2s_state_st {
+  uint32_t h[8];
+  uint32_t t_low;
+  uint32_t t_high;
+  uint32_t block_used;
+  uint8_t block[BLAKE2S_CBLOCK];
+};
+
+// BLAKE2S256_Init initialises |b2s| to perform a BLAKE2s-256 hash. There are no
+// pointers inside |b2s| thus release of |b2s| is purely managed by the caller.
+OPENSSL_EXPORT void BLAKE2S256_Init(BLAKE2S_CTX *b2s);
+
+// BLAKE2S256_Update appends |len| bytes from |data| to the digest being
+// calculated by |b2s|.
+OPENSSL_EXPORT void BLAKE2S256_Update(BLAKE2S_CTX *b2s, const void *data,
+                                      size_t len);
+
+// BLAKE2S256_Final completes the digest calculated by |b2s| and writes
+// |BLAKE2S256_DIGEST_LENGTH| bytes to |out|.
+OPENSSL_EXPORT void BLAKE2S256_Final(uint8_t out[BLAKE2S256_DIGEST_LENGTH],
+                                     BLAKE2S_CTX *b2s);
+
+// BLAKE2S256 writes the BLAKE2s-256 digest of |len| bytes from |data| to
+// |out|.
+OPENSSL_EXPORT void BLAKE2S256(const uint8_t *data, size_t len,
+                               uint8_t out[BLAKE2S256_DIGEST_LENGTH]);
+
+
 #if defined(__cplusplus)
 }  // extern C
 #endif
