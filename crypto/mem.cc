@@ -358,7 +358,12 @@ int CRYPTO_memcmp(const void *in_a, const void *in_b, size_t len) {
     x |= a[i] ^ b[i];
   }
 
-  return x;
+  // Bun: return `x` through a value barrier that is wider than `int`. Clang 23
+  // otherwise folds the conversion of `x` to `int` into the loop, keeps a 32-bit
+  // accumulator, and vectorizes the loop with 4 bytes per 128-bit vector instead
+  // of 16 (https://github.com/llvm/llvm-project/issues/222142). The barrier also
+  // stops the compiler from reasoning about the result where this is inlined.
+  return static_cast<int>(value_barrier_w(x));
 }
 
 uint32_t OPENSSL_hash32(const void *ptr, size_t len) {
