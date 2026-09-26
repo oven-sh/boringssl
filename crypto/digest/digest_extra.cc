@@ -303,6 +303,29 @@ const EVP_MD *EVP_blake2b512(void) { return &evp_md_blake2b512; }
 static_assert(sizeof(BLAKE2B_CTX) <= EVP_MAX_MD_DATA_SIZE);
 
 
+static void blake2s256_init(EVP_MD_CTX *ctx) {
+  BLAKE2S256_Init(reinterpret_cast<BLAKE2S_CTX *>(ctx->md_data));
+}
+
+static void blake2s256_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
+  BLAKE2S256_Update(reinterpret_cast<BLAKE2S_CTX *>(ctx->md_data), data, len);
+}
+
+static void blake2s256_final(EVP_MD_CTX *ctx, uint8_t *md) {
+  BLAKE2S256_Final(md, reinterpret_cast<BLAKE2S_CTX *>(ctx->md_data));
+}
+
+static const EVP_MD evp_md_blake2s256 = {
+    NID_undef,       BLAKE2S256_DIGEST_LENGTH, 0,
+    blake2s256_init, blake2s256_update,        blake2s256_final,
+    BLAKE2S_CBLOCK,  sizeof(BLAKE2S_CTX),
+};
+
+const EVP_MD *EVP_blake2s256(void) { return &evp_md_blake2s256; }
+
+static_assert(sizeof(BLAKE2S_CTX) <= EVP_MAX_MD_DATA_SIZE);
+
+
 static void ripemd160_init(EVP_MD_CTX *ctx) {
   BSSL_CHECK(RIPEMD160_Init(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
 }
