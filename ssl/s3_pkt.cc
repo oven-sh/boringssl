@@ -174,6 +174,45 @@ static int do_tls_write(SSLImpl *ssl, size_t *out_bytes_written, uint8_t type,
     pending_flight = pending_flight.subspan(ssl->s3->pending_flight_offset);
   }
 
+  // `write_buffer` stores 16-bit lengths, so it holds less than 64 KiB, but the
+  // handshake, not the record layer, decides how large `pending_flight` is. A
+  // TLS 1.3 server queues `num_tickets` NewSessionTickets, and each one
+  // contains the client's whole certificate chain. Write a flight that large
+  // to the transport directly, as `tls_flush` does during the handshake. Any
+  // smaller flight leaves room in the buffer for the record.
+  static const size_t kMaxBufferedFlight = 0x8000;
+  static_assert(kMaxBufferedFlight + SSL3_RT_HEADER_LENGTH * 2 +
+                        SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD * 2 +
+                        SSL3_RT_MAX_PLAIN_LENGTH <=
+                    0xffff - (SSL3_ALIGN_PAYLOAD - 1),
+                "a buffered flight must leave room for a split record");
+  if (pending_flight.size() > kMaxBufferedFlight) {
+    BUF_MEM *flight = ssl->s3->pending_flight.get();
+    size_t offset = ssl->s3->pending_flight_offset;
+    while (offset < flight->length) {
+      size_t written;
+      if (!BIO_write_ex(ssl->wbio.get(), flight->data + offset,
+                        flight->length - offset, &written)) {
+        // Keep only the unwritten tail, at offset zero. Before the caller
+        // retries, a KeyUpdate from the peer may append its acknowledgment to
+        // the flight, and `add_record_to_flight` requires a zero offset.
+        OPENSSL_memmove(flight->data, flight->data + offset,
+                        flight->length - offset);
+        flight->length -= offset;
+        ssl->s3->pending_flight_offset = 0;
+        ssl->s3->rwstate = SSL_ERROR_WANT_WRITE;
+        return -1;
+      }
+      offset += written;
+    }
+    ssl->s3->pending_flight.reset();
+    ssl->s3->pending_flight_offset = 0;
+    pending_flight = {};
+    // The flight is out, so uncork KeyUpdate acknowledgments here. A
+    // zero-length write returns below before it reaches the usual place.
+    ssl->s3->key_update_pending = false;
+  }
+
   size_t max_out = pending_flight.size();
   if (!in.empty()) {
     const size_t max_ciphertext_len = in.size() + SSL_max_seal_overhead(ssl);
