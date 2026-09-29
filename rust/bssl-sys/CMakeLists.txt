@@ -75,6 +75,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_COMPILER_IS_GNUCXX)
   target_compile_options(rust_wrapper PRIVATE "-Wno-missing-prototypes")
 endif()
 target_include_directories(rust_wrapper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(rust_wrapper ssl crypto)
+target_link_libraries(rust_wrapper ssl crypto decrepit)
 
 add_custom_target(bssl_sys ALL DEPENDS ${wrapper_rs} rust_wrapper)
