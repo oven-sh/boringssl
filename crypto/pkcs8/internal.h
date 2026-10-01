@@ -24,6 +24,9 @@ struct pkcs8_priv_key_info_st {
   X509_ALGOR *pkeyalg;
   ASN1_OCTET_STRING *pkey;
   STACK_OF(X509_ATTRIBUTE) *attributes;
+  // kpub is the optional publicKey [1] field of an RFC 5958 v2
+  // OneAsymmetricKey. It is parsed and re-serialized but otherwise unused.
+  ASN1_BIT_STRING *kpub;
 };
 
 BSSL_NAMESPACE_BEGIN

@@ -363,8 +363,9 @@ OPENSSL_EXPORT int EVP_marshal_public_key(CBB *cbb, const EVP_PKEY *key);
 // error. Only the `num_algs` algorithms in `algs` will be considered when
 // parsing.
 //
-// A PrivateKeyInfo ends with an optional set of attributes. These are silently
-// ignored.
+// A PrivateKeyInfo ends with an optional set of attributes, and an RFC 5958
+// v2 OneAsymmetricKey may additionally carry a publicKey field. Both are
+// silently ignored, though the publicKey field is rejected in a v1 structure.
 OPENSSL_EXPORT EVP_PKEY *EVP_PKEY_from_private_key_info(
     const uint8_t *in, size_t len, const EVP_PKEY_ALG *const *algs,
     size_t num_algs);
@@ -391,8 +392,9 @@ OPENSSL_EXPORT EVP_PKEY *EVP_PKEY_from_private_key_info(
 // applications accepting RSA private keys from external sources may need to
 // bound key sizes (use `EVP_PKEY_bits` or `RSA_bits`) to avoid a DoS vector.
 //
-// A PrivateKeyInfo ends with an optional set of attributes. These are silently
-// ignored.
+// A PrivateKeyInfo ends with an optional set of attributes, and an RFC 5958
+// v2 OneAsymmetricKey may additionally carry a publicKey field. Both are
+// silently ignored, though the publicKey field is rejected in a v1 structure.
 OPENSSL_EXPORT EVP_PKEY *EVP_parse_private_key(CBS *cbs);
 
 // EVP_marshal_private_key marshals `key` as a DER-encoded PrivateKeyInfo
