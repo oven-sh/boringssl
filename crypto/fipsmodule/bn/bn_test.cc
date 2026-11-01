@@ -1745,6 +1745,11 @@ TEST_F(BNTest, SmallPrimeWithAdd) {
   ASSERT_TRUE(
       BN_generate_prime_ex(r.get(), 4, 1, add.get(), BN_value_one(), nullptr));
   EXPECT_TRUE(BN_is_word(r.get(), 11));
+
+  // There is no safe prime of two bits, with or without `add`.
+  EXPECT_FALSE(
+      BN_generate_prime_ex(r.get(), 2, 1, add.get(), BN_value_one(), nullptr));
+  EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_BN, BN_R_BITS_TOO_SMALL));
 }
 
 TEST_F(BNTest, PrimeWithAddThatDoesNotExist) {

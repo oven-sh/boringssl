@@ -298,9 +298,13 @@ int BN_generate_prime_ex(BIGNUM *ret, int bits, int safe, const BIGNUM *add,
     // There are no prime numbers this small.
     OPENSSL_PUT_ERROR(BN, BN_R_BITS_TOO_SMALL);
     return 0;
-  } else if (add == nullptr && safe && bits < 6 && bits != 3) {
-    // The smallest safe prime (7) is three bits. The next two (11, 23) are out
-    // of reach for `BN_rand` with `BN_RAND_TOP_TWO`.
+  } else if (bits == 2 && safe) {
+    // The smallest safe prime (7) is three bits.
+    OPENSSL_PUT_ERROR(BN, BN_R_BITS_TOO_SMALL);
+    return 0;
+  } else if (add == nullptr && safe && (bits == 4 || bits == 5)) {
+    // The safe primes of these sizes (11, 23) are out of reach for `BN_rand`
+    // with `BN_RAND_TOP_TWO`.
     OPENSSL_PUT_ERROR(BN, BN_R_BITS_TOO_SMALL);
     return 0;
   }
