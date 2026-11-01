@@ -1664,6 +1664,112 @@ TEST_F(BNTest, SmallPrime) {
   EXPECT_EQ(kBits, BN_num_bits(r.get()));
 }
 
+TEST_F(BNTest, SmallSafePrime) {
+  UniquePtr<BIGNUM> r(BN_new());
+  ASSERT_TRUE(r);
+
+  // The only safe primes of these sizes that have their top two bits set.
+  ASSERT_TRUE(BN_generate_prime_ex(r.get(), 3, 1, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(BN_is_word(r.get(), 7));
+  ASSERT_TRUE(BN_generate_prime_ex(r.get(), 6, 1, nullptr, nullptr, nullptr));
+  EXPECT_TRUE(BN_is_word(r.get(), 59));
+
+  for (int bits : {2, 4, 5}) {
+    SCOPED_TRACE(bits);
+    EXPECT_FALSE(
+        BN_generate_prime_ex(r.get(), bits, 1, nullptr, nullptr, nullptr));
+    EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_BN, BN_R_BITS_TOO_SMALL));
+  }
+}
+
+TEST_F(BNTest, PrimeWithAdd) {
+  static const struct {
+    unsigned bits;
+    int safe;
+    BN_ULONG add;
+    // rem is zero to pass nullptr.
+    BN_ULONG rem;
+    BN_ULONG expected_rem;
+  } kTests[] = {
+      {256, 0, 3, 0, 1},  {256, 0, 10, 1, 1},  {512, 0, 12, 0, 1},
+      {128, 0, 30, 7, 7}, {1280, 0, 6, 5, 5},  {64, 1, 8, 0, 3},
+      {64, 1, 7, 3, 3},   {64, 1, 24, 23, 23}, {64, 1, 24, 11, 11},
+      {64, 1, 10, 3, 3},  {64, 1, 2, 1, 1},
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(t.bits);
+    SCOPED_TRACE(t.safe);
+    SCOPED_TRACE(t.add);
+    SCOPED_TRACE(t.rem);
+
+    UniquePtr<BIGNUM> r(BN_new()), add(BN_new()), rem(BN_new());
+    ASSERT_TRUE(r);
+    ASSERT_TRUE(add);
+    ASSERT_TRUE(rem);
+    ASSERT_TRUE(BN_set_word(add.get(), t.add));
+    ASSERT_TRUE(BN_set_word(rem.get(), t.rem));
+    ASSERT_TRUE(BN_generate_prime_ex(
+        r.get(), static_cast<int>(t.bits), t.safe, add.get(),
+        t.rem != 0 ? rem.get() : nullptr, nullptr));
+    EXPECT_EQ(t.bits, BN_num_bits(r.get()));
+    EXPECT_EQ(t.expected_rem, BN_mod_word(r.get(), t.add));
+
+    int is_prime;
+    ASSERT_TRUE(BN_primality_test(&is_prime, r.get(),
+                                  BN_prime_checks_for_generation, ctx(),
+                                  /*do_trial_division=*/0, nullptr));
+    EXPECT_EQ(1, is_prime);
+    if (t.safe) {
+      ASSERT_TRUE(BN_rshift1(r.get(), r.get()));
+      ASSERT_TRUE(BN_primality_test(&is_prime, r.get(),
+                                    BN_prime_checks_for_generation, ctx(),
+                                    /*do_trial_division=*/0, nullptr));
+      EXPECT_EQ(1, is_prime);
+    }
+  }
+}
+
+TEST_F(BNTest, SmallPrimeWithAdd) {
+  UniquePtr<BIGNUM> r(BN_new()), add(BN_new());
+  ASSERT_TRUE(r);
+  ASSERT_TRUE(add);
+  ASSERT_TRUE(BN_set_word(add.get(), 2));
+
+  // The primes used for trial division are candidates themselves. The search
+  // may step past the last prime of eight bits, to 257.
+  ASSERT_TRUE(BN_generate_prime_ex(r.get(), 8, 0, add.get(), nullptr, nullptr));
+  EXPECT_GE(BN_get_word(r.get()), 131u);
+  EXPECT_LE(BN_get_word(r.get()), 257u);
+
+  // 11 is the only safe prime of four bits.
+  ASSERT_TRUE(
+      BN_generate_prime_ex(r.get(), 4, 1, add.get(), BN_value_one(), nullptr));
+  EXPECT_TRUE(BN_is_word(r.get(), 11));
+}
+
+TEST_F(BNTest, PrimeWithAddThatDoesNotExist) {
+  // Every candidate is a multiple of three, so only the callback ends this.
+  UniquePtr<BIGNUM> r(BN_new()), add(BN_new()), rem(BN_new());
+  ASSERT_TRUE(r);
+  ASSERT_TRUE(add);
+  ASSERT_TRUE(rem);
+  ASSERT_TRUE(BN_set_word(add.get(), 6));
+  ASSERT_TRUE(BN_set_word(rem.get(), 3));
+
+  BN_GENCB cb;
+  BN_GENCB_set(
+      &cb,
+      [](int event, int n, BN_GENCB *) -> int {
+        return event != BN_GENCB_GENERATED || n < 4;
+      },
+      nullptr);
+  for (int safe : {0, 1}) {
+    SCOPED_TRACE(safe);
+    EXPECT_FALSE(
+        BN_generate_prime_ex(r.get(), 64, safe, add.get(), rem.get(), &cb));
+  }
+}
+
 TEST_F(BNTest, CmpWord) {
   static const BN_ULONG kMaxWord = (BN_ULONG)-1;
 

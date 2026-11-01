@@ -265,10 +265,8 @@ which is already well below the minimum acceptable key size for RSA.
 #define BN_PRIME_CHECKS_BLINDED 16
 
 static int probable_prime(BIGNUM *rnd, int bits);
-static int probable_prime_dh(BIGNUM *rnd, int bits, const BIGNUM *add,
+static int probable_prime_dh(BIGNUM *rnd, int bits, int safe, const BIGNUM *add,
                              const BIGNUM *rem, BN_CTX *ctx);
-static int probable_prime_dh_safe(BIGNUM *rnd, int bits, const BIGNUM *add,
-                                  const BIGNUM *rem, BN_CTX *ctx);
 
 BN_GENCB *BN_GENCB_new() { return New<BN_GENCB>(); }
 
@@ -300,8 +298,9 @@ int BN_generate_prime_ex(BIGNUM *ret, int bits, int safe, const BIGNUM *add,
     // There are no prime numbers this small.
     OPENSSL_PUT_ERROR(BN, BN_R_BITS_TOO_SMALL);
     return 0;
-  } else if (bits == 2 && safe) {
-    // The smallest safe prime (7) is three bits.
+  } else if (add == nullptr && safe && bits < 6 && bits != 3) {
+    // The smallest safe prime (7) is three bits. The next two (11, 23) are out
+    // of reach for `BN_rand` with `BN_RAND_TOP_TWO`.
     OPENSSL_PUT_ERROR(BN, BN_R_BITS_TOO_SMALL);
     return 0;
   }
@@ -323,14 +322,8 @@ loop:
       return 0;
     }
   } else {
-    if (safe) {
-      if (!probable_prime_dh_safe(ret, bits, add, rem, ctx.get())) {
-        return 0;
-      }
-    } else {
-      if (!probable_prime_dh(ret, bits, add, rem, ctx.get())) {
-        return 0;
-      }
+    if (!probable_prime_dh(ret, bits, safe, add, rem, ctx.get())) {
+      return 0;
     }
   }
 
@@ -815,7 +808,7 @@ static int probable_prime(BIGNUM *rnd, int bits) {
   return 1;
 }
 
-static int probable_prime_dh(BIGNUM *rnd, int bits, const BIGNUM *add,
+static int probable_prime_dh(BIGNUM *rnd, int bits, int safe, const BIGNUM *add,
                              const BIGNUM *rem, BN_CTX *ctx) {
   BN_CTXScope scope(ctx);
   BIGNUM *t1;
@@ -835,7 +828,7 @@ static int probable_prime_dh(BIGNUM *rnd, int bits, const BIGNUM *add,
     return 0;
   }
   if (rem == nullptr) {
-    if (!BN_add_word(rnd, 1)) {
+    if (!BN_add_word(rnd, safe ? 3 : 1)) {
       return 0;
     }
   } else {
@@ -843,85 +836,31 @@ static int probable_prime_dh(BIGNUM *rnd, int bits, const BIGNUM *add,
       return 0;
     }
   }
+
+  if (BN_num_bits(rnd) < static_cast<unsigned>(bits) ||
+      BN_get_word(rnd) < (safe ? 5u : 3u)) {
+    if (!BN_add(rnd, rnd, add)) {
+      return 0;
+    }
+  }
   // we now have a random number 'rand' to test.
 
   size_t num_primes = num_trial_division_primes(rnd);
+  int steps = 0;
 loop:
   for (size_t i = 1; i < num_primes; i++) {
     // check that rnd is a prime
-    if (bn_mod_u16_consttime(rnd, kPrimes[i]) <= 1) {
+    // rnd mod p == 1 implies q = (rnd-1)/2 is divisible by p
+    uint16_t mod = bn_mod_u16_consttime(rnd, kPrimes[i]);
+    if ((mod == 0 && !BN_is_word(rnd, kPrimes[i])) ||
+        (safe && mod == 1 && !BN_is_word(rnd, 2 * kPrimes[i] + 1))) {
       if (!BN_add(rnd, rnd, add)) {
         return 0;
       }
-      goto loop;
-    }
-  }
-
-  return 1;
-}
-
-static int probable_prime_dh_safe(BIGNUM *p, int bits, const BIGNUM *padd,
-                                  const BIGNUM *rem, BN_CTX *ctx) {
-  bits--;
-  BN_CTXScope scope(ctx);
-  BIGNUM *t1 = BN_CTX_get(ctx);
-  BIGNUM *q = BN_CTX_get(ctx);
-  BIGNUM *qadd = BN_CTX_get(ctx);
-  if (qadd == nullptr) {
-    return 0;
-  }
-
-  if (!BN_rshift1(qadd, padd)) {
-    return 0;
-  }
-
-  if (!BN_rand(q, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ODD)) {
-    return 0;
-  }
-
-  // we need ((rnd-rem) % add) == 0
-  if (!BN_mod(t1, q, qadd, ctx)) {
-    return 0;
-  }
-
-  if (!BN_sub(q, q, t1)) {
-    return 0;
-  }
-
-  if (rem == nullptr) {
-    if (!BN_add_word(q, 1)) {
-      return 0;
-    }
-  } else {
-    if (!BN_rshift1(t1, rem)) {
-      return 0;
-    }
-    if (!BN_add(q, q, t1)) {
-      return 0;
-    }
-  }
-
-  // we now have a random number 'rand' to test.
-  if (!BN_lshift1(p, q)) {
-    return 0;
-  }
-  if (!BN_add_word(p, 1)) {
-    return 0;
-  }
-
-  size_t num_primes = num_trial_division_primes(p);
-loop:
-  for (size_t i = 1; i < num_primes; i++) {
-    // check that p and q are prime
-    // check that for p and q
-    // gcd(p-1,primes) == 1 (except for 2)
-    if (bn_mod_u16_consttime(p, kPrimes[i]) == 0 ||
-        bn_mod_u16_consttime(q, kPrimes[i]) == 0) {
-      if (!BN_add(p, p, padd)) {
-        return 0;
-      }
-      if (!BN_add(q, q, qadd)) {
-        return 0;
+      // Some `add` and `rem` leave no prime to find. Hand `rnd` to the caller
+      // now and then: it tests `rnd` in any case, and it runs the callback.
+      if (++steps == 1024) {
+        return 1;
       }
       goto loop;
     }
