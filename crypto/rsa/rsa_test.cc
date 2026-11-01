@@ -1314,6 +1314,77 @@ TEST(RSATest, MissingParameters) {
   EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_RSA, RSA_R_VALUE_MISSING));
 }
 
+// PKCS#1 v1.5 signatures of `kPlaintext` by `kKey1`, made with OpenSSL 3.5.9.
+TEST(RSATest, PKCS1MoreDigests) {
+  static const struct {
+    const EVP_MD *(*md)();
+    const char *sig;
+  } kTests[] = {
+      {EVP_sha512_224,
+       "3a89dc88237082fdc4ef67823fc598cea6b0e72c7dd16607c01148d8c7912839"
+       "b352a2ee5b27ed2080f0b03245b18b9a090a98baadc916e7eb672e8e37bd8c89"
+       "03cb3e6e508bfdec9b4349904141806e6e0c163a2ecdaeae2bc7d66e461ec918"
+       "92e68459bca2546b0cb2a39915839be0347877403cd36adea4385210a4037c7b"},
+      {EVP_sha512_256,
+       "64b56a915d80320b961b6d762de2e742ff6089815b022fa331ac05bc1c1a0320"
+       "1b0bf3d3a92ea1c08198e0061445d955ef1083ee0dddf548fa4fd67c1811a55c"
+       "f50895cbee6325d159ac638b458679689d231125dc08d9264be447784d0a118b"
+       "00097d377f440971a8b06b121ab39c3fb6b4e800389c698062755a2132b059ea"},
+      {EVP_sha3_224,
+       "1cee48dadb9f1c2a769b0a43debdea68f200f5ab75be13a0f9feab7502f5ca9a"
+       "80cdf3ec25c96d88b0f8a66825990c30155e6536254661a13ac0dca111d56e4c"
+       "03afd1d390807edc7a5b3927fc3aa30e71e36507f43272a54c94753620dc9aaa"
+       "60d584db3a462fde2f3337b5ae5a9e13db2365b588fadd8ff2f6e312333a0583"},
+      {EVP_sha3_256,
+       "4f4c071c50ddd37301f13254448cd2490fa967913f45e00c4492fa2a36d56170"
+       "bef8baf76c5efc0e0cbd50c1386a2079920b0917639aa6996bdb6d97814c20db"
+       "8cdab38828c219d2256c688299a9c48883b411aa535512c268044f2ce835a7d8"
+       "87528491cad79fde9de8aa11073d8483b0a12a77e10c24024a033771752f4841"},
+      {EVP_sha3_384,
+       "7cc2ae073baae08e904955a9a0e61f897d97e7f2fe49d28138199cad1a72951f"
+       "3a19760b498678a6524934a2c0c2f7c7081aab5fce5ad6b19a4976d151d11417"
+       "9d3ed7aa94256093beb8afc6ac1b90c52486ab99adfed5bb71b344b9896abe41"
+       "70851dc88e8283248e44a7c28c05539b41d384eab10bdb05e7e3690d81e46db5"},
+      {EVP_sha3_512,
+       "5dbb5c6a1ec02f75316313d64f14f5f347fb67dddc04cb4d4538a0f8c376cc82"
+       "1103561805b121d314c78d2e938993e7c7bc90ea81fc02924486aa26ce998845"
+       "0f82379587b2297aec93d772767de4f570206a020fde43b5dd20265511594763"
+       "46a8e3d9257f5936a61348553bb202a6efcd8e3129a3e14b35b1434a768f5256"},
+      {EVP_ripemd160,
+       "33b47756944ba17082dad1664ffec356538ff47dc5d7e092301f65daaf889661"
+       "1ecff4024a393a4af3cd638c02196467b121361f234a95ebb56500336e31824b"
+       "2fb198be9a6828bdc5e7032b0d077dd7d05db927d95b78a7912a2e72dc1577e2"
+       "4cd3a6b5164bc544820cde5888023184f17346776e37f8c4a98b1ceaad4bf885"},
+  };
+
+  UniquePtr<RSA> rsa(RSA_private_key_from_bytes(kKey1, sizeof(kKey1)));
+  ASSERT_TRUE(rsa);
+  for (const auto &t : kTests) {
+    const EVP_MD *md = t.md();
+    SCOPED_TRACE(EVP_MD_type(md));
+    std::vector<uint8_t> expected;
+    ASSERT_TRUE(DecodeHex(&expected, t.sig));
+
+    uint8_t digest[EVP_MAX_MD_SIZE];
+    unsigned digest_len;
+    ASSERT_TRUE(EVP_Digest(kPlaintext, sizeof(kPlaintext), digest, &digest_len,
+                           md, nullptr));
+    std::vector<uint8_t> sig(RSA_size(rsa.get()));
+    unsigned sig_len;
+    ASSERT_TRUE(RSA_sign(EVP_MD_type(md), digest, digest_len, sig.data(),
+                         &sig_len, rsa.get()));
+    sig.resize(sig_len);
+    EXPECT_EQ(Bytes(expected), Bytes(sig));
+    EXPECT_TRUE(RSA_verify(EVP_MD_type(md), digest, digest_len, expected.data(),
+                           expected.size(), rsa.get()));
+
+    // The length of the digest is checked.
+    EXPECT_FALSE(RSA_sign(EVP_MD_type(md), digest, digest_len - 1, sig.data(),
+                          &sig_len, rsa.get()));
+    ERR_clear_error();
+  }
+}
+
 TEST(RSATest, Negative) {
   auto dup_neg = [](const BIGNUM *bn) -> UniquePtr<BIGNUM> {
     UniquePtr<BIGNUM> ret(BN_dup(bn));
