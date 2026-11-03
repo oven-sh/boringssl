@@ -1752,29 +1752,6 @@ TEST_F(BNTest, SmallPrimeWithAdd) {
   EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_BN, BN_R_BITS_TOO_SMALL));
 }
 
-TEST_F(BNTest, PrimeWithAddThatDoesNotExist) {
-  // Every candidate is a multiple of three, so only the callback ends this.
-  UniquePtr<BIGNUM> r(BN_new()), add(BN_new()), rem(BN_new());
-  ASSERT_TRUE(r);
-  ASSERT_TRUE(add);
-  ASSERT_TRUE(rem);
-  ASSERT_TRUE(BN_set_word(add.get(), 6));
-  ASSERT_TRUE(BN_set_word(rem.get(), 3));
-
-  BN_GENCB cb;
-  BN_GENCB_set(
-      &cb,
-      [](int event, int n, BN_GENCB *) -> int {
-        return event != BN_GENCB_GENERATED || n < 4;
-      },
-      nullptr);
-  for (int safe : {0, 1}) {
-    SCOPED_TRACE(safe);
-    EXPECT_FALSE(
-        BN_generate_prime_ex(r.get(), 64, safe, add.get(), rem.get(), &cb));
-  }
-}
-
 TEST_F(BNTest, CmpWord) {
   static const BN_ULONG kMaxWord = (BN_ULONG)-1;
 

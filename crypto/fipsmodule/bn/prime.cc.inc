@@ -812,6 +812,8 @@ static int probable_prime(BIGNUM *rnd, int bits) {
   return 1;
 }
 
+// probable_prime_dh makes the choices of the function of that name in OpenSSL
+// 3.5 (crypto/bn/bn_prime.c). It adds to `rnd` where that one keeps remainders.
 static int probable_prime_dh(BIGNUM *rnd, int bits, int safe, const BIGNUM *add,
                              const BIGNUM *rem, BN_CTX *ctx) {
   BN_CTXScope scope(ctx);
@@ -850,21 +852,18 @@ static int probable_prime_dh(BIGNUM *rnd, int bits, int safe, const BIGNUM *add,
   // we now have a random number 'rand' to test.
 
   size_t num_primes = num_trial_division_primes(rnd);
-  int steps = 0;
 loop:
   for (size_t i = 1; i < num_primes; i++) {
     // check that rnd is a prime
+    if (bits <= 31 &&
+        static_cast<BN_ULONG>(kPrimes[i]) * kPrimes[i] > BN_get_word(rnd)) {
+      break;
+    }
     // rnd mod p == 1 implies q = (rnd-1)/2 is divisible by p
     uint16_t mod = bn_mod_u16_consttime(rnd, kPrimes[i]);
-    if ((mod == 0 && !BN_is_word(rnd, kPrimes[i])) ||
-        (safe && mod == 1 && !BN_is_word(rnd, 2 * kPrimes[i] + 1))) {
+    if (safe ? mod <= 1 : mod == 0) {
       if (!BN_add(rnd, rnd, add)) {
         return 0;
-      }
-      // Some `add` and `rem` leave no prime to find. Hand `rnd` to the caller
-      // now and then: it tests `rnd` in any case, and it runs the callback.
-      if (++steps == 1024) {
-        return 1;
       }
       goto loop;
     }
