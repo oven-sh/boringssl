@@ -1994,8 +1994,20 @@ TEST(X509Test, ManyNamesAndConstraints) {
 
 static bssl::UniquePtr<GENERAL_NAME> MakeGeneralName(int type,
                                                      std::string_view value) {
+  if (type == GEN_IPADD) {
+    // |value| holds the raw octets of the iPAddress.
+    UniquePtr<ASN1_OCTET_STRING> str(ASN1_OCTET_STRING_new());
+    UniquePtr<GENERAL_NAME> name(GENERAL_NAME_new());
+    if (!str || !name ||
+        !ASN1_STRING_set(str.get(), value.data(), value.size())) {
+      return nullptr;
+    }
+    name->type = type;
+    name->d.iPAddress = str.release();
+    return name;
+  }
   if (type != GEN_EMAIL && type != GEN_DNS && type != GEN_URI) {
-    // This function only supports the IA5String types.
+    // This function only supports the IA5String types and iPAddress.
     return nullptr;
   }
   UniquePtr<ASN1_IA5STRING> str(ASN1_IA5STRING_new());
@@ -2408,6 +2420,109 @@ TEST(X509Test, NameConstraints) {
        X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
       {GEN_URI, "foo://example.com:443", "example.com:443",
        X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+
+      // IP address constraints are an address and a CIDR netmask (RFC 5280,
+      // section 4.2.1.10). The name matches if it is in that range.
+      // 127.0.0.1 in 127.0.0.1/32.
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01", 4),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff", 8), X509_V_OK},
+      // 127.0.0.2 not in 127.0.0.1/32.
+      {GEN_IPADD, std::string("\x7f\x00\x00\x02", 4),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff", 8),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      // 192.0.2.77 in 192.0.2.0/24.
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\xc0\x00\x02\x00\xff\xff\xff\x00", 8), X509_V_OK},
+      // 192.0.3.77 not in 192.0.2.0/24.
+      {GEN_IPADD, std::string("\xc0\x00\x03\x4d", 4),
+       std::string("\xc0\x00\x02\x00\xff\xff\xff\x00", 8),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      // 10.1.2.3 in 10.0.0.0/10 (a netmask that ends mid-byte).
+      {GEN_IPADD, std::string("\x0a\x01\x02\x03", 4),
+       std::string("\x0a\x00\x00\x00\xff\xc0\x00\x00", 8), X509_V_OK},
+      // 10.64.0.0 not in 10.0.0.0/10.
+      {GEN_IPADD, std::string("\x0a\x40\x00\x00", 4),
+       std::string("\x0a\x00\x00\x00\xff\xc0\x00\x00", 8),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      // Host bits set in the constraint's address are masked off.
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\xc0\x00\x02\x05\xff\xff\xff\x00", 8), X509_V_OK},
+      // An all-zero netmask matches every IPv4 address.
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\x00\x00\x00\x00\x00\x00\x00\x00", 8), X509_V_OK},
+      // ::1 in ::1/128.
+      {GEN_IPADD,
+       std::string("\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01",
+                   16),
+       std::string("\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01"
+                   "\xff\xff\xff\xff\xff\xff\xff\xff"
+                   "\xff\xff\xff\xff\xff\xff\xff\xff",
+                   32),
+       X509_V_OK},
+      // 2001:db8::1 in 2001:db8::/32.
+      {GEN_IPADD,
+       std::string("\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01",
+                   16),
+       std::string("\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\xff\xff\xff\xff\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x00",
+                   32),
+       X509_V_OK},
+      // 2001:db9::1 not in 2001:db8::/32.
+      {GEN_IPADD,
+       std::string("\x20\x01\x0d\xb9\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01",
+                   16),
+       std::string("\x20\x01\x0d\xb8\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\xff\xff\xff\xff\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x00",
+                   32),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      // An IPv4 name is not in an IPv6 range, and vice versa.
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01", 4),
+       std::string("\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01"
+                   "\xff\xff\xff\xff\xff\xff\xff\xff"
+                   "\xff\xff\xff\xff\xff\xff\xff\xff",
+                   32),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      {GEN_IPADD,
+       std::string("\x00\x00\x00\x00\x00\x00\x00\x00"
+                   "\x00\x00\x00\x00\x00\x00\x00\x01",
+                   16),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff", 8),
+       X509_V_ERR_PERMITTED_VIOLATION},
+      // The netmask must be contiguous.
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\xc0\x00\x02\x00\xff\x00\xff\x00", 8),
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\xc0\x00\x02\x00\xff\xff\xfd\x00", 8),
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_IPADD, std::string("\xc0\x00\x02\x4d", 4),
+       std::string("\xc0\x00\x02\x00\xff\xff\x00\xff", 8),
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      // The constraint must be 8 or 32 bytes.
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01", 4),
+       std::string("\x7f\x00\x00\x01", 4),
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01", 4), "",
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01", 4),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff\x00", 9),
+       X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX},
+      // The name must be 4 or 16 bytes.
+      {GEN_IPADD, std::string("\x7f\x00\x00", 3),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff", 8),
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
+      {GEN_IPADD, std::string("\x7f\x00\x00\x01\x00", 5),
+       std::string("\x7f\x00\x00\x01\xff\xff\xff\xff", 8),
+       X509_V_ERR_UNSUPPORTED_NAME_SYNTAX},
   };
   for (const auto &t : kTests) {
     SCOPED_TRACE(t.type);

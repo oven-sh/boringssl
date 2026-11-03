@@ -507,6 +507,83 @@ int nc_uri(const ASN1_IA5STRING *uri, const ASN1_IA5STRING *base) {
   return X509_V_OK;
 }
 
+// nc_is_valid_netmask returns true if |mask| is a contiguous run of one bits
+// followed by zero bits, as RFC 4632 (CIDR) requires.
+bool nc_is_valid_netmask(CBS mask) {
+  // Skip the leading 0xff bytes.
+  while (CBS_len(&mask) > 0 && CBS_data(&mask)[0] == 0xff) {
+    CBS_skip(&mask, 1);
+  }
+  if (CBS_len(&mask) == 0) {
+    return true;
+  }
+  // The first byte that is not 0xff must be ones followed by zeros, so its
+  // inverse must be zeros followed by ones, i.e. one less than a power of two.
+  uint8_t inv = ~CBS_data(&mask)[0];
+  if ((inv & (inv + 1)) != 0) {
+    return false;
+  }
+  CBS_skip(&mask, 1);
+  // Every remaining byte must be zero.
+  while (CBS_len(&mask) > 0) {
+    if (CBS_data(&mask)[0] != 0) {
+      return false;
+    }
+    CBS_skip(&mask, 1);
+  }
+  return true;
+}
+
+int nc_ip(const ASN1_OCTET_STRING *ip, const ASN1_OCTET_STRING *base) {
+  // RFC 5280 section 4.2.1.10:
+  // For IPv4 addresses, the iPAddress field of GeneralName MUST contain eight
+  // (8) octets, encoded in the style of RFC 4632 (CIDR) to represent an
+  // address range [RFC4632]. For IPv6 addresses, the iPAddress field MUST
+  // contain 32 octets similarly encoded.
+  CBS base_cbs;
+  CBS_init(&base_cbs, base->data, base->length);
+  if (CBS_len(&base_cbs) != 8 && CBS_len(&base_cbs) != 32) {
+    return X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX;
+  }
+  CBS base_addr, base_mask;
+  if (!CBS_get_bytes(&base_cbs, &base_addr, CBS_len(&base_cbs) / 2)) {
+    return X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX;
+  }
+  base_mask = base_cbs;
+  if (!nc_is_valid_netmask(base_mask)) {
+    return X509_V_ERR_UNSUPPORTED_CONSTRAINT_SYNTAX;
+  }
+
+  // RFC 5280 section 4.2.1.6:
+  // When the subjectAltName extension contains an iPAddress, the address MUST
+  // be stored in the octet string in "network byte order", as specified in
+  // [RFC791]. The least significant bit (LSB) of each octet is the LSB of the
+  // corresponding byte in the network address. For IP version 4, as specified
+  // in [RFC791], the octet string MUST contain exactly four octets. For IP
+  // version 6, as specified in [RFC8200], the octet string MUST contain
+  // exactly sixteen octets.
+  CBS ip_cbs;
+  CBS_init(&ip_cbs, ip->data, ip->length);
+  if (CBS_len(&ip_cbs) != 4 && CBS_len(&ip_cbs) != 16) {
+    return X509_V_ERR_UNSUPPORTED_NAME_SYNTAX;
+  }
+
+  // An IPv4 name never matches an IPv6 constraint and vice versa.
+  if (CBS_len(&ip_cbs) != CBS_len(&base_addr)) {
+    return X509_V_ERR_PERMITTED_VIOLATION;
+  }
+
+  const uint8_t *ip_data = CBS_data(&ip_cbs);
+  const uint8_t *addr_data = CBS_data(&base_addr);
+  const uint8_t *mask_data = CBS_data(&base_mask);
+  for (size_t i = 0; i < CBS_len(&ip_cbs); i++) {
+    if ((ip_data[i] & mask_data[i]) != (addr_data[i] & mask_data[i])) {
+      return X509_V_ERR_PERMITTED_VIOLATION;
+    }
+  }
+  return X509_V_OK;
+}
+
 int nc_match_single(const GENERAL_NAME *gen, const GENERAL_NAME *base,
                     bool excluding, bool case_insensitive_local_part) {
   switch (base->type) {
@@ -523,6 +600,9 @@ int nc_match_single(const GENERAL_NAME *gen, const GENERAL_NAME *base,
     case GEN_URI:
       return nc_uri(gen->d.uniformResourceIdentifier,
                     base->d.uniformResourceIdentifier);
+
+    case GEN_IPADD:
+      return nc_ip(gen->d.iPAddress, base->d.iPAddress);
 
     default:
       return X509_V_ERR_UNSUPPORTED_CONSTRAINT_TYPE;
