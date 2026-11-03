@@ -230,3 +230,142 @@ void BLAKE2B512(const uint8_t *data, size_t len,
   BLAKE2B512_Update(&ctx, data, len);
   BLAKE2B512_Final(out, &ctx);
 }
+
+
+// BLAKE2s. BLAKE2s is the 32-bit-word variant of BLAKE2b: SHA-256's IV, ten
+// rounds instead of twelve, a 64-byte block, and rotation constants
+// (16, 12, 8, 7). The message schedule (kSigma) is shared with BLAKE2b.
+
+// https://tools.ietf.org/html/rfc7693#section-2.6
+static const uint32_t kIVS[8] = {
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+};
+
+// https://tools.ietf.org/html/rfc7693#section-3.1
+static void blake2s_mix(uint32_t v[16], int a, int b, int c, int d, uint32_t x,
+                        uint32_t y) {
+  v[a] = v[a] + v[b] + x;
+  v[d] = CRYPTO_rotr_u32(v[d] ^ v[a], 16);
+  v[c] = v[c] + v[d];
+  v[b] = CRYPTO_rotr_u32(v[b] ^ v[c], 12);
+  v[a] = v[a] + v[b] + y;
+  v[d] = CRYPTO_rotr_u32(v[d] ^ v[a], 8);
+  v[c] = v[c] + v[d];
+  v[b] = CRYPTO_rotr_u32(v[b] ^ v[c], 7);
+}
+
+static uint32_t blake2s_load(const uint8_t block[BLAKE2S_CBLOCK], size_t i) {
+  return CRYPTO_load_u32_le(block + 4 * i);
+}
+
+static void blake2s_transform(BLAKE2S_CTX *b2s,
+                              const uint8_t block[BLAKE2S_CBLOCK],
+                              size_t num_bytes, int is_final_block) {
+  // https://tools.ietf.org/html/rfc7693#section-3.2
+  uint32_t v[16];
+  static_assert(sizeof(v) == sizeof(b2s->h) + sizeof(kIVS));
+  OPENSSL_memcpy(v, b2s->h, sizeof(b2s->h));
+  OPENSSL_memcpy(&v[8], kIVS, sizeof(kIVS));
+
+  b2s->t_low += num_bytes;
+  if (b2s->t_low < num_bytes) {
+    b2s->t_high++;
+  }
+  v[12] ^= b2s->t_low;
+  v[13] ^= b2s->t_high;
+
+  if (is_final_block) {
+    v[14] = ~v[14];
+  }
+
+  for (int round = 0; round < 10; round++) {
+    const uint8_t *const s = &kSigma[16 * (round % 10)];
+    blake2s_mix(v, 0, 4, 8, 12, blake2s_load(block, s[0]),
+                blake2s_load(block, s[1]));
+    blake2s_mix(v, 1, 5, 9, 13, blake2s_load(block, s[2]),
+                blake2s_load(block, s[3]));
+    blake2s_mix(v, 2, 6, 10, 14, blake2s_load(block, s[4]),
+                blake2s_load(block, s[5]));
+    blake2s_mix(v, 3, 7, 11, 15, blake2s_load(block, s[6]),
+                blake2s_load(block, s[7]));
+    blake2s_mix(v, 0, 5, 10, 15, blake2s_load(block, s[8]),
+                blake2s_load(block, s[9]));
+    blake2s_mix(v, 1, 6, 11, 12, blake2s_load(block, s[10]),
+                blake2s_load(block, s[11]));
+    blake2s_mix(v, 2, 7, 8, 13, blake2s_load(block, s[12]),
+                blake2s_load(block, s[13]));
+    blake2s_mix(v, 3, 4, 9, 14, blake2s_load(block, s[14]),
+                blake2s_load(block, s[15]));
+  }
+
+  for (size_t i = 0; i < std::size(b2s->h); i++) {
+    b2s->h[i] ^= v[i];
+    b2s->h[i] ^= v[i + 8];
+  }
+}
+
+void BLAKE2S256_Init(BLAKE2S_CTX *b2s) {
+  OPENSSL_memset(b2s, 0, sizeof(BLAKE2S_CTX));
+
+  static_assert(sizeof(kIVS) == sizeof(b2s->h));
+  OPENSSL_memcpy(&b2s->h, kIVS, sizeof(kIVS));
+
+  // https://tools.ietf.org/html/rfc7693#section-2.5
+  b2s->h[0] ^= 0x01010000 | BLAKE2S256_DIGEST_LENGTH;
+}
+
+void BLAKE2S256_Update(BLAKE2S_CTX *b2s, const void *in_data, size_t len) {
+  if (len == 0) {
+    // Work around a C language bug. See https://crbug.com/1019588.
+    return;
+  }
+
+  const uint8_t *data = reinterpret_cast<const uint8_t *>(in_data);
+  size_t todo = sizeof(b2s->block) - b2s->block_used;
+  if (todo > len) {
+    todo = len;
+  }
+  OPENSSL_memcpy(&b2s->block[b2s->block_used], data, todo);
+  b2s->block_used += todo;
+  data += todo;
+  len -= todo;
+
+  if (!len) {
+    return;
+  }
+
+  // More input remains therefore we must have filled `b2s->block`.
+  assert(b2s->block_used == BLAKE2S_CBLOCK);
+  blake2s_transform(b2s, b2s->block, BLAKE2S_CBLOCK,
+                    /*is_final_block=*/0);
+  b2s->block_used = 0;
+
+  while (len > BLAKE2S_CBLOCK) {
+    blake2s_transform(b2s, data, BLAKE2S_CBLOCK, /*is_final_block=*/0);
+    data += BLAKE2S_CBLOCK;
+    len -= BLAKE2S_CBLOCK;
+  }
+
+  OPENSSL_memcpy(b2s->block, data, len);
+  b2s->block_used = len;
+}
+
+void BLAKE2S256_Final(uint8_t out[BLAKE2S256_DIGEST_LENGTH], BLAKE2S_CTX *b2s) {
+  OPENSSL_memset(&b2s->block[b2s->block_used], 0,
+                 sizeof(b2s->block) - b2s->block_used);
+  blake2s_transform(b2s, b2s->block, b2s->block_used,
+                    /*is_final_block=*/1);
+  static_assert(BLAKE2S256_DIGEST_LENGTH == sizeof(b2s->h));
+  for (size_t i = 0; i < std::size(b2s->h); i++) {
+    CRYPTO_store_u32_le(out + 4 * i, b2s->h[i]);
+  }
+}
+
+void BLAKE2S256(const uint8_t *data, size_t len,
+                uint8_t out[BLAKE2S256_DIGEST_LENGTH]) {
+  BLAKE2S_CTX ctx;
+  BLAKE2S256_Init(&ctx);
+  BLAKE2S256_Update(&ctx, data, len);
+  BLAKE2S256_Final(out, &ctx);
+}
