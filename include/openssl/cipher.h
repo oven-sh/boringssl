@@ -623,6 +623,19 @@ OPENSSL_EXPORT const EVP_CIPHER *EVP_get_cipherbyname(const char *name);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_128_gcm(void);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_256_gcm(void);
 
+// EVP_chacha20_poly1305 is a deprecated ChaCha20-Poly1305 implementation that
+// sets `EVP_CIPH_FLAG_CUSTOM_CIPHER`. Use `EVP_aead_chacha20_poly1305` instead.
+//
+// It takes a 32-byte key and a 12-byte nonce. The tag length defaults to 16
+// bytes and is configured with `EVP_CTRL_AEAD_SET_TAG`.
+//
+// WARNING: Although this API allows streaming an individual ChaCha20-Poly1305
+// operation, this is not secure. Until calling `EVP_DecryptFinal_ex`, the tag
+// has not yet been checked and output released by `EVP_DecryptUpdate` is
+// unauthenticated and easily manipulated by attackers. Callers must buffer the
+// output and may not act on it until the entire operation is complete.
+OPENSSL_EXPORT const EVP_CIPHER *EVP_chacha20_poly1305(void);
+
 // These are deprecated, 192-bit version of AES.
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_192_ecb(void);
 OPENSSL_EXPORT const EVP_CIPHER *EVP_aes_192_cbc(void);

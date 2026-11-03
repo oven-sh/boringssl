@@ -50,6 +50,7 @@ static const struct {
     {NID_bf_cbc, "bf-cbc", EVP_bf_cbc},
     {NID_bf_cfb64, "bf-cfb", EVP_bf_cfb},
     {NID_bf_ecb, "bf-ecb", EVP_bf_ecb},
+    {NID_chacha20_poly1305, "chacha20-poly1305", EVP_chacha20_poly1305},
     {NID_des_cbc, "des-cbc", EVP_des_cbc},
     {NID_des_ecb, "des-ecb", EVP_des_ecb},
     {NID_des_ede_cbc, "des-ede-cbc", EVP_des_ede_cbc},
