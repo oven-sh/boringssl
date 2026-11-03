@@ -3931,7 +3931,8 @@ OPENSSL_EXPORT int i2d_RSA_PSS_PARAMS(const RSA_PSS_PARAMS *in, uint8_t **outp);
 // PKCS#8 private keys.
 //
 // The `PKCS8_PRIV_KEY_INFO` type represents a PKCS#8 PrivateKeyInfo (RFC 5208)
-// structure. This is analogous to SubjectPublicKeyInfo and uses the same
+// structure, including the optional publicKey field of an RFC 5958 v2
+// OneAsymmetricKey. This is analogous to SubjectPublicKeyInfo and uses the same
 // AlgorithmIdentifiers, but carries private keys and is not part of X.509
 // itself.
 //

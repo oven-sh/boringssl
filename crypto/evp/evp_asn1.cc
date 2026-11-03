@@ -100,17 +100,33 @@ int EVP_marshal_public_key(CBB *cbb, const EVP_PKEY *key) {
 EVP_PKEY *EVP_PKEY_from_private_key_info(const uint8_t *in, size_t len,
                                          const EVP_PKEY_ALG *const *algs,
                                          size_t num_algs) {
-  // Parse the PrivateKeyInfo.
+  // Parse the PrivateKeyInfo (RFC 5958 OneAsymmetricKey).
   CBS cbs, pkcs8, oid, algorithm, key;
   uint64_t version;
   CBS_init(&cbs, in, len);
   if (!CBS_get_asn1(&cbs, &pkcs8, CBS_ASN1_SEQUENCE) ||
-      !CBS_get_asn1_uint64(&pkcs8, &version) || version != 0 ||
+      !CBS_get_asn1_uint64(&pkcs8, &version) ||
+      version > 1 ||  // v1(0) or v2(1)
       !CBS_get_asn1(&pkcs8, &algorithm, CBS_ASN1_SEQUENCE) ||
       !CBS_get_asn1(&algorithm, &oid, CBS_ASN1_OBJECT) ||
       !CBS_get_asn1(&pkcs8, &key, CBS_ASN1_OCTETSTRING) ||
-      // A PrivateKeyInfo ends with a SET of Attributes which we ignore.
       CBS_len(&cbs) != 0) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_DECODE_ERROR);
+    return nullptr;
+  }
+
+  // Skip optional attributes [0] and publicKey [1]; [1] requires v2 and a valid
+  // BIT STRING body. Nothing may follow (matches the template path and OpenSSL,
+  // neither of which honours the RFC 5958 extension marker).
+  CBS pub;
+  int has_pub;
+  if (!CBS_get_optional_asn1(
+          &pkcs8, /*out=*/nullptr, /*out_present=*/nullptr,
+          CBS_ASN1_CONTEXT_SPECIFIC | CBS_ASN1_CONSTRUCTED | 0) ||
+      !CBS_get_optional_asn1(&pkcs8, &pub, &has_pub,
+                             CBS_ASN1_CONTEXT_SPECIFIC | 1) ||
+      (has_pub && (version != 1 || !CBS_is_valid_asn1_bitstring(&pub))) ||
+      CBS_len(&pkcs8) != 0) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_DECODE_ERROR);
     return nullptr;
   }

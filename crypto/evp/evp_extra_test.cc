@@ -35,6 +35,7 @@
 #include <openssl/pkcs8.h>
 #include <openssl/rsa.h>
 #include <openssl/span.h>
+#include <openssl/x509.h>
 
 #include "../internal.h"
 #include "../test/test_util.h"
@@ -1057,6 +1058,134 @@ TEST(EVPExtraTest, Ed25519) {
   EXPECT_TRUE(
       ErrorEquals(ERR_get_error(), ERR_LIB_EVP, EVP_R_BUFFER_TOO_SMALL));
   ERR_clear_error();
+}
+
+TEST(EVPExtraTest, Ed25519OneAsymmetricKeyV2) {
+  static const uint8_t kPrivateKeySeed[32] = {
+      0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a, 0xf4,
+      0x92, 0xec, 0x2c, 0xc4, 0x44, 0x49, 0xc5, 0x69, 0x7b, 0x32, 0x69, 0x19,
+      0x70, 0x3b, 0xac, 0x03, 0x1c, 0xae, 0x7f, 0x60,
+  };
+
+  // `build` patches the version byte and appends `tail` after the privateKey
+  // OCTET STRING in an otherwise-minimal OneAsymmetricKey.
+  const auto build = [&](uint8_t version, Span<const uint8_t> tail) {
+    std::vector<uint8_t> out = {
+        0x30, 0x00, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+        0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+    };
+    out.insert(out.end(), std::begin(kPrivateKeySeed),
+               std::end(kPrivateKeySeed));
+    out.insert(out.end(), tail.begin(), tail.end());
+    out[1] = static_cast<uint8_t>(out.size() - 2);
+    out[4] = version;
+    return out;
+  };
+  static const uint8_t kAttrs[] = {0xa0, 0x00};
+  static const uint8_t kPub[] = {0x81, 0x21, 0x00, 0xd7, 0x5a, 0x98, 0x01,
+                                 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe,
+                                 0xd3, 0xc9, 0x64, 0x07, 0x3a, 0x0e, 0xe1,
+                                 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf,
+                                 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a};
+  static const uint8_t kAttrsPub[] = {
+      0xa0, 0x00, 0x81, 0x21, 0x00, 0xd7, 0x5a, 0x98, 0x01, 0x82,
+      0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07,
+      0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf,
+      0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a};
+  static const uint8_t kEmptyPub[] = {0x81, 0x00};
+  static const uint8_t kBadPaddingPub[] = {0x81, 0x01, 0x08};
+  static const uint8_t kAttrsThenPubTwice[] = {0xa0, 0x00, 0x81, 0x01,
+                                               0x00, 0x81, 0x01, 0x00};
+  static const uint8_t kPubThenAttrs[] = {0x81, 0x01, 0x00, 0xa0, 0x00};
+  static const uint8_t kAttrsPubExt[] = {0xa0, 0x00, 0x81, 0x01,
+                                         0x00, 0x82, 0x01, 0x00};
+
+  // An RFC 5958 v2 OneAsymmetricKey containing the RFC 8032 test vector key,
+  // with an empty attributes [0] set and the publicKey [1] field.
+  static const uint8_t kV2PrivateKey[] = {
+      0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
+      0x04, 0x22, 0x04, 0x20, 0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60,
+      0xba, 0x84, 0x4a, 0xf4, 0x92, 0xec, 0x2c, 0xc4, 0x44, 0x49, 0xc5, 0x69,
+      0x7b, 0x32, 0x69, 0x19, 0x70, 0x3b, 0xac, 0x03, 0x1c, 0xae, 0x7f, 0x60,
+      0xa0, 0x00, 0x81, 0x21, 0x00, 0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a,
+      0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a, 0x0e, 0xe1, 0x72,
+      0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51,
+      0x1a,
+  };
+  // Anchor `build` against the hand-written vector so the reject cases can't
+  // pass vacuously if the helper drifts.
+  ASSERT_EQ(Bytes(build(1, kAttrsPub)), Bytes(kV2PrivateKey));
+
+  CBS cbs;
+  CBS_init(&cbs, kV2PrivateKey, sizeof(kV2PrivateKey));
+  UniquePtr<EVP_PKEY> pkey(EVP_parse_private_key(&cbs));
+  ASSERT_TRUE(pkey);
+  EXPECT_EQ(0u, CBS_len(&cbs));
+  EXPECT_EQ(EVP_PKEY_ED25519, EVP_PKEY_id(pkey.get()));
+  uint8_t buf[32];
+  size_t len = sizeof(buf);
+  ASSERT_TRUE(EVP_PKEY_get_raw_private_key(pkey.get(), buf, &len));
+  EXPECT_EQ(Bytes(buf, len), Bytes(kPrivateKeySeed));
+
+  // The legacy path parses it too, and re-encodes it byte for byte.
+  const uint8_t *ptr = kV2PrivateKey;
+  UniquePtr<PKCS8_PRIV_KEY_INFO> p8(
+      d2i_PKCS8_PRIV_KEY_INFO(nullptr, &ptr, sizeof(kV2PrivateKey)));
+  ASSERT_TRUE(p8);
+  EXPECT_EQ(kV2PrivateKey + sizeof(kV2PrivateKey), ptr);
+  UniquePtr<EVP_PKEY> pkey2(EVP_PKCS82PKEY(p8.get()));
+  ASSERT_TRUE(pkey2);
+  EXPECT_EQ(EVP_PKEY_ED25519, EVP_PKEY_id(pkey2.get()));
+  uint8_t *der = nullptr;
+  int der_len = i2d_PKCS8_PRIV_KEY_INFO(p8.get(), &der);
+  ASSERT_GT(der_len, 0);
+  EXPECT_EQ(Bytes(der, der_len), Bytes(kV2PrivateKey));
+  OPENSSL_free(der);
+
+  // Both paths agree on each combination of version and optional fields.
+  const struct {
+    const char *name;
+    bool valid;
+    std::vector<uint8_t> der;
+  } kTests[] = {
+      // Valid v2 shapes without one or both optional fields.
+      {"v2-none", true, build(1, {})},
+      {"v2-attrs-only", true, build(1, kAttrs)},
+      {"v2-pub-only", true, build(1, kPub)},
+      // The publicKey [1] field requires v2.
+      {"v1-with-pub", false, build(0, kPub)},
+      // Versions above v2 are rejected.
+      {"version-2", false, build(2, kPub)},
+      // publicKey [1] is an IMPLICIT BIT STRING and must carry at least the
+      // leading unused-bits octet, which must be at most 7.
+      {"empty-bitstring", false, build(1, kEmptyPub)},
+      {"bad-bitstring-padding", false, build(1, kBadPaddingPub)},
+      // Trailing, duplicate, reordered, or unknown fields are rejected. The
+      // template and OpenSSL do not honour the RFC 5958 extension marker.
+      {"duplicate-pub", false, build(1, kAttrsThenPubTwice)},
+      {"reordered", false, build(1, kPubThenAttrs)},
+      {"unknown-extension", false, build(1, kAttrsPubExt)},
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(t.name);
+    CBS_init(&cbs, t.der.data(), t.der.size());
+    UniquePtr<EVP_PKEY> evp(EVP_parse_private_key(&cbs));
+    ptr = t.der.data();
+    UniquePtr<PKCS8_PRIV_KEY_INFO> info(
+        d2i_PKCS8_PRIV_KEY_INFO(nullptr, &ptr, static_cast<long>(t.der.size())));
+    if (t.valid) {
+      ASSERT_TRUE(evp);
+      EXPECT_EQ(EVP_PKEY_ED25519, EVP_PKEY_id(evp.get()));
+      len = sizeof(buf);
+      ASSERT_TRUE(EVP_PKEY_get_raw_private_key(evp.get(), buf, &len));
+      EXPECT_EQ(Bytes(buf, len), Bytes(kPrivateKeySeed));
+      ASSERT_TRUE(info);
+    } else {
+      EXPECT_FALSE(evp);
+      EXPECT_FALSE(info);
+    }
+    ERR_clear_error();
+  }
 }
 
 static void ExpectRSAKey(const EVP_PKEY *pkey, int bits, uint64_t e) {

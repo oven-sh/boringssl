@@ -56,13 +56,31 @@ int bssl::pkcs12_iterations_acceptable(uint64_t iterations) {
   return 0 < iterations && iterations <= kIterationsLimit;
 }
 
-ASN1_SEQUENCE(PKCS8_PRIV_KEY_INFO) = {
+static int pkcs8_priv_key_info_cb(int operation, ASN1_VALUE **pval,
+                                  const ASN1_ITEM *it, void *exarg) {
+  if (operation == ASN1_OP_D2I_POST) {
+    // RFC 5958: version is v1(0) or v2(1), and the publicKey [1] field
+    // requires v2.
+    const PKCS8_PRIV_KEY_INFO *key =
+        asn1_load_ptr_as<PKCS8_PRIV_KEY_INFO>(pval);
+    long version = ASN1_INTEGER_get(key->version);
+    if (version < 0 || version > 1 ||
+        (version == 0 && key->kpub != nullptr)) {
+      OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_DECODE_ERROR);
+      return 0;
+    }
+  }
+  return 1;
+}
+
+ASN1_SEQUENCE_cb(PKCS8_PRIV_KEY_INFO, pkcs8_priv_key_info_cb) = {
     ASN1_SIMPLE(PKCS8_PRIV_KEY_INFO, version, ASN1_INTEGER),
     ASN1_SIMPLE(PKCS8_PRIV_KEY_INFO, pkeyalg, X509_ALGOR),
     ASN1_SIMPLE(PKCS8_PRIV_KEY_INFO, pkey, ASN1_OCTET_STRING),
     ASN1_IMP_SET_OF_OPT(PKCS8_PRIV_KEY_INFO, attributes, bssl::X509_ATTRIBUTE,
                         0),
-} ASN1_SEQUENCE_END(PKCS8_PRIV_KEY_INFO)
+    ASN1_IMP_OPT(PKCS8_PRIV_KEY_INFO, kpub, ASN1_BIT_STRING, 1),
+} ASN1_SEQUENCE_END_cb(PKCS8_PRIV_KEY_INFO, PKCS8_PRIV_KEY_INFO)
 
 IMPLEMENT_ASN1_FUNCTIONS_const(PKCS8_PRIV_KEY_INFO)
 
