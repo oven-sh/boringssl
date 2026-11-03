@@ -610,7 +610,7 @@ OPENSSL_EXPORT void *BN_GENCB_get_arg(const BN_GENCB *callback);
 //
 // If `add` is not NULL, the prime will fulfill the condition `ret` % `add` ==
 // `rem` in order to suit a given generator. (If `rem` is NULL then `ret` %
-// `add` == 1, or 3 if `safe` is non-zero.)
+// `add` == 1.)
 //
 // If `cb` is not NULL, it will be called during processing to give an
 // indication of progress. See the comments for `BN_GENCB`. It returns one on
