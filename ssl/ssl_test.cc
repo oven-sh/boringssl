@@ -10199,6 +10199,179 @@ TEST(SSLTest, NumTickets) {
   EXPECT_EQ(count_tickets(), 16u);
 }
 
+// A TLS 1.3 server holds its NewSessionTickets until its first write, and each
+// ticket contains the client's certificate chain. With a large chain the
+// tickets do not fit in the record layer's write buffer, which is limited to
+// 64 KiB.
+class LargeTicketFlightTest : public testing::Test {
+ protected:
+  // The default BIO pair is smaller than the ticket flight, so the flight needs
+  // several writes. `kLargeBIO` takes it in one.
+  static constexpr size_t kDefaultBIO = 0;
+  static constexpr size_t kLargeBIO = 512 * 1024;
+
+  void SetUp() override {
+    server_ctx_ = CreateContextWithTestCertificate(TLS_method());
+    ASSERT_TRUE(server_ctx_);
+    SSL_CTX_set_custom_verify(server_ctx_.get(), SSL_VERIFY_PEER,
+                              AcceptAnyCertificate);
+
+    client_ctx_.reset(SSL_CTX_new(TLS_method()));
+    ASSERT_TRUE(client_ctx_);
+    SSL_CTX_set_custom_verify(client_ctx_.get(), SSL_VERIFY_PEER,
+                              AcceptAnyCertificate);
+    SSL_CTX_set_session_cache_mode(client_ctx_.get(), SSL_SESS_CACHE_BOTH);
+    SSL_CTX_sess_set_new_cb(client_ctx_.get(), [](SSL *, SSL_SESSION *) -> int {
+      ticket_count_++;
+      return 0;
+    });
+
+    // The client sends its leaf, then copies of it, for a chain of about
+    // 40 KiB. Two tickets then take about 80 KiB.
+    bssl::UniquePtr<CRYPTO_BUFFER> leaf = GetTestCertificateBuffer();
+    ASSERT_TRUE(leaf);
+    bssl::UniquePtr<EVP_PKEY> key = GetTestKey();
+    ASSERT_TRUE(key);
+    std::vector<CRYPTO_BUFFER *> chain(
+        1 + 40 * 1024 / CRYPTO_BUFFER_len(leaf.get()), leaf.get());
+    ASSERT_TRUE(SSL_CTX_set_chain_and_key(client_ctx_.get(), chain.data(),
+                                          chain.size(), key.get(), nullptr));
+  }
+
+  void Connect(size_t bio_size) {
+    client_.reset(SSL_new(client_ctx_.get()));
+    server_.reset(SSL_new(server_ctx_.get()));
+    ASSERT_TRUE(client_);
+    ASSERT_TRUE(server_);
+    SSL_set_connect_state(client_.get());
+    SSL_set_accept_state(server_.get());
+    BIO *bio1, *bio2;
+    ASSERT_TRUE(BIO_new_bio_pair(&bio1, bio_size, &bio2, bio_size));
+    // SSL_set_bio takes ownership.
+    SSL_set_bio(client_.get(), bio1, bio1);
+    SSL_set_bio(server_.get(), bio2, bio2);
+
+    ticket_count_ = 0;
+    key_updates_sent_ = 0;
+    ASSERT_TRUE(CompleteHandshakes(client_.get(), server_.get()));
+    ASSERT_EQ(SSL_version(server_.get()), TLS1_3_VERSION);
+
+    SSL_set_msg_callback(
+        server_.get(), [](int is_write, int /*version*/, int content_type,
+                          const void *buf, size_t len, SSL *, void *) {
+          if (is_write && content_type == SSL3_RT_HANDSHAKE && len > 0 &&
+              static_cast<const uint8_t *>(buf)[0] == SSL3_MT_KEY_UPDATE) {
+            key_updates_sent_++;
+          }
+        });
+  }
+
+  // WriteByte writes `byte` from `server_` and reads it at `client_`.
+  void WriteByte(char byte) {
+    for (;;) {
+      int server_ret = SSL_write(server_.get(), &byte, 1);
+      if (server_ret != 1) {
+        ASSERT_EQ(server_ret, -1);
+        ASSERT_EQ(SSL_get_error(server_.get(), server_ret),
+                  SSL_ERROR_WANT_WRITE);
+      }
+
+      char got;
+      int client_ret = SSL_read(client_.get(), &got, 1);
+      if (client_ret == 1) {
+        EXPECT_EQ(server_ret, 1);
+        EXPECT_EQ(got, byte);
+        return;
+      }
+      ASSERT_EQ(client_ret, -1);
+      ASSERT_EQ(SSL_get_error(client_.get(), client_ret), SSL_ERROR_WANT_READ);
+    }
+  }
+
+  // RequestKeyUpdate sends a KeyUpdate that requests one in return, and `byte`
+  // after it, from `client_`. It reads both at `server_`.
+  void RequestKeyUpdate(char byte) {
+    ASSERT_TRUE(SSL_key_update(client_.get(), SSL_KEY_UPDATE_REQUESTED));
+    ASSERT_EQ(SSL_write(client_.get(), &byte, 1), 1);
+    char got;
+    ASSERT_EQ(SSL_read(server_.get(), &got, 1), 1);
+    EXPECT_EQ(got, byte);
+  }
+
+  static size_t ticket_count_;
+  static size_t key_updates_sent_;
+  bssl::UniquePtr<SSL_CTX> client_ctx_, server_ctx_;
+  bssl::UniquePtr<SSL> client_, server_;
+};
+
+size_t LargeTicketFlightTest::ticket_count_ = 0;
+size_t LargeTicketFlightTest::key_updates_sent_ = 0;
+
+TEST_F(LargeTicketFlightTest, ZeroLengthWrite) {
+  for (size_t bio_size : {kDefaultBIO, kLargeBIO}) {
+    SCOPED_TRACE(bio_size);
+    ASSERT_NO_FATAL_FAILURE(Connect(bio_size));
+    if (bio_size == kLargeBIO) {
+      // The whole flight goes out at once.
+      ASSERT_EQ(SSL_write(server_.get(), nullptr, 0), 0);
+    }
+    ASSERT_TRUE(FlushNewSessionTickets(client_.get(), server_.get()));
+    EXPECT_EQ(ticket_count_, 2u);
+    ASSERT_NO_FATAL_FAILURE(WriteByte('a'));
+  }
+}
+
+TEST_F(LargeTicketFlightTest, WithApplicationData) {
+  for (size_t bio_size : {kDefaultBIO, kLargeBIO}) {
+    SCOPED_TRACE(bio_size);
+    ASSERT_NO_FATAL_FAILURE(Connect(bio_size));
+    char byte = 'a';
+    if (bio_size == kLargeBIO) {
+      ASSERT_EQ(SSL_write(server_.get(), &byte, 1), 1);
+      char got;
+      ASSERT_EQ(SSL_read(client_.get(), &got, 1), 1);
+      EXPECT_EQ(got, byte);
+    } else {
+      ASSERT_NO_FATAL_FAILURE(WriteByte(byte));
+    }
+    EXPECT_EQ(ticket_count_, 2u);
+    ASSERT_NO_FATAL_FAILURE(WriteByte('b'));
+  }
+}
+
+// While the flight is only partly written, the server may have to add a
+// KeyUpdate acknowledgment to it. The client must receive the tickets, then the
+// acknowledgment, then the application data under the new keys.
+TEST_F(LargeTicketFlightTest, KeyUpdateWhileBlocked) {
+  ASSERT_NO_FATAL_FAILURE(Connect(kDefaultBIO));
+  char byte = 'a';
+  ASSERT_EQ(SSL_write(server_.get(), &byte, 1), -1);
+  ASSERT_EQ(SSL_get_error(server_.get(), -1), SSL_ERROR_WANT_WRITE);
+
+  ASSERT_NO_FATAL_FAILURE(RequestKeyUpdate('c'));
+  EXPECT_EQ(key_updates_sent_, 1u);
+
+  ASSERT_NO_FATAL_FAILURE(WriteByte('a'));
+  EXPECT_EQ(ticket_count_, 2u);
+  ASSERT_NO_FATAL_FAILURE(WriteByte('b'));
+}
+
+// A zero-length write that sends a KeyUpdate acknowledgment with the flight
+// must let the server acknowledge the next KeyUpdate too.
+TEST_F(LargeTicketFlightTest, KeyUpdateBeforeZeroLengthWrite) {
+  ASSERT_NO_FATAL_FAILURE(Connect(kLargeBIO));
+  ASSERT_NO_FATAL_FAILURE(RequestKeyUpdate('c'));
+  EXPECT_EQ(key_updates_sent_, 1u);
+
+  ASSERT_EQ(SSL_write(server_.get(), nullptr, 0), 0);
+  ASSERT_TRUE(FlushNewSessionTickets(client_.get(), server_.get()));
+  EXPECT_EQ(ticket_count_, 2u);
+
+  ASSERT_NO_FATAL_FAILURE(RequestKeyUpdate('d'));
+  EXPECT_EQ(key_updates_sent_, 2u);
+  ASSERT_NO_FATAL_FAILURE(WriteByte('a'));
+}
+
 TEST(SSLTest, CertSubjectsToStack) {
   const std::string kCert1 = R"(
 -----BEGIN CERTIFICATE-----
