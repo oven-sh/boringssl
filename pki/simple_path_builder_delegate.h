@@ -62,7 +62,8 @@ class OPENSSL_EXPORT SimplePathBuilderDelegate
                                       CertErrors *errors) override;
 
   // Requires RSA keys be >= `min_rsa_modulus_length_bits_`.
-  bool IsPublicKeyAcceptable(EVP_PKEY *public_key, CertErrors *errors) override;
+  bool IsPublicKeyAcceptable(const EVP_PKEY *public_key,
+                             CertErrors *errors) override;
 
   // No-op implementation.
   void CheckPathAfterVerification(const CertPathBuilder &path_builder,
@@ -88,8 +89,8 @@ class OPENSSL_EXPORT SimplePathBuilderDelegate
       Span<const uint8_t> cosigner_id) override;
 
   // No-op implementation (does not require any valid additional cosigners).
-  bool IsCosignatureVerificationResultAcceptable(
-      const MTCAnchor* mtc_anchor,
+  bool IsMTCCosignatureVerificationResultAcceptable(
+      const ParsedCertificate& mtc_ca_cert,
       std::vector<std::vector<uint8_t>> valid_additional_cosigners) override;
 
  private:

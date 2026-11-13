@@ -90,6 +90,7 @@ extern "C" {
 #define V_ASN1_REAL 9
 #define V_ASN1_ENUMERATED 10
 #define V_ASN1_UTF8STRING 12
+#define V_ASN1_RELATIVE_OID 13
 #define V_ASN1_SEQUENCE 16
 #define V_ASN1_SET 17
 #define V_ASN1_NUMERICSTRING 18
@@ -516,23 +517,12 @@ OPENSSL_EXPORT int ASN1_STRING_type(const ASN1_STRING *str);
 OPENSSL_EXPORT const unsigned char *ASN1_STRING_get0_data(
     const ASN1_STRING *str);
 
-// ASN1_STRING_data returns a mutable pointer to `str`'s contents. Callers
-// should use `ASN1_STRING_length` to determine the length of the string. The
-// string may have embedded NUL bytes and may not be NUL-terminated.
+// ASN1_STRING_get_length returns the length of `str`, in bytes.
 //
 // The contents of an `ASN1_STRING` encode the value in some type-specific
 // representation that does not always correspond to the DER encoding of the
 // type. See the documentation for `ASN1_STRING` for details.
-//
-// Prefer `ASN1_STRING_get0_data`.
-OPENSSL_EXPORT unsigned char *ASN1_STRING_data(ASN1_STRING *str);
-
-// ASN1_STRING_length returns the length of `str`, in bytes.
-//
-// The contents of an `ASN1_STRING` encode the value in some type-specific
-// representation that does not always correspond to the DER encoding of the
-// type. See the documentation for `ASN1_STRING` for details.
-OPENSSL_EXPORT int ASN1_STRING_length(const ASN1_STRING *str);
+OPENSSL_EXPORT size_t ASN1_STRING_get_length(const ASN1_STRING *str);
 
 // ASN1_STRING_cmp compares `a` and `b`'s type and contents. It returns an
 // integer equal to, less than, or greater than zero if `a` is equal to, less
@@ -546,14 +536,16 @@ OPENSSL_EXPORT int ASN1_STRING_length(const ASN1_STRING *str);
 // values numerically. For a numerical comparison, use `ASN1_INTEGER_cmp`.
 OPENSSL_EXPORT int ASN1_STRING_cmp(const ASN1_STRING *a, const ASN1_STRING *b);
 
-// ASN1_STRING_set sets the contents of `str` to a copy of `len` bytes from
-// `data`. It returns one on success and zero on error. If `data` is NULL, it
-// updates the length and allocates the buffer as needed, but does not
-// initialize the contents.
+// ASN1_STRING_set1_data sets the contents of `str` to `len` bytes from `data`.
 //
 // If `str` is a BIT STRING, this function sets the number of unused bits to
 // zero. `ASN1_BIT_STRING_set1` may be used to set a BIT STRING that is not a
 // whole number of bytes.
+OPENSSL_EXPORT int ASN1_STRING_set1_data(ASN1_STRING *str, const uint8_t *data,
+                                         size_t len);
+
+// ASN1_STRING_set behaves like `ASN1_STRING_set1_data` except that, if `len` is
+// negative, it implicitly calls `strlen` on data to determine the length.
 OPENSSL_EXPORT int ASN1_STRING_set(ASN1_STRING *str, const void *data,
                                    ossl_ssize_t len);
 
@@ -1127,9 +1119,6 @@ OPENSSL_EXPORT void ASN1_UTCTIME_free(ASN1_UTCTIME *str);
 
 // d2i_ASN1_UTCTIME parses up to `len` bytes from `*inp` as a DER-encoded
 // ASN.1 UTCTime, as described in `d2i_SAMPLE`.
-//
-// TODO(https://crbug.com/boringssl/354): This function currently also accepts
-// BER, but this will be removed in the future.
 OPENSSL_EXPORT ASN1_UTCTIME *d2i_ASN1_UTCTIME(ASN1_UTCTIME **out,
                                               const uint8_t **inp, long len);
 
@@ -1236,9 +1225,6 @@ OPENSSL_EXPORT void ASN1_TIME_free(ASN1_TIME *str);
 
 // d2i_ASN1_TIME parses up to `len` bytes from `*inp` as a DER-encoded X.509
 // Time (RFC 5280), as described in `d2i_SAMPLE`.
-//
-// TODO(https://crbug.com/boringssl/354): This function currently also accepts
-// BER, but this will be removed in the future.
 OPENSSL_EXPORT ASN1_TIME *d2i_ASN1_TIME(ASN1_TIME **out, const uint8_t **inp,
                                         long len);
 
@@ -1522,9 +1508,11 @@ OPENSSL_EXPORT void ASN1_TYPE_set(ASN1_TYPE *a, int type, void *value);
 // of `value`. It returns one on success and zero on error.
 OPENSSL_EXPORT int ASN1_TYPE_set1(ASN1_TYPE *a, int type, const void *value);
 
-// ASN1_TYPE_cmp returns zero if `a` and `b` are equal and some non-zero value
-// otherwise. Note this function can only be used for equality checks, not an
-// ordering.
+// ASN1_TYPE_cmp compares `a` and `b`. It returns zero if they are equal, and a
+// negative or positive value if `a` sorts before or after `b`, respectively.
+// NULL sorts before any non-NULL value. Otherwise, values are ordered first by
+// type, then by contents. The order is arbitrary but suitable for sorting.
+// Callers should not rely on the exact order.
 OPENSSL_EXPORT int ASN1_TYPE_cmp(const ASN1_TYPE *a, const ASN1_TYPE *b);
 
 typedef STACK_OF(ASN1_TYPE) ASN1_SEQUENCE_ANY;
@@ -1808,6 +1796,25 @@ OPENSSL_EXPORT unsigned long ASN1_STRING_get_default_mask(void);
 
 // ASN1_STRING_TABLE_cleanup does nothing.
 OPENSSL_EXPORT void ASN1_STRING_TABLE_cleanup(void);
+
+// ASN1_STRING_data returns a mutable pointer to `str`'s contents. Callers
+// should use `ASN1_STRING_length` to determine the length of the string. The
+// string may have embedded NUL bytes and may not be NUL-terminated.
+//
+// The contents of an `ASN1_STRING` encode the value in some type-specific
+// representation that does not always correspond to the DER encoding of the
+// type. See the documentation for `ASN1_STRING` for details.
+//
+// Prefer `ASN1_STRING_get0_data`. See crbug.com/574019297.
+OPENSSL_EXPORT unsigned char *ASN1_STRING_data(ASN1_STRING *str);
+
+// ASN1_STRING_length returns the length of `str`, in bytes. Prefer
+// `ASN1_STRING_get_length`.
+//
+// The contents of an `ASN1_STRING` encode the value in some type-specific
+// representation that does not always correspond to the DER encoding of the
+// type. See the documentation for `ASN1_STRING` for details.
+OPENSSL_EXPORT int ASN1_STRING_length(const ASN1_STRING *str);
 
 // M_ASN1_* are legacy aliases for various `ASN1_STRING` functions. Use the
 // functions themselves.

@@ -110,6 +110,11 @@ static bool is_post_quantum_group(uint16_t id) {
   return id == SSL_GROUP_X25519_MLKEM768 || id == SSL_GROUP_MLKEM1024;
 }
 
+static bool is_post_quantum_sigalg(uint16_t sigalg) {
+  return sigalg == SSL_SIGN_ML_DSA_44 || sigalg == SSL_SIGN_ML_DSA_65 ||
+         sigalg == SSL_SIGN_ML_DSA_87;
+}
+
 bool ssl_parse_client_hello_with_trailing_data(const SSLImpl *ssl, CBS *cbs,
                                                SSL_CLIENT_HELLO *out) {
   OPENSSL_memset(out, 0, sizeof(*out));
@@ -215,21 +220,13 @@ bool tls1_get_shared_group(SSL_HANDSHAKE *hs, uint16_t *out_group_id) {
   // `peer_supported_group_list`.
 
   Span<const uint16_t> groups = hs->config->supported_group_list;
-  Span<const uint16_t> pref, supp;
-  Span<const uint32_t> pref_flags;
-  if (ssl->options & SSL_OP_CIPHER_SERVER_PREFERENCE) {
-    pref = groups;
-    pref_flags = hs->config->supported_group_list_flags;
-    supp = hs->peer_supported_group_list;
-  } else {
-    pref = hs->peer_supported_group_list;
-    supp = groups;
-  }
+  Span<const uint32_t> groups_flags = hs->config->supported_group_list_flags;
+  Span<const uint16_t> supp = hs->peer_supported_group_list;
 
   // Index within `supp` of the best matching group so far.
   std::optional<size_t> best_match;
-  for (size_t i = 0u; i < pref.size(); ++i) {
-    uint16_t candidate_group = pref[i];
+  for (size_t i = 0u; i < groups.size(); ++i) {
+    uint16_t candidate_group = groups[i];
     auto match_it = std::find(supp.begin(), supp.end(), candidate_group);
     // Post-quantum key agreements don't fit in the u8-length-prefixed
     // ECPoint field in TLS 1.2 and below.
@@ -246,8 +243,8 @@ bool tls1_get_shared_group(SSL_HANDSHAKE *hs, uint16_t *out_group_id) {
 
     // If we found a match, stop at the current equipreference group.
     bool equal_with_next =
-        !pref_flags.empty() &&
-        (pref_flags[i] & SSL_GROUP_FLAG_EQUAL_PREFERENCE_WITH_NEXT);
+        !groups_flags.empty() &&
+        (groups_flags[i] & SSL_GROUP_FLAG_EQUAL_PREFERENCE_WITH_NEXT);
     if (!equal_with_next && best_match.has_value()) {
       break;
     }
@@ -339,7 +336,12 @@ static Span<const uint16_t> tls12_get_verify_sigalgs(const SSL_HANDSHAKE *hs) {
 }
 
 bool tls12_add_verify_sigalgs(const SSL_HANDSHAKE *hs, CBB *out) {
+  uint16_t max_version =
+      hs->ssl->server ? ssl_protocol_version(hs->ssl) : hs->max_version;
   for (uint16_t sigalg : tls12_get_verify_sigalgs(hs)) {
+    if (is_post_quantum_sigalg(sigalg) && max_version < TLS1_3_VERSION) {
+      continue;
+    }
     if (!CBB_add_u16(out, sigalg)) {
       return false;
     }
@@ -348,7 +350,7 @@ bool tls12_add_verify_sigalgs(const SSL_HANDSHAKE *hs, CBB *out) {
 }
 
 bool tls12_check_peer_sigalg(const SSL_HANDSHAKE *hs, uint8_t *out_alert,
-                             uint16_t sigalg, EVP_PKEY *pkey) {
+                             uint16_t sigalg, const EVP_PKEY *pkey) {
   // The peer must have selected an algorithm that is consistent with its public
   // key, the TLS version, and what we advertised.
   Span<const uint16_t> sigalgs = tls12_get_verify_sigalgs(hs);
@@ -1029,7 +1031,7 @@ static bool ext_sigalgs_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
     return false;
   }
   // Add a fake signature algorithm. See RFC 8701.
-  if (hs->ssl->ctx->grease_sigalgs_enabled &&
+  if (hs->ssl->ctx->grease_enabled &&
       !CBB_add_u16(&sigalgs_cbb,
                    ssl_get_grease_value(hs, ssl_grease_signature_algorithm))) {
     return false;
@@ -1938,7 +1940,7 @@ bool ssl_setup_pre_shared_keys(SSL_HANDSHAKE *hs) {
     return true;
   }
 
-  if (SSL_SESSION *session = ssl->session.get();
+  if (SSLSession *session = ssl->session.get();
       session != nullptr &&
       ssl_session_get_type(session) == SSLSessionType::kPreSharedKey &&
       !hs->pre_shared_keys.Push(UpRef(session))) {
@@ -2018,7 +2020,7 @@ static bool ext_pre_shared_key_add_clienthello(const SSL_HANDSHAKE *hs,
         return false;
       }
     } else {
-      const SSL_SESSION *session = std::get<UniquePtr<SSL_SESSION>>(psk).get();
+      const SSLSession *session = std::get<UniquePtr<SSLSession>>(psk).get();
       // At most one PSK will be a session.
       assert(session == ssl->session.get());
       OPENSSL_timeval now = ssl_ctx_get_current_time(ssl->ctx.get());
@@ -2953,12 +2955,17 @@ static bool ext_server_padding_parse_serverhello(SSL_HANDSHAKE *hs,
 //
 // https://datatracker.ietf.org/doc/draft-ietf-tls-trust-anchor-ids/
 
+bool ssl_is_valid_trust_anchor_id(Span<const uint8_t> id) {
+  CBS cbs = id;
+  return id.size() <= 32 && CBS_is_valid_asn1_relative_oid(&cbs);
+}
+
 bool ssl_is_valid_trust_anchor_list(Span<const uint8_t> in) {
   CBS ids = in;
   while (CBS_len(&ids) > 0) {
     CBS id;
-    if (!CBS_get_u8_length_prefixed(&ids, &id) ||  //
-        CBS_len(&id) == 0) {
+    if (!CBS_get_u8_length_prefixed(&ids, &id) ||
+        !ssl_is_valid_trust_anchor_id(id)) {
       return false;
     }
   }
@@ -4964,7 +4971,7 @@ static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_method(
 }
 
 enum ssl_ticket_aead_result_t ssl_process_ticket(
-    SSL_HANDSHAKE *hs, UniquePtr<SSL_SESSION> *out_session,
+    SSL_HANDSHAKE *hs, UniquePtr<SSLSession> *out_session,
     bool *out_renew_ticket, Span<const uint8_t> ticket,
     Span<const uint8_t> session_id, bool save_ticket) {
   SSLImpl *const ssl = hs->ssl;
@@ -5046,8 +5053,8 @@ enum ssl_ticket_aead_result_t ssl_process_ticket(
   }
 
   // Decode the session.
-  UniquePtr<SSL_SESSION> session(SSL_SESSION_from_bytes(
-      plaintext.data(), plaintext.size(), ssl->ctx.get()));
+  UniquePtr<SSLSession> session(FromOpaque(SSL_SESSION_from_bytes(
+      plaintext.data(), plaintext.size(), ssl->ctx.get())));
   if (!session) {
     ERR_clear_error();  // Don't leave an error on the queue.
     return ssl_ticket_aead_ignore_ticket;

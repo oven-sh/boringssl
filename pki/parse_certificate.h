@@ -196,11 +196,6 @@ enum class CertificateVersion {
 // subsequent field descriptions are in terms of what ParseTbsCertificate()
 // sets.
 struct OPENSSL_EXPORT ParsedTbsCertificate {
-  ParsedTbsCertificate();
-  ParsedTbsCertificate(ParsedTbsCertificate &&other);
-  ParsedTbsCertificate &operator=(ParsedTbsCertificate &&other) = default;
-  ~ParsedTbsCertificate();
-
   // Corresponds with "version" from RFC 5280:
   //         version         [0]  EXPLICIT Version DEFAULT v1,
   //
@@ -595,10 +590,6 @@ struct AuthorityInfoAccessDescription {
 //    reasons                 [1]     ReasonFlags OPTIONAL,
 //    cRLIssuer               [2]     GeneralNames OPTIONAL }
 struct OPENSSL_EXPORT ParsedDistributionPoint {
-  ParsedDistributionPoint();
-  ParsedDistributionPoint(ParsedDistributionPoint &&other);
-  ~ParsedDistributionPoint();
-
   // The parsed fullName, if distributionPoint was present and was a fullName.
   std::unique_ptr<GeneralNames> distribution_point_fullname;
 
@@ -633,11 +624,6 @@ struct OPENSSL_EXPORT ParsedDistributionPoint {
 //
 //    KeyIdentifier ::= OCTET STRING
 struct OPENSSL_EXPORT ParsedAuthorityKeyIdentifier {
-  ParsedAuthorityKeyIdentifier();
-  ~ParsedAuthorityKeyIdentifier();
-  ParsedAuthorityKeyIdentifier(ParsedAuthorityKeyIdentifier &&other);
-  ParsedAuthorityKeyIdentifier &operator=(ParsedAuthorityKeyIdentifier &&other);
-
   // The keyIdentifier, which is an OCTET STRING.
   std::optional<der::Input> key_identifier;
 
@@ -664,6 +650,34 @@ struct OPENSSL_EXPORT ParsedAuthorityKeyIdentifier {
 // On failure the state of `subject_key_identifier` is not guaranteed.
 [[nodiscard]] OPENSSL_EXPORT bool ParseSubjectKeyIdentifier(
     der::Input extension_value, der::Input *subject_key_identifier);
+
+// ParsedMtcCaInfo contains data from an MTC CA certificate, taken from its
+// subject and its id-pe-mtcCertificationAuthority-SHA256 extension
+// (draft-ietf-plants-merkle-tree-certs-07, Sections 5.1 and 5.5):
+//
+//     MTCCertificationAuthority ::= SEQUENCE {
+//         signature    AlgorithmIdentifier,
+//         minSerial    INTEGER (mtcMinSerial..mtcMaxSerial),
+//         maxSerial    INTEGER (mtcMinSerial..mtcMaxSerial) }
+struct OPENSSL_EXPORT ParsedMtcCaInfo {
+  // The CA ID, i.e. the contents of the RELATIVE-OID in the subject's single
+  // id-rdna-trustAnchorID attribute.
+  der::Input ca_id;
+
+  // The DER-encoded AlgorithmIdentifier for the CA cosigner.
+  der::Input ca_cosign_algorithm_tlv;
+
+  uint64_t min_serial = 0;
+  uint64_t max_serial = 0;
+};
+
+// Parses the id-pe-mtcCertificationAuthority-SHA256 `extension` of an MTC CA
+// certificate with subject `subject_tlv`. Returns true on successful parse of
+// MTC CA data consistent with draft-ietf-plants-merkle-tree-certs-07, and fills
+// `out` with values that reference data in `extension` and `subject_tlv`.
+[[nodiscard]] OPENSSL_EXPORT bool ParseMtcCaInfo(
+    const ParsedExtension &extension, der::Input subject_tlv,
+    ParsedMtcCaInfo *out);
 
 BSSL_NAMESPACE_END
 

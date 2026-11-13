@@ -28,6 +28,7 @@
 #include <openssl/sha2.h>
 #include <openssl/span.h>
 
+#include "../crypto/bytestring/internal.h"
 #include "cert_error_params.h"
 #include "cert_errors.h"
 #include "common_cert_errors.h"
@@ -881,6 +882,18 @@ class PathVerifier {
   //   otherwise the initial value is n+1.
   size_t policy_mapping_;
 
+  // `working_issuer_cert_` is the certificate that the chain-to-verify claims
+  // issued the next certificate in the chain: the trust anchor's certificate
+  // at first, and then each intermediate in turn. It points into the
+  // certificate chain being verified.
+  //
+  // RFC 5280 section 6.1.2 describes the issuer's fields as separate variables,
+  // since it is agnostic as to whether the trust anchor is a certificate. Here
+  // the trust anchor is always a certificate, so we track that certificate and
+  // read the issuer's subject (the working_issuer_name variable in RFC 5280)
+  // from it directly.
+  const ParsedCertificate* working_issuer_cert_ = nullptr;
+
   // `working_public_key_` is an amalgamation of 3 separate variables from RFC
   // 5280:
   //    * working_public_key
@@ -898,18 +911,11 @@ class PathVerifier {
   //    signature of a certificate.
   bssl::UniquePtr<EVP_PKEY> working_public_key_;
 
-  // `working_normalized_issuer_name_` is the normalized value of the
-  // working_issuer_name variable in RFC 5280 section 6.1.2:
-  //
-  //    working_issuer_name:  the issuer distinguished name expected
-  //    in the next certificate in the chain.
-  der::Input working_normalized_issuer_name_;
-
   // `working_mtc_anchor_` is the trusted MTC Anchor that the chain-to-verify
   // claims issued the next certificate in the chain, and should be used to
-  // verify that certificate. It is analogous to `working_public_key_`, except
-  // that MTCs don't have an EVP_PKEY that can be used to verify their
-  // "signature" and instead have an MTCAnchor used for verification.
+  // verify that certificate.
+  // TODO(crbug.com/575507260): Remove this field and use `working_issuer_cert_`
+  // instead.
   const MTCAnchor *working_mtc_anchor_ = nullptr;
 
   // `max_path_length_` corresponds with the same named variable in RFC 5280
@@ -1129,32 +1135,32 @@ void PathVerifier::ApplyPolicyConstraints(const ParsedCertificate &cert) {
   }
 }
 
-static bool VerifyMTCProofSignaturePlants04(
+static bool VerifyMTCProofSignature(
     const CBS *cosigner_id, Span<const uint8_t> log_id_text, uint64_t start,
     uint64_t end, const TreeHash &expected_subtree_hash,
     Span<const uint8_t> signature, SignatureAlgorithm signature_algorithm,
-    const CRYPTO_BUFFER *key_bytes, SignatureVerifyCache *cache) {
-  ScopedCBB cosigned_message;
+    Span<const uint8_t> key_bytes, SignatureVerifyCache *cache) {
+  ScopedCBB cosigned_subtree;
   // `cosigner_name` and `log_origin` are the only variable-length parts of
-  // `CosignedMessage`. Allocate the initial buffer size with 48 bytes for those
+  // `CosignedSubtree`. Allocate the initial buffer size with 48 bytes for those
   // (16 byte prefix + 32 bytes for the text representation of the
   // relative-oid.)
-  if (!CBB_init(cosigned_message.get(), 12 + 48 + 8 + 48 + 8 + 8 + 32)) {
+  if (!CBB_init(cosigned_subtree.get(), 12 + 48 + 8 + 48 + 8 + 8 + 32)) {
     return false;
   }
   // Section 7.2 step 12:
   // Signatures are verified as described in Section 5.3.1. For each signature
-  // verification, the CosignedMessage structure is constructed as follows:
+  // verification, the CosignedSubtree structure is constructed as follows:
   //
   // Section 5.3.1:
   //     uint8 label[12] = "subtree/v1\n\0";
   // (C string constants implicitly have a null terminator, so it's not
   // explicitly included here:)
   static constexpr uint8_t kLabel[12] = "subtree/v1\n";
-  if (!CBB_add_bytes(cosigned_message.get(), kLabel, sizeof(kLabel))) {
+  if (!CBB_add_bytes(cosigned_subtree.get(), kLabel, sizeof(kLabel))) {
     return false;
   }
-  // Section 7.2: Set the CosignedMessage's cosigner_name based on the cosigner
+  // Section 7.2: Set the CosignedSubtree's cosigner_name based on the cosigner
   // ID as described in Section 5.3.1.
   // Section 5.3.1: opaque cosigner_name<1..2^8-1>;
   static constexpr uint8_t kTaiPrefix[16] = {'o', 'i', 'd', '/', '1', '.',
@@ -1168,70 +1174,85 @@ static bool VerifyMTCProofSignaturePlants04(
   Span<const uint8_t> cosigner_id_text =
       StringAsBytes(cosigner_id_text_buf.get());
   CBB cosigner_name;
-  if (!CBB_add_u8_length_prefixed(cosigned_message.get(), &cosigner_name) ||
+  if (!CBB_add_u8_length_prefixed(cosigned_subtree.get(), &cosigner_name) ||
       !CBB_add_bytes(&cosigner_name, kTaiPrefix, sizeof(kTaiPrefix)) ||
       !CBB_add_bytes(&cosigner_name, cosigner_id_text.data(),
                      cosigner_id_text.size())) {
     return false;
   }
 
-  // Section 7.2: Set the CosignedMessage's timestamp to zero.
+  // Section 7.2: Set the CosignedSubtree's timestamp to zero.
   // Section 5.3.1: uint64 timestamp;
-  if (!CBB_add_u64(cosigned_message.get(), 0u)) {
+  if (!CBB_add_u64(cosigned_subtree.get(), 0u)) {
     return false;
   }
 
-  // Section 7.2: Set the CosignedMessage's log_origin based on log_id as
+  // Section 7.2: Set the CosignedSubtree's log_origin based on log_id as
   // described in Section 5.3.1.
   // Section 5.3.1:     opaque log_origin<1..2^8-1>;
   CBB log_origin;
-  if (!CBB_add_u8_length_prefixed(cosigned_message.get(), &log_origin) ||
+  if (!CBB_add_u8_length_prefixed(cosigned_subtree.get(), &log_origin) ||
       !CBB_add_bytes(&log_origin, kTaiPrefix, sizeof(kTaiPrefix)) ||
       !CBB_add_bytes(&log_origin, log_id_text.data(), log_id_text.size())) {
     return false;
   }
 
-  // Section 7.2: Set the CosignedMessage's start and end to the MTCProof's
+  // Section 7.2: Set the CosignedSubtree's start and end to the MTCProof's
   // start and end, respectively.
   // Section 5.3.1: uint64 start;
   // Section 5.3.1: uint64 end;
-  if (!CBB_add_u64(cosigned_message.get(), start) ||
-      !CBB_add_u64(cosigned_message.get(), end)) {
+  if (!CBB_add_u64(cosigned_subtree.get(), start) ||
+      !CBB_add_u64(cosigned_subtree.get(), end)) {
     return false;
   }
 
-  // Section 7.2: Set the CosignedMessage's subtree_hash to
+  // Section 7.2: Set the CosignedSubtree's subtree_hash to
   // expected_subtree_hash.
   // Section 5.3.1: HashValue subtree_hash;
-  if (!CBB_add_bytes(cosigned_message.get(), expected_subtree_hash.data(),
+  if (!CBB_add_bytes(cosigned_subtree.get(), expected_subtree_hash.data(),
                      expected_subtree_hash.size())) {
     return false;
   }
 
-  if (!CBB_flush(cosigned_message.get())) {
+  if (!CBB_flush(cosigned_subtree.get())) {
     return false;
   }
 
-  return VerifySignedData(
-      signature_algorithm,
-      Span<const uint8_t>(CBB_data(cosigned_message.get()),
-                          CBB_len(cosigned_message.get())),
-      der::BitString(signature, 0),
-      Span(CRYPTO_BUFFER_data(key_bytes), CRYPTO_BUFFER_len(key_bytes)), cache);
+  return VerifySignedData(signature_algorithm,
+                          der::Input(CBBAsSpan(cosigned_subtree.get())),
+                          der::BitString(signature, 0), key_bytes, cache);
 }
 
-// This function implements draft-ietf-plants-merkle-tree-certs-04 section 7.2:
+enum class VerifyMTCResult {
+  // Failed for any reason not covered by the more specific cases.
+  kFailed,
+
+  // The MTC was landmark relative (had no signatures) but the subtree range
+  // was not present in `mtc_anchor`'s configured trusted subtrees.
+  // (Note that this does not include the case where the range was present in
+  // the trusted subtrees but had the incorrect hash.)
+  kLandmarkNotRecognized,
+
+  // The MTC was verified as a standalone MTC and had a valid CA signature, but
+  // `delegate->IsMTCCosignatureVerificationResultAcceptable` returned false.
+  kUnacceptableCosignatureVerificationResult,
+
+  // The MTC verified successfully.
+  kSuccess,
+};
+// This function implements draft-ietf-plants-merkle-tree-certs-07 section 7.2:
 // Verifying Certificate Signatures.
-static bool VerifyMTC(const ParsedCertificate &cert,
-                      const MTCAnchor *mtc_anchor,
-                      VerifyCertificateChainDelegate *delegate) {
-  // Step 1: Check that the TBSCertificate's signature field is id-alg-mtcProof
-  // (kMtcProofDraftPlants04) with omitted parameters.
-  if (cert.signature_algorithm() !=
-      SignatureAlgorithm::kMtcProofDraftPlants04) {
+static VerifyMTCResult VerifyMTC(const ParsedCertificate &cert,
+                                 const MTCAnchor *mtc_anchor,
+                                 VerifyCertificateChainDelegate *delegate) {
+  BSSL_CHECK(mtc_anchor->spec_version() == MTCAnchor::kPlants07);
+  BSSL_CHECK(mtc_anchor->AsCert()->mtc_ca_info().has_value());
+  // Step 1: Check that the TBSCertificate's signature field is
+  // id-alg-mtcProof with omitted parameters.
+  if (cert.signature_algorithm() != SignatureAlgorithm::kMtcProof) {
     // When we parse the signature algorithm, we check that the parameters are
     // omitted.
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Step 2: Decode the signatureValue as an MTCProof.
@@ -1242,17 +1263,21 @@ static bool VerifyMTC(const ParsedCertificate &cert,
       !CBS_get_u16_length_prefixed(&mtc_proof, &extensions) ||
       !CBS_get_u48(&mtc_proof, &start) || !CBS_get_u48(&mtc_proof, &end) ||
       !CBS_get_u16_length_prefixed(&mtc_proof, &inclusion_proof) ||
-      !CBS_get_u16_length_prefixed(&mtc_proof, &signatures) ||
+      !CBS_get_u24_length_prefixed(&mtc_proof, &signatures) ||
       CBS_len(&mtc_proof) != 0) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Step 3: Let serial be the certificate's serial number. If serial is
   // negative or greater than 2^64-1, abort this process and fail verification.
   uint64_t serial;
   if (!der::ParseUint64(cert.tbs().serial_number, &serial)) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
+  // TODO(crbug.com/575507260): Check that `serial` is within the MTC CA
+  // certificate's serial number range (Section 5.5), as crypto/x509 does. This
+  // is not needed yet, but will be needed once arbitrary MTC CA certificates
+  // can be trust anchors.
 
   // Step 4's revocation check is not performed in this function. The caller is
   // responsible for performing revocation checks.
@@ -1263,7 +1288,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   uint64_t index = serial & ((1ull << 48) - 1);
   uint16_t log_number = serial >> 48;
   if (log_number == 0) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Step 6 is only relevant for standalone certificate verification, so we put
@@ -1275,16 +1300,15 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   // 1. Initialize a hash instance.
   ScopedEVP_MD_CTX entry_hash_ctx;
   if (!EVP_DigestInit(entry_hash_ctx.get(), EVP_sha256())) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Write the octet 0x00 to the hash. This is the domain separator for leaf
   // nodes.
-  // (Note: the procedure as defined in plants-04 is missing this step.)
   static constexpr uint8_t kDomainSeparator[] = {0x00};
   if (!EVP_DigestUpdate(entry_hash_ctx.get(), kDomainSeparator,
                         sizeof(kDomainSeparator))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 2. Write the extensions field from the MTCProof to the hash.
@@ -1295,19 +1319,18 @@ static bool VerifyMTC(const ParsedCertificate &cert,
                         sizeof(extensions_length)) ||
       !EVP_DigestUpdate(entry_hash_ctx.get(), CBS_data(&extensions),
                         CBS_len(&extensions))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 3. Write the big-endian, two-byte tbs_cert_entry value to the hash.
   static constexpr uint8_t kTbsCertEntry[] = {0, 1};
   if (!EVP_DigestUpdate(entry_hash_ctx.get(), kTbsCertEntry,
                         sizeof(kTbsCertEntry))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 4. Write the TBSCertificate's `version`, `issuer`, `validity`, and
   // `subject` fields to the hash.
-  // (Note that this is a correction to the instructions in plants-04.)
   if (cert.tbs().version != CertificateVersion::V1) {
     ScopedCBB version_outer;
     CBB version;
@@ -1319,7 +1342,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
         !CBB_flush(version_outer.get()) ||
         !EVP_DigestUpdate(entry_hash_ctx.get(), CBB_data(version_outer.get()),
                           CBB_len(version_outer.get()))) {
-      return false;
+      return VerifyMTCResult::kFailed;
     }
   }
   if (!EVP_DigestUpdate(entry_hash_ctx.get(), cert.tbs().issuer_tlv.data(),
@@ -1328,7 +1351,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
                         cert.tbs().validity_tlv.size()) ||
       !EVP_DigestUpdate(entry_hash_ctx.get(), cert.tbs().subject_tlv.data(),
                         cert.tbs().subject_tlv.size())) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 5. Write the subjectPublicKeyInfo's algorithm field to the hash.
@@ -1339,7 +1362,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
                             CBS_ASN1_SEQUENCE) ||
       !EVP_DigestUpdate(entry_hash_ctx.get(), CBS_data(&spki_algorithm_tlv),
                         CBS_len(&spki_algorithm_tlv))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 6. Write the octet 0x04 to the hash. This is an OCTET STRING identifier.
@@ -1349,7 +1372,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
                                                       SHA256_DIGEST_LENGTH};
   if (!EVP_DigestUpdate(entry_hash_ctx.get(), kSpkiHashTagAndLength,
                         sizeof(kSpkiHashTagAndLength))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 8. Write H to the hash, where H is the hash of the entire
@@ -1357,7 +1380,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   uint8_t spki_hash[SHA256_DIGEST_LENGTH];
   SHA256(cert.tbs().spki_tlv.data(), cert.tbs().spki_tlv.size(), spki_hash);
   if (!EVP_DigestUpdate(entry_hash_ctx.get(), spki_hash, sizeof(spki_hash))) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 9. Write the remainder of the TBSCertificate contents octets to the hash,
@@ -1365,13 +1388,13 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   if (!EVP_DigestUpdate(entry_hash_ctx.get(),
                         cert.tbs().bytes_after_spki.data(),
                         cert.tbs().bytes_after_spki.size())) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // 10. Finalize the hash and set entry_hash to the result.
   TreeHash entry_hash;
   if (!EVP_DigestFinal(entry_hash_ctx.get(), entry_hash.data(), nullptr)) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Step 10. Let expected_subtree_hash be the result of evaluating the
@@ -1381,14 +1404,14 @@ static bool VerifyMTC(const ParsedCertificate &cert,
       EvaluateMerkleSubtreeInclusionProof(inclusion_proof, index, entry_hash,
                                           range);
   if (!expected_subtree_hash) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
 
   // Step 11. If log_number, start, and end matches a trusted subtree (Section
   // 7.4) for the CA, check that expected_subtree_hash is equal to the trusted
   // subtree's hash.
   if (!mtc_anchor) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
   std::optional<TreeHashConstSpan> trusted_subtree_hash =
       mtc_anchor->SubtreeHash(log_number, range);
@@ -1398,7 +1421,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   CBS ca_id(mtc_anchor->ca_id());
   UniquePtr<char> ca_id_text(CBS_asn1_relative_oid_to_text(&ca_id));
   if (!ca_id_text) {
-    return false;
+    return VerifyMTCResult::kFailed;
   }
   if (delegate->IsDebugLogEnabled()) {
     std::string trusted_subtree_hash_string =
@@ -1421,9 +1444,13 @@ static bool VerifyMTC(const ParsedCertificate &cert,
     );
   }
   if (trusted_subtree_hash) {
-    return CRYPTO_memcmp(expected_subtree_hash->data(),
-                         trusted_subtree_hash->data(),
-                         expected_subtree_hash->size()) == 0;
+    return (CRYPTO_memcmp(expected_subtree_hash->data(),
+                          trusted_subtree_hash->data(),
+                          expected_subtree_hash->size()) == 0)
+               ? VerifyMTCResult::kSuccess
+               : VerifyMTCResult::kFailed;
+  } else if (CBS_len(&signatures) == 0) {
+    return VerifyMTCResult::kLandmarkNotRecognized;
   }
 
   // Step 6: Let log_id be the log ID constructed from the CA ID in issuer and
@@ -1449,7 +1476,7 @@ static bool VerifyMTC(const ParsedCertificate &cert,
     if (!CBS_get_u8_length_prefixed(&signatures, &cbs_cosigner_id) ||
         CBS_len(&cbs_cosigner_id) == 0 ||
         !CBS_get_u16_length_prefixed(&signatures, &signature)) {
-      return false;
+      return VerifyMTCResult::kFailed;
     }
     Span<const uint8_t> cosigner_id(cbs_cosigner_id);
     // Section 6.1: Each element of the signatures field MUST have a unique
@@ -1460,14 +1487,14 @@ static bool VerifyMTC(const ParsedCertificate &cert,
     if (!prev_cosigner_id.empty()) {
       // Shorter byte strings are ordered before longer byte strings
       if (prev_cosigner_id.size() > cosigner_id.size()) {
-        return false;
+        return VerifyMTCResult::kFailed;
       }
       // Byte strings of the same length are ordered lexicographically
       if (prev_cosigner_id.size() == cosigner_id.size() &&
           !std::lexicographical_compare(
               prev_cosigner_id.begin(), prev_cosigner_id.end(),
               cosigner_id.begin(), cosigner_id.end())) {
-        return false;
+        return VerifyMTCResult::kFailed;
       }
     }
 
@@ -1476,11 +1503,14 @@ static bool VerifyMTC(const ParsedCertificate &cert,
     // could first find and verify the CA signature before bothering to check
     // any of the other ones.
     if (cosigner_id == mtc_anchor->ca_id()) {
-      found_valid_ca_signature = VerifyMTCProofSignaturePlants04(
-          &cbs_cosigner_id, StringAsBytes(log_id_text), start, end,
-          expected_subtree_hash.value(), signature,
-          mtc_anchor->ca_signature_algorithm(), mtc_anchor->ca_key(),
-          delegate->GetVerifyCache());
+      std::optional<SignatureAlgorithm> ca_signature_algorithm =
+          mtc_anchor->ca_signature_algorithm();
+      found_valid_ca_signature =
+          ca_signature_algorithm.has_value() &&
+          VerifyMTCProofSignature(
+              &cbs_cosigner_id, StringAsBytes(log_id_text), start, end,
+              expected_subtree_hash.value(), signature, *ca_signature_algorithm,
+              mtc_anchor->ca_key(), delegate->GetVerifyCache());
 
       if (delegate->IsDebugLogEnabled()) {
         delegate->DebugLog(std::string("VerifyMTC: CA signature ") +
@@ -1489,11 +1519,13 @@ static bool VerifyMTC(const ParsedCertificate &cert,
     } else {
       auto cosigner = delegate->GetMTCCosigner(cosigner_id);
       bool this_cosignature_was_valid = false;
-      if (cosigner && VerifyMTCProofSignaturePlants04(
-                          &cbs_cosigner_id, StringAsBytes(log_id_text), start,
-                          end, expected_subtree_hash.value(), signature,
-                          cosigner->signature_algorithm, cosigner->key.get(),
-                          delegate->GetVerifyCache())) {
+      if (cosigner &&
+          VerifyMTCProofSignature(&cbs_cosigner_id, StringAsBytes(log_id_text),
+                                  start, end, expected_subtree_hash.value(),
+                                  signature, cosigner->signature_algorithm,
+                                  Span(CRYPTO_BUFFER_data(cosigner->key.get()),
+                                       CRYPTO_BUFFER_len(cosigner->key.get())),
+                                  delegate->GetVerifyCache())) {
         valid_additional_cosigners.emplace_back(cosigner_id.begin(),
                                                 cosigner_id.end());
         this_cosignature_was_valid = true;
@@ -1516,10 +1548,15 @@ static bool VerifyMTC(const ParsedCertificate &cert,
   }
 
   if (found_valid_ca_signature) {
+    // This calls the deprecated method, whose default implementation calls
+    // `IsMTCCosignatureVerificationResultAcceptable`, so that delegates that
+    // override either method work.
     return delegate->IsCosignatureVerificationResultAcceptable(
-        mtc_anchor, std::move(valid_additional_cosigners));
+               mtc_anchor, std::move(valid_additional_cosigners))
+               ? VerifyMTCResult::kSuccess
+               : VerifyMTCResult::kUnacceptableCosignatureVerificationResult;
   }
-  return false;
+  return VerifyMTCResult::kFailed;
 }
 
 void PathVerifier::BasicCertificateProcessing(
@@ -1559,9 +1596,21 @@ void PathVerifier::BasicCertificateProcessing(
     if (!is_target_cert) {
       *shortcircuit_chain_validation = true;
       errors->AddError(cert_errors::kMaxPathLengthViolated);
-    } else if (!VerifyMTC(cert, working_mtc_anchor_, delegate_)) {
+    } else if (VerifyMTCResult result =
+                   VerifyMTC(cert, working_mtc_anchor_, delegate_);
+               result != VerifyMTCResult::kSuccess) {
       *shortcircuit_chain_validation = true;
-      errors->AddError(cert_errors::kVerifySignedDataFailed);
+      switch (result) {
+        case VerifyMTCResult::kLandmarkNotRecognized:
+          errors->AddError(cert_errors::kMtcLandmarkNotRecognized);
+          break;
+        case VerifyMTCResult::kUnacceptableCosignatureVerificationResult:
+          errors->AddError(
+              cert_errors::kMtcUnacceptableCosignatureVerificationResult);
+          break;
+        default:
+          errors->AddError(cert_errors::kVerifySignedDataFailed);
+      }
     }
   } else {
     // If `working_public_key_` is null, that indicates the SPKI of the issuer
@@ -1588,7 +1637,7 @@ void PathVerifier::BasicCertificateProcessing(
 
   // Verify the certificate's issuer name matches the issuing certificate's
   // subject name. (RFC 5280 section 6.1.3 step a.4)
-  if (cert.normalized_issuer() != working_normalized_issuer_name_) {
+  if (cert.normalized_issuer() != working_issuer_cert_->normalized_subject()) {
     errors->AddError(cert_errors::kSubjectDoesNotMatchIssuer);
   }
 
@@ -1622,8 +1671,10 @@ void PathVerifier::PrepareForNextCertificate(const ParsedCertificate &cert,
 
   // From RFC 5280 section 6.1.4 step c:
   //
-  //    Assign the certificate subject name to working_normalized_issuer_name.
-  working_normalized_issuer_name_ = cert.normalized_subject();
+  //    Assign the certificate subject name to working_issuer_name.
+  //
+  // This is done by tracking the certificate itself.
+  working_issuer_cert_ = &cert;
 
   // From RFC 5280 section 6.1.4 step d:
   //
@@ -1830,7 +1881,9 @@ void PathVerifier::ApplyTrustAnchorConstraints(const ParsedCertificate &cert,
   }
 
   // Process policyMappings, if present. This matches the handling for
-  // intermediates from RFC 5280 section 6.1.4 step a-b.
+  // intermediates from RFC 5280 section 6.1.4 step a-b. It intentionally
+  // deviates from RFC 5937, which does not define any processing for
+  // policyMappings in the trust anchor.
   VerifyPolicyMappings(cert, errors);
 
   // Process policyConstraints and inhibitAnyPolicy. This matches the
@@ -1946,7 +1999,7 @@ void PathVerifier::ProcessRootCertificate(const ParsedCertificate &cert,
   } else {
     working_public_key_ = ParseAndCheckPublicKey(cert.tbs().spki_tlv, errors);
   }
-  working_normalized_issuer_name_ = cert.normalized_subject();
+  working_issuer_cert_ = &cert;
 }
 
 void PathVerifier::ProcessSingleCertChain(const ParsedCertificate &cert,
@@ -2015,6 +2068,40 @@ bssl::UniquePtr<EVP_PKEY> PathVerifier::ParseAndCheckPublicKey(
   // Check if the key is acceptable by the delegate.
   if (!delegate_->IsPublicKeyAcceptable(pkey.get(), errors)) {
     errors->AddError(cert_errors::kUnacceptablePublicKey);
+  }
+
+  static const uint8_t kBlockList[][32] = {
+      {0xe0, 0x25, 0x4c, 0x7f, 0xcd, 0xc2, 0x65, 0xe2, 0xf0, 0xf8, 0xa4,
+       0x28, 0xda, 0xbb, 0x75, 0xab, 0x4a, 0xe0, 0x39, 0xb4, 0x87, 0x2d,
+       0x62, 0xf5, 0xee, 0x57, 0xf0, 0x87, 0x7d, 0x5a, 0x8a, 0x41},
+      {0x43, 0xbf, 0xfa, 0x19, 0xd6, 0xef, 0x65, 0x14, 0x51, 0xf6, 0x84,
+       0x1e, 0x01, 0x99, 0x31, 0xe9, 0x6f, 0x6f, 0x2e, 0xae, 0xff, 0x28,
+       0xab, 0x4b, 0x6f, 0x1c, 0xe4, 0x57, 0x6d, 0xe2, 0x71, 0x7b},
+      {0xeb, 0xed, 0x64, 0x75, 0xc2, 0xc2, 0xd8, 0x0f, 0xcb, 0x19, 0x9f,
+       0x3f, 0xe8, 0xdd, 0x6e, 0x6b, 0x3c, 0xe6, 0x0b, 0x77, 0xeb, 0x15,
+       0xd4, 0xe4, 0x2c, 0x3d, 0xec, 0x0c, 0x6f, 0x5b, 0x51, 0x05},
+      {0x5c, 0x06, 0x60, 0xa2, 0xb1, 0x64, 0x91, 0x0d, 0x8f, 0xf5, 0x89,
+       0xc1, 0x8e, 0x14, 0x55, 0x2e, 0x9e, 0x0e, 0xc2, 0x37, 0xdc, 0xef,
+       0xe2, 0xcb, 0x73, 0x6d, 0x41, 0xa4, 0x81, 0x1f, 0x81, 0xa0},
+      {0x63, 0xec, 0xef, 0xee, 0x43, 0x1d, 0x49, 0x52, 0x3b, 0xc1, 0x13,
+       0x6c, 0x4e, 0x72, 0xd0, 0x20, 0x6a, 0x47, 0x70, 0x86, 0xca, 0xf6,
+       0x06, 0xcd, 0x5c, 0xf0, 0x25, 0x68, 0x6c, 0x10, 0x9c, 0xf8},
+      {0x49, 0xdd, 0x35, 0x3d, 0xc2, 0xb9, 0x19, 0xa3, 0x77, 0x06, 0x45,
+       0x11, 0x7d, 0x0e, 0x60, 0xc1, 0x61, 0x15, 0xe7, 0xd1, 0xbc, 0x25,
+       0x9e, 0xef, 0xe7, 0x34, 0xb0, 0x0e, 0xa4, 0x34, 0xfe, 0x5f},
+      {0xec, 0x4f, 0xfa, 0x1a, 0xd0, 0xac, 0x88, 0x08, 0x13, 0x14, 0xb7,
+       0xaa, 0xff, 0xef, 0x6a, 0x91, 0xf9, 0x7c, 0xd5, 0x72, 0x91, 0xbb,
+       0x5b, 0xa6, 0x86, 0xc5, 0x41, 0x5f, 0x5e, 0xb4, 0xf6, 0xb6},
+      {0x92, 0xc0, 0x63, 0xd6, 0x7e, 0x8f, 0x14, 0xdb, 0x71, 0xd2, 0x88,
+       0xe1, 0x12, 0x66, 0xff, 0xda, 0xf6, 0x9c, 0xbf, 0x11, 0x5f, 0x7b,
+       0xab, 0x14, 0xf3, 0xbc, 0x2f, 0x68, 0xd2, 0x5e, 0x0e, 0x30},
+  };
+  uint8_t spki_hash[SHA256_DIGEST_LENGTH];
+  SHA256(spki.data(), spki.size(), spki_hash);
+  for (const auto &block : kBlockList) {
+    if (Span(spki_hash) == Span(block)) {
+      errors->AddError(cert_errors::kCertificateRevoked);
+    }
   }
 
   return pkey;
@@ -2162,7 +2249,19 @@ void PathVerifier::Run(
 
 }  // namespace
 
-VerifyCertificateChainDelegate::~VerifyCertificateChainDelegate() = default;
+bool VerifyCertificateChainDelegate::
+    IsMTCCosignatureVerificationResultAcceptable(
+        const ParsedCertificate& mtc_ca_cert,
+        std::vector<std::vector<uint8_t>> valid_additional_cosigners) {
+  return false;
+}
+
+bool VerifyCertificateChainDelegate::IsCosignatureVerificationResultAcceptable(
+    const MTCAnchor* mtc_anchor,
+    std::vector<std::vector<uint8_t>> valid_additional_cosigners) {
+  return IsMTCCosignatureVerificationResultAcceptable(
+      *mtc_anchor->AsCert(), std::move(valid_additional_cosigners));
+}
 
 void VerifyCertificateChain(
     const ParsedCertificateList &certs, const TrustAnchor &last_cert_trust,

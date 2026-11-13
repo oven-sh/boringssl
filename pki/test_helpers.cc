@@ -185,19 +185,15 @@ der::Input SequenceValueFromString(std::string_view s) {
   return ::testing::AssertionSuccess();
 }
 
-VerifyCertChainTest::VerifyCertChainTest()
-    : user_initial_policy_set{der::Input(kAnyPolicyOid)} {}
-VerifyCertChainTest::~VerifyCertChainTest() = default;
-
 bool VerifyCertChainTest::HasHighSeverityErrors() const {
   // This function assumes that high severity warnings are prefixed with
   // "ERROR: " and warnings are prefixed with "WARNING: ". This is an
   // implementation detail of CertError::ToDebugString).
   //
   // Do a quick sanity-check to confirm this.
-  CertError error(CertError::SEVERITY_HIGH, "unused", nullptr);
+  CertError error{CertError::SEVERITY_HIGH, "unused", nullptr};
   EXPECT_EQ("ERROR: unused\n", error.ToDebugString());
-  CertError warning(CertError::SEVERITY_WARNING, "unused", nullptr);
+  CertError warning{CertError::SEVERITY_WARNING, "unused", nullptr};
   EXPECT_EQ("WARNING: unused\n", warning.ToDebugString());
 
   // Do a simple substring test (not perfect, but good enough for our test
@@ -441,6 +437,32 @@ bool ReadVerifyCertChainTestFromFile(const std::string &file_path_ascii,
 
 std::string ReadTestFileToString(const std::string &file_path_ascii) {
   return GetTestData(("pki/" + file_path_ascii).c_str());
+}
+
+std::shared_ptr<const ParsedCertificate> ReadCryptoX509MTCTestCert(
+    const std::string &file_name, CertErrors *errors) {
+  std::string pem = GetTestData(("crypto/x509/test/mtc/" + file_name).c_str());
+  PEMTokenizer tokenizer(pem, {"CERTIFICATE"});
+  if (!tokenizer.GetNext()) {
+    ADD_FAILURE() << "Could not read " << file_name;
+    return nullptr;
+  }
+  return ParsedCertificate::Create(
+      UniquePtr<CRYPTO_BUFFER>(CRYPTO_BUFFER_new(
+          reinterpret_cast<const uint8_t *>(tokenizer.data().data()),
+          tokenizer.data().size(), nullptr)),
+      {}, errors);
+}
+
+UniquePtr<CRYPTO_BUFFER> ReadCryptoX509MtcTestCaKey() {
+  std::shared_ptr<const ParsedCertificate> cert =
+      ReadCryptoX509MTCTestCert("ca_cert.pem");
+  if (!cert) {
+    ADD_FAILURE() << "Could not parse ca_cert.pem";
+    return nullptr;
+  }
+  return UniquePtr<CRYPTO_BUFFER>(CRYPTO_BUFFER_new(
+      cert->tbs().spki_tlv.data(), cert->tbs().spki_tlv.size(), nullptr));
 }
 
 void VerifyCertPathErrors(const std::string &expected_errors_str,

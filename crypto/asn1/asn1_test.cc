@@ -15,7 +15,6 @@
 #include <limits.h>
 #include <stdio.h>
 
-#include <algorithm>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -647,6 +646,9 @@ TEST(ASN1Test, ASN1Type) {
       // [UNIVERSAL 128] { `00` }
       // Unknown universal tags are parsed as `V_ASN1_OTHER`.
       {V_ASN1_OTHER, {0x1f, 0x81, 0x00, 0x01, 0x00}},
+      // RELATIVE-OID { 32473.1 }
+      // RELATIVE-OID has no dedicated `ASN1_TYPE` representation.
+      {V_ASN1_OTHER, {0x0d, 0x04, 0x81, 0xfd, 0x59, 0x01}},
   };
   for (const auto &t : kTests) {
     SCOPED_TRACE(Bytes(t.der));
@@ -710,6 +712,7 @@ TEST(ASN1Test, ASN1Type) {
       {0x26, 0x00},  // [OBJECT IDENTIFIER CONSTRUCTED] {}
       {0x2a, 0x00},  // [ENUMERATED CONSTRUCTED] {}
       {0x2c, 0x00},  // [UTF8String CONSTRUCTED] {}
+      {0x2d, 0x00},  // [RELATIVE-OID CONSTRUCTED] {}
       {0x3c, 0x00},  // [UniversalString CONSTRUCTED] {}
       {0x3e, 0x00},  // [BMPString CONSTRUCTED] {}
       // Supported constructed types should be rejected if primitive.
@@ -723,6 +726,9 @@ TEST(ASN1Test, ASN1Type) {
       {0x0a, 0x02, 0x00, 0x00},  // ENUMERATED { `0000` }
       {0x06, 0x00},              // OBJECT_IDENTIFIER { }
       {0x06, 0x01, 0xff},        // OBJECT_IDENTIFIER { `ff` }
+      {0x0d, 0x00},              // RELATIVE-OID { }
+      {0x0d, 0x01, 0xff},        // RELATIVE-OID { `ff` }
+      {0x0d, 0x02, 0x80, 0x01},  // RELATIVE-OID { `8001` }
       {0x03, 0x01, 0xff},        // BIT_STRING { `ff` }
       {0x05, 0x01, 0xff},        // NULL { `ff` }
       {0x01, 0x00},              // BOOLEAN {}
@@ -880,7 +886,8 @@ TEST(ASN1Test, BitString) {
       // Empty bit strings must have a zero leading byte.
       {{0x03, 0x01, 0x01}, ASN1_R_INVALID_BIT_STRING_PADDING},
       // Unused bits must all be zero.
-      {{0x03, 0x02, 0x06, 0xc1 /* 0b11000001 */}, ASN1_R_INVALID_BIT_STRING_PADDING},
+      {{0x03, 0x02, 0x06, 0xc1 /* 0b11000001 */},
+       ASN1_R_INVALID_BIT_STRING_PADDING},
   };
   for (const auto &test : kInvalidInputs) {
     SCOPED_TRACE(Bytes(test.in));
@@ -1050,8 +1057,8 @@ TEST(ASN1Test, SetBitString) {
   EXPECT_TRUE(
       ErrorsAreAndClear({{ERR_LIB_ASN1, ASN1_R_INVALID_BIT_STRING_BITS_LEFT}}));
 
-  // `ASN1_STRING_set` and `ASN1_STRING_set0` should clear the count of unused
-  // bits, rather then carry it over.
+  // `ASN1_STRING_set`, `ASN1_STRING_set0`, and `ASN1_STRING_set1_data` should
+  // clear the count of unused bits, rather than carry it over.
   ASSERT_TRUE(set1(val.get(), {0xf0}, 4));
   static const uint8_t kBytes[] = {0x00, 0x01, 0x02};
   ASSERT_TRUE(ASN1_STRING_set(val.get(), kBytes, sizeof(kBytes)));
@@ -1062,6 +1069,11 @@ TEST(ASN1Test, SetBitString) {
   void *copy = OPENSSL_memdup(kBytes, sizeof(kBytes));
   ASSERT_NE(copy, nullptr);
   ASN1_STRING_set0(val.get(), copy, sizeof(kBytes));
+  EXPECT_EQ(ASN1_BIT_STRING_unused_bits(val.get()), 0);
+  EXPECT_EQ(Bytes(ASN1StringToBytes(val.get())), Bytes(kBytes));
+
+  ASSERT_TRUE(set1(val.get(), {0xf0}, 4));
+  ASSERT_TRUE(ASN1_STRING_set1_data(val.get(), kBytes, sizeof(kBytes)));
   EXPECT_EQ(ASN1_BIT_STRING_unused_bits(val.get()), 0);
   EXPECT_EQ(Bytes(ASN1StringToBytes(val.get())), Bytes(kBytes));
 }
@@ -1125,6 +1137,29 @@ TEST(ASN1Test, StringToUTF8) {
       ERR_clear_error();
     }
   }
+}
+
+TEST(ASN1Test, SetData) {
+  UniquePtr<ASN1_STRING> str(ASN1_STRING_new());
+  ASSERT_TRUE(str);
+
+  static const uint8_t kData[] = {'a', '\0', 'b', 'c'};
+  ASSERT_TRUE(ASN1_STRING_set1_data(str.get(), kData, sizeof(kData)));
+  EXPECT_EQ(Bytes(ASN1StringToBytes(str.get())), Bytes(kData));
+
+  // Self-aliasing subslices of the string's own buffer must work.
+  ASSERT_TRUE(ASN1_STRING_set1_data(str.get(),
+                                    ASN1_STRING_get0_data(str.get()) + 1, 2));
+  static const uint8_t kSubslice[] = {'\0', 'b'};
+  EXPECT_EQ(Bytes(ASN1StringToBytes(str.get())), Bytes(kSubslice));
+
+  // Empty slices must succeed with both non-null and null pointers.
+  ASSERT_TRUE(ASN1_STRING_set1_data(str.get(), kData, 0));
+  EXPECT_EQ(Bytes(ASN1StringToBytes(str.get())), Bytes(""));
+
+  ASSERT_TRUE(ASN1_STRING_set1_data(str.get(), kData, sizeof(kData)));
+  ASSERT_TRUE(ASN1_STRING_set1_data(str.get(), nullptr, 0));
+  EXPECT_EQ(Bytes(ASN1StringToBytes(str.get())), Bytes(""));
 }
 
 static bool ASN1Time_check_posix(const ASN1_TIME *s, int64_t t) {
@@ -1376,6 +1411,18 @@ TEST(ASN1Test, UTCTimeZoneOffsets) {
   EXPECT_TRUE(ASN1_TIME_diff(&days, &secs, s.get(), g.get()));
   EXPECT_EQ(days, 0);
   EXPECT_EQ(secs, 0);
+
+  // `d2i_ASN1_UTCTIME` is strict and will not parse dates with timezone
+  // offsets. These are only reachable by creating UTCTimes by hand, or the
+  // `X509` parser.
+  static const uint8_t kUTCTimeWithOffset[] = {
+      0x17, 0x11, 0x37, 0x30, 0x30, 0x31, 0x30, 0x31, 0x30, 0x30,
+      0x30, 0x30, 0x30, 0x30, 0x2b, 0x30, 0x34, 0x30, 0x30};
+  const uint8_t *ptr = kUTCTimeWithOffset;
+  EXPECT_EQ(nullptr,
+            d2i_ASN1_UTCTIME(nullptr, &ptr, sizeof(kUTCTimeWithOffset)));
+  ptr = kUTCTimeWithOffset;
+  EXPECT_EQ(nullptr, d2i_ASN1_TIME(nullptr, &ptr, sizeof(kUTCTimeWithOffset)));
 }
 
 TEST(ASN1Test, ToGeneralizedTime) {
@@ -1876,6 +1923,7 @@ TEST(ASN1Test, MBString) {
 
       // A long string with characters of many widths, to test sizes are
       // measured in code points.
+      // clang-format off
       {MBSTRING_UTF8,
        {
            'a',                     //
@@ -1891,6 +1939,7 @@ TEST(ASN1Test, MBString) {
            0x00, 0x00, 0x01, 0x00,  //
            0x00, 0x01, 0x00, 0x00,  //
        },
+       // clang-format on
        4},
   };
   for (const auto &t : kTests) {
@@ -2851,18 +2900,23 @@ TEST(ASN1Test, POSIXTime) {
 TEST(ASN1Test, LargeString) {
   UniquePtr<ASN1_STRING> str(ASN1_STRING_type_new(V_ASN1_OCTET_STRING));
   ASSERT_TRUE(str);
-  // Very large strings should be rejected by `ASN1_STRING_set`. Strictly
-  // speaking, this is an invalid call because the buffer does not have that
-  // much size available. `ASN1_STRING_set` should cleanly fail before it
-  // crashes, and actually allocating 512 MiB in a test is likely to break.
-  char b = 0;
+  // Very large strings should be rejected by `ASN1_STRING_set` and
+  // `ASN1_STRING_set1_data`. Strictly speaking, this is an invalid call because
+  // the buffer does not have that much size available. Both functions should
+  // cleanly fail before they crash, and actually allocating 512 MiB in a test
+  // is likely to break.
+  uint8_t b = 0;
   EXPECT_FALSE(ASN1_STRING_set(str.get(), &b, INT_MAX / 4));
+  EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ERR_R_OVERFLOW}}));
+  EXPECT_FALSE(ASN1_STRING_set1_data(str.get(), &b, INT_MAX / 4));
   EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ERR_R_OVERFLOW}}));
 
 #if defined(OPENSSL_64_BIT)
-  // `ASN1_STRING_set` should tolerate lengths that exceed `int` without
-  // overflow.
+  // `ASN1_STRING_set` and `ASN1_STRING_set1_data` should tolerate lengths that
+  // exceed `int` without overflow.
   EXPECT_FALSE(ASN1_STRING_set(str.get(), &b, 1 + (ossl_ssize_t{1} << 48)));
+  EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ERR_R_OVERFLOW}}));
+  EXPECT_FALSE(ASN1_STRING_set1_data(str.get(), &b, 1 + (size_t{1} << 48)));
   EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ERR_R_OVERFLOW}}));
 #endif
 }
@@ -3495,5 +3549,98 @@ TEST(ASN1Test, EmbedTypes) {
 }
 
 #endif  // !WINDOWS || !SHARED_LIBRARY
+
+TEST(ASN1Test, TypeCmpNull) {
+  UniquePtr<ASN1_TYPE> null_value(ASN1_TYPE_new());
+  ASSERT_TRUE(null_value);
+  ASN1_TYPE_set(null_value.get(), V_ASN1_NULL, nullptr);
+
+  EXPECT_EQ(ASN1_TYPE_cmp(nullptr, nullptr), 0);
+  EXPECT_LT(ASN1_TYPE_cmp(nullptr, null_value.get()), 0);
+  EXPECT_GT(ASN1_TYPE_cmp(null_value.get(), nullptr), 0);
+  EXPECT_EQ(ASN1_TYPE_cmp(null_value.get(), null_value.get()), 0);
+}
+
+namespace {
+
+// ExpectTotalOrder checks that `cmp` is a three-way comparison consistent with
+// a total order. `a` and `b` must hold the same pairwise-distinct values,
+// parsed separately, so equality is not checked by pointer.
+template <typename T, typename Cmp>
+void ExpectTotalOrder(const std::vector<T> &a, const std::vector<T> &b,
+                      Cmp cmp) {
+  ASSERT_EQ(a.size(), b.size());
+  auto sign = [](int v) { return (v > 0) - (v < 0); };
+  for (size_t i = 0; i < a.size(); i++) {
+    SCOPED_TRACE(i);
+    for (size_t j = 0; j < a.size(); j++) {
+      SCOPED_TRACE(j);
+      int ij = cmp(a[i], b[j]);
+      if (i == j) {
+        EXPECT_EQ(ij, 0);
+      } else {
+        EXPECT_NE(ij, 0);
+      }
+      EXPECT_EQ(sign(ij), -sign(cmp(b[j], a[i])));
+      if (ij >= 0) {
+        continue;
+      }
+      for (size_t k = 0; k < a.size(); k++) {
+        if (cmp(b[j], a[k]) < 0) {
+          SCOPED_TRACE(k);
+          EXPECT_LT(cmp(a[i], b[k]), 0);
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
+
+TEST(ASN1Test, TypeCmpTotalOrder) {
+  const std::vector<uint8_t> kValues[] = {
+      {0x05, 0x00},                    // NULL
+      {0x01, 0x01, 0x00},              // BOOLEAN { FALSE }
+      {0x01, 0x01, 0xff},              // BOOLEAN { TRUE }
+      {0x02, 0x01, 0x01},              // INTEGER { 1 }
+      {0x02, 0x01, 0xff},              // INTEGER { -1 }
+      {0x0a, 0x01, 0x01},              // ENUMERATED { 1 }
+      {0x03, 0x01, 0x00},              // BIT STRING {}
+      {0x03, 0x02, 0x01, 0x80},        // BIT STRING { `1000000` } (7 bits)
+      {0x03, 0x02, 0x07, 0x80},        // BIT STRING { `1` } (1 bit)
+      {0x04, 0x01, 0x61},              // OCTET STRING { "a" }
+      {0x04, 0x01, 0x62},              // OCTET STRING { "b" }
+      {0x06, 0x03, 0x2b, 0x06, 0x01},  // OBJECT_IDENTIFIER { 1.3.6.1 }
+      {0x06, 0x03, 0x2b, 0x06, 0x02},  // OBJECT_IDENTIFIER { 1.3.6.2 }
+      {0x0c, 0x00},                    // UTF8String { "" }
+      {0x0c, 0x01, 0x61},              // UTF8String { "a" }
+      {0x0c, 0x02, 0x61, 0x61},        // UTF8String { "aa" }
+      {0x13, 0x01, 0x61},              // PrintableString { "a" }
+      {0x16, 0x01, 0x61},              // IA5String { "a" }
+      {0x1e, 0x02, 0x00, 0x61},        // BMPString { "a" }
+      {0x30, 0x00},                    // SEQUENCE {}
+      {0x30, 0x02, 0x05, 0x00},        // SEQUENCE { NULL }
+      {0x31, 0x00},                    // SET {}
+      {0x60, 0x00},                    // [APPLICATION 0] {}
+      {0x80, 0x01, 0x61},              // [0 PRIMITIVE] { "a" }
+  };
+
+  auto parse_all = [&](std::vector<UniquePtr<ASN1_TYPE>> *out) {
+    for (const auto &der : kValues) {
+      SCOPED_TRACE(Bytes(der));
+      const uint8_t *ptr = der.data();
+      UniquePtr<ASN1_TYPE> value(d2i_ASN1_TYPE(nullptr, &ptr, der.size()));
+      ASSERT_TRUE(value);
+      ASSERT_EQ(ptr, der.data() + der.size());
+      out->push_back(std::move(value));
+    }
+  };
+  std::vector<UniquePtr<ASN1_TYPE>> a, b;
+  ASSERT_NO_FATAL_FAILURE(parse_all(&a));
+  ASSERT_NO_FATAL_FAILURE(parse_all(&b));
+  ExpectTotalOrder(a, b, [](const auto &x, const auto &y) {
+    return ASN1_TYPE_cmp(x.get(), y.get());
+  });
+}
 
 BSSL_NAMESPACE_END

@@ -64,6 +64,7 @@ struct TestConfig {
   bool is_quic = false;
   int resume_count = 0;
   std::string write_settings;
+  std::string write_hint_trace;
 #if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
   bool fuzzer_mode = false;
 #endif
@@ -73,6 +74,8 @@ struct TestConfig {
   std::vector<uint16_t> expect_peer_verify_prefs;
   std::vector<uint16_t> curves;
   std::vector<uint32_t> curves_flags;
+  std::vector<uint16_t> tls13_ciphers;
+  std::vector<uint32_t> tls13_ciphers_flags;
   std::optional<std::vector<uint16_t>> key_shares;
   std::vector<uint16_t> server_supported_groups_hint;
   std::string key_file;
@@ -151,6 +154,7 @@ struct TestConfig {
   bool install_ddos_callback = false;
   bool fail_ddos_callback = false;
   bool fail_cert_callback = false;
+  int fail_cert_callback_alert = 0;
   std::string cipher;
   bool handshake_never_done = false;
   int export_keying_material = 0;
@@ -231,7 +235,6 @@ struct TestConfig {
   bool handshaker_resume = false;
   std::string handshaker_path;
   bool jdk11_workaround = false;
-  bool server_preference = false;
   bool export_traffic_secrets = false;
   bool key_update = false;
   bool key_update_before_read = false;
@@ -242,6 +245,7 @@ struct TestConfig {
   std::string quic_early_data_context;
   int early_write_after_message = 0;
   bool fips_202205 = false;
+  bool fips_202609 = false;
   bool wpa_202304 = false;
   bool cnsa_202407 = false;
   bool cnsa1_202603 = false;

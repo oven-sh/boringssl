@@ -42,12 +42,12 @@
 
 using namespace bssl;
 
-static int load_iv(const char **fromp, unsigned char *to, size_t num);
+namespace {
 
 #if defined(BORINGSSL_PEM_FAST_PUBLIC_BASE64)
 // pem_label_is_public returns whether a PEM block labelled `name` only ever
 // carries public data, and so may bypass the constant-time base64 routines.
-static bool pem_label_is_public(std::string_view name) {
+bool pem_label_is_public(std::string_view name) {
   static const char *const kPublicLabels[] = {
       PEM_STRING_X509,         PEM_STRING_X509_OLD,     PEM_STRING_X509_TRUSTED,
       PEM_STRING_X509_PAIR,    PEM_STRING_X509_CRL,     PEM_STRING_X509_REQ,
@@ -63,12 +63,11 @@ static bool pem_label_is_public(std::string_view name) {
   return false;
 }
 #endif
-static bool check_pem(std::string_view name, std::string_view expected);
 
 // PEM_dek_info appends a DEK-Info header to `buf`, with an algorithm of `type`
 // and a single parameter, specified by hex-encoding `len` bytes from `str`.
-static void PEM_dek_info(char buf[PEM_BUFSIZE], const char *type, size_t len,
-                         char *str) {
+void PEM_dek_info(char buf[PEM_BUFSIZE], const char *type, size_t len,
+                  char *str) {
   static const unsigned char map[17] = "0123456789ABCDEF";
 
   OPENSSL_strlcat(buf, "DEK-Info: ", PEM_BUFSIZE);
@@ -89,19 +88,7 @@ static void PEM_dek_info(char buf[PEM_BUFSIZE], const char *type, size_t len,
   buf[used + len * 2 + 1] = '\0';
 }
 
-void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp, void **x,
-                    pem_password_cb *cb, void *u) {
-  BIO *b = BIO_new_fp(fp, BIO_NOCLOSE);
-  if (b == nullptr) {
-    OPENSSL_PUT_ERROR(PEM, ERR_R_BUF_LIB);
-    return nullptr;
-  }
-  void *ret = PEM_ASN1_read_bio(d2i, name, b, x, cb, u);
-  BIO_free(b);
-  return ret;
-}
-
-static bool check_pem(std::string_view name, std::string_view expected) {
+bool check_pem(std::string_view name, std::string_view expected) {
   // `PEM_STRING_EVP_PKEY` is not a real PEM type, but a placeholder that
   // matches one of several private key types.
   if (expected == PEM_STRING_EVP_PKEY) {
@@ -142,7 +129,7 @@ static bool check_pem(std::string_view name, std::string_view expected) {
   return false;
 }
 
-static const EVP_CIPHER *cipher_by_name(const std::string_view name) {
+const EVP_CIPHER *cipher_by_name(const std::string_view name) {
   // This is similar to the (deprecated) function `EVP_get_cipherbyname`. Note
   // the PEM code assumes that ciphers have at least 8 bytes of IV, at most 20
   // bytes of overhead and generally behave like CBC mode.
@@ -159,6 +146,42 @@ static const EVP_CIPHER *cipher_by_name(const std::string_view name) {
   } else {
     return nullptr;
   }
+}
+
+int load_iv(const char **fromp, unsigned char *to, size_t num) {
+  uint8_t v;
+  const char *from;
+
+  from = *fromp;
+  for (size_t i = 0; i < num; i++) {
+    to[i] = 0;
+  }
+  num *= 2;
+  for (size_t i = 0; i < num; i++) {
+    if (!OPENSSL_fromxdigit(&v, *from)) {
+      OPENSSL_PUT_ERROR(PEM, PEM_R_BAD_IV_CHARS);
+      return 0;
+    }
+    from++;
+    to[i / 2] |= v << (!(i & 1)) * 4;
+  }
+
+  *fromp = from;
+  return 1;
+}
+
+}  // namespace
+
+void *PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp, void **x,
+                    pem_password_cb *cb, void *u) {
+  BIO *b = BIO_new_fp(fp, BIO_NOCLOSE);
+  if (b == nullptr) {
+    OPENSSL_PUT_ERROR(PEM, ERR_R_BUF_LIB);
+    return nullptr;
+  }
+  void *ret = PEM_ASN1_read_bio(d2i, name, b, x, cb, u);
+  BIO_free(b);
+  return ret;
 }
 
 int PEM_bytes_read_bio(unsigned char **pdata, long *plen, char **pnm,
@@ -423,28 +446,6 @@ int bssl::PEM_get_EVP_CIPHER_INFO(const char *header, EVP_CIPHER_INFO *cipher) {
     return 0;
   }
 
-  return 1;
-}
-
-static int load_iv(const char **fromp, unsigned char *to, size_t num) {
-  uint8_t v;
-  const char *from;
-
-  from = *fromp;
-  for (size_t i = 0; i < num; i++) {
-    to[i] = 0;
-  }
-  num *= 2;
-  for (size_t i = 0; i < num; i++) {
-    if (!OPENSSL_fromxdigit(&v, *from)) {
-      OPENSSL_PUT_ERROR(PEM, PEM_R_BAD_IV_CHARS);
-      return 0;
-    }
-    from++;
-    to[i / 2] |= v << (!(i & 1)) * 4;
-  }
-
-  *fromp = from;
   return 1;
 }
 

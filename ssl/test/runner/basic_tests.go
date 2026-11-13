@@ -761,6 +761,21 @@ read alert 1 0
 			expectedLocalError: "remote error: internal error",
 		},
 		{
+			name: "FailCertCallback-Client-TLS12-CustomAlert",
+			config: Config{
+				MaxVersion: VersionTLS12,
+				ClientAuth: RequestClientCert,
+			},
+			flags: []string{
+				"-fail-cert-callback",
+				"-fail-cert-callback-alert",
+				strconv.Itoa(int(alertAccessDenied)),
+			},
+			shouldFail:         true,
+			expectedError:      ":CERT_CB_ERROR:",
+			expectedLocalError: "remote error: access denied",
+		},
+		{
 			testType: serverTest,
 			name:     "FailCertCallback-Server-TLS12",
 			config: Config{
@@ -770,6 +785,21 @@ read alert 1 0
 			shouldFail:         true,
 			expectedError:      ":CERT_CB_ERROR:",
 			expectedLocalError: "remote error: internal error",
+		},
+		{
+			testType: serverTest,
+			name:     "FailCertCallback-Server-TLS12-CustomAlert",
+			config: Config{
+				MaxVersion: VersionTLS12,
+			},
+			flags: []string{
+				"-fail-cert-callback",
+				"-fail-cert-callback-alert",
+				strconv.Itoa(int(alertUnrecognizedName)),
+			},
+			shouldFail:         true,
+			expectedError:      ":CERT_CB_ERROR:",
+			expectedLocalError: "remote error: unrecognized name",
 		},
 		{
 			name: "FailCertCallback-Client-TLS13",
@@ -783,6 +813,21 @@ read alert 1 0
 			expectedLocalError: "remote error: internal error",
 		},
 		{
+			name: "FailCertCallback-Client-TLS13-CustomAlert",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				ClientAuth: RequestClientCert,
+			},
+			flags: []string{
+				"-fail-cert-callback",
+				"-fail-cert-callback-alert",
+				strconv.Itoa(int(alertAccessDenied)),
+			},
+			shouldFail:         true,
+			expectedError:      ":CERT_CB_ERROR:",
+			expectedLocalError: "remote error: access denied",
+		},
+		{
 			testType: serverTest,
 			name:     "FailCertCallback-Server-TLS13",
 			config: Config{
@@ -792,6 +837,21 @@ read alert 1 0
 			shouldFail:         true,
 			expectedError:      ":CERT_CB_ERROR:",
 			expectedLocalError: "remote error: internal error",
+		},
+		{
+			testType: serverTest,
+			name:     "FailCertCallback-Server-TLS13-CustomAlert",
+			config: Config{
+				MaxVersion: VersionTLS13,
+			},
+			flags: []string{
+				"-fail-cert-callback",
+				"-fail-cert-callback-alert",
+				strconv.Itoa(int(alertUnrecognizedName)),
+			},
+			shouldFail:         true,
+			expectedError:      ":CERT_CB_ERROR:",
+			expectedLocalError: "remote error: unrecognized name",
 		},
 		{
 			protocol: dtls,
@@ -1891,7 +1951,7 @@ read alert 1 0
 	})
 
 	// Clients should reject DTLS 1.3 ServerHellos that echo the legacy
-	// session ID.
+	// session ID, in both ServerHello and HelloRetryRequest.
 	testCases = append(testCases, testCase{
 		protocol:      dtls,
 		name:          "DTLS13CompatibilityMode-EchoSessionID",
@@ -1903,6 +1963,23 @@ read alert 1 0
 			MinVersion: VersionTLS13,
 			Bugs: ProtocolBugs{
 				DTLS13EchoSessionID: true,
+			},
+		},
+		shouldFail:    true,
+		expectedError: ":DECODE_ERROR:",
+	})
+	testCases = append(testCases, testCase{
+		protocol:      dtls,
+		name:          "DTLS13CompatibilityMode-EchoSessionID-HelloRetryRequest",
+		resumeSession: true,
+		config: Config{
+			MaxVersion: VersionTLS12,
+		},
+		resumeConfig: &Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				SendHelloRetryRequestCookie: []byte("cookie"),
+				DTLS13EchoSessionID:         true,
 			},
 		},
 		shouldFail:    true,

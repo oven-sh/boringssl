@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -22,7 +23,6 @@ import (
 
 	"boringssl.googlesource.com/boringssl.git/ssl/test/runner/hpke"
 	"boringssl.googlesource.com/boringssl.git/ssl/test/runner/spake2plus"
-	"filippo.io/mldsa"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -373,7 +373,7 @@ func (hs *serverHandshakeState) readClientHello() error {
 		return fmt.Errorf("tls: client included signature_algorithms before TLS 1.2")
 	}
 
-	if config.Bugs.ExpectGREASE && !containsSigAlgsGREASE(hs.clientHello.signatureAlgorithms) {
+	if config.Bugs.ExpectGREASE && !containsGREASE(hs.clientHello.signatureAlgorithms) {
 		return fmt.Errorf("tls: no GREASE signature_algorithms value found")
 	}
 
@@ -450,6 +450,12 @@ func (hs *serverHandshakeState) readClientHello() error {
 	if expected := c.config.Bugs.ExpectServerCertificateTypes; expected != nil {
 		if !slices.Equal(expected, hs.clientHello.serverCertificateTypes) {
 			return fmt.Errorf("tls: client offered server certificate types %v, but expected %v", hs.clientHello.serverCertificateTypes, expected)
+		}
+	}
+
+	if expected := c.config.Bugs.ExpectPeerSignatureAlgorithmPreferences; expected != nil {
+		if !slices.Equal(expected, hs.clientHello.signatureAlgorithms) {
+			return fmt.Errorf("tls: client offered signature algorithms %v, but expected %v", hs.clientHello.signatureAlgorithms, expected)
 		}
 	}
 
@@ -708,7 +714,7 @@ func (hs *serverHandshakeState) doTLS13Handshake() error {
 	helloRetryRequest := &helloRetryRequestMsg{
 		isDTLS:              c.isDTLS,
 		vers:                c.vers.wire,
-		sessionID:           hs.clientHello.sessionID,
+		sessionID:           sessionID,
 		cipherSuite:         cipherSuite,
 		compressionMethod:   config.Bugs.SendCompressionMethod,
 		duplicateExtensions: config.Bugs.DuplicateHelloRetryRequestExtensions,
@@ -2362,7 +2368,7 @@ func (hs *serverHandshakeState) processCertsFromClient(certificates [][]byte) (c
 	certs := make([]*x509.Certificate, len(certificates))
 	var err error
 	for i, asn1Data := range certificates {
-		if certs[i], err = ParseX509Certificate(asn1Data); err != nil {
+		if certs[i], err = x509.ParseCertificate(asn1Data); err != nil {
 			c.sendAlert(alertBadCertificate)
 			return nil, errors.New("tls: failed to parse client certificate: " + err.Error())
 		}

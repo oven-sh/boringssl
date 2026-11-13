@@ -61,59 +61,100 @@ struct OPENSSL_EXPORT LogTrustedSubtrees {
   std::vector<TrustedSubtree> trusted_subtrees;
 };
 
+// Represents an ordered list of trusted subtrees for an MTC CA.
+class OPENSSL_EXPORT TrustedSubtreeSet {
+ public:
+  class Token {
+   private:
+    explicit Token() = default;
+    friend TrustedSubtreeSet;
+  };
+
+  // Wraps `trusted_subtrees` in a TrustedSubtreeSet instance if valid,
+  // otherwise returns nullptr. Returned TrustedSubtreeSet is guaranteed to be
+  // valid.
+  static std::shared_ptr<const TrustedSubtreeSet> Create(
+      std::vector<LogTrustedSubtrees> trusted_subtrees);
+
+  // This constructor is conceptually private, but needs to be public for
+  // make_shared to work. Uses the "passkey idiom" to prevent callers outside
+  // of the class from calling it. Outside callers should use Create().
+  TrustedSubtreeSet(Token, std::vector<LogTrustedSubtrees> trusted_subtrees);
+
+  TrustedSubtreeSet(const TrustedSubtreeSet &) = delete;
+  TrustedSubtreeSet &operator=(const TrustedSubtreeSet &) = delete;
+
+  ~TrustedSubtreeSet() = default;
+
+  // Looks up a `target_range`'s subtree hash within the trusted subtrees for
+  // `log_number`. Returns std::nullopt if not found.
+  std::optional<TreeHashConstSpan> LookupSubtreeHash(
+      uint16_t log_number, Subtree target_range) const;
+
+  std::string DebugString() const;
+
+ private:
+  // Returns whether log numbers are greater than zero, and are in sorted order
+  // without repeated log numbers, and within each log number the subtrees are
+  // valid and listed in order. (An empty list for a log number is valid, and
+  // equivalent to that log number being absent.)
+  static bool IsValid(const std::vector<LogTrustedSubtrees> &trusted_subtrees);
+
+  // Entries in the vector must be sorted by log number, and each
+  // `TrustedSubtree` within must be sorted by their subtree ranges.
+  std::vector<LogTrustedSubtrees> trusted_subtrees_;
+};
+
 // Describes the level of trust in a certificate.
 struct OPENSSL_EXPORT CertificateTrust {
-  static constexpr CertificateTrust ForTrustAnchor() {
+  static CertificateTrust ForTrustAnchor() {
     CertificateTrust result;
     result.type = CertificateTrustType::TRUSTED_ANCHOR;
     return result;
   }
 
-  static constexpr CertificateTrust ForTrustAnchorOrLeaf() {
+  static CertificateTrust ForTrustAnchorOrLeaf() {
     CertificateTrust result;
     result.type = CertificateTrustType::TRUSTED_ANCHOR_OR_LEAF;
     return result;
   }
 
-  static constexpr CertificateTrust ForTrustedLeaf() {
+  static CertificateTrust ForTrustedLeaf() {
     CertificateTrust result;
     result.type = CertificateTrustType::TRUSTED_LEAF;
     return result;
   }
 
-  static constexpr CertificateTrust ForUnspecified() {
+  static CertificateTrust ForUnspecified() {
     CertificateTrust result;
     return result;
   }
 
-  static constexpr CertificateTrust ForDistrusted() {
+  static CertificateTrust ForDistrusted() {
     CertificateTrust result;
     result.type = CertificateTrustType::DISTRUSTED;
     return result;
   }
 
-  constexpr CertificateTrust WithEnforceAnchorExpiry(bool value = true) const {
+  CertificateTrust WithEnforceAnchorExpiry(bool value = true) const {
     CertificateTrust result = *this;
     result.enforce_anchor_expiry = value;
     return result;
   }
 
-  constexpr CertificateTrust WithEnforceAnchorConstraints(
-      bool value = true) const {
+  CertificateTrust WithEnforceAnchorConstraints(bool value = true) const {
     CertificateTrust result = *this;
     result.enforce_anchor_constraints = value;
     return result;
   }
 
-  constexpr CertificateTrust WithRequireAnchorBasicConstraints(
-      bool value = true) const {
+  CertificateTrust WithRequireAnchorBasicConstraints(bool value = true) const {
     CertificateTrust result = *this;
     result.require_anchor_basic_constraints = value;
     return result;
   }
 
-  constexpr CertificateTrust WithRequireLeafSelfSigned(
-      bool value = true) const {
+  CertificateTrust WithRequireLeafSelfSigned(bool value = true) const {
     CertificateTrust result = *this;
     result.require_leaf_selfsigned = value;
     return result;
@@ -126,6 +167,8 @@ struct OPENSSL_EXPORT CertificateTrust {
 
   std::string ToDebugString() const;
 
+  // FromDebugString does not parse trusted subtrees from the debug string. If
+  // there are any trusted_subtrees, they will not round-trip.
   static std::optional<CertificateTrust> FromDebugString(
       const std::string &trust_string);
 
@@ -146,106 +189,142 @@ struct OPENSSL_EXPORT CertificateTrust {
 
   // Optionally, require trusted leafs to be self-signed to be trusted.
   bool require_leaf_selfsigned = false;
+
+  // For an MTC CA, a list of trusted subtrees
+  // (draft-ietf-plants-merkle-tree-certs, Section 7.4) that are known to be
+  // consistent with the relying party's cosigner requirements. A null pointer
+  // is equivalent to an empty set (no landmark-relative MTCs from this MTC CA
+  // are recognized). Ignored (and should be null) unless this is the trust for
+  // an MTC CA.
+  std::shared_ptr<const TrustedSubtreeSet> trusted_subtrees;
 };
 
+// MTCAnchor is an MTC CA (draft-ietf-plants-merkle-tree-certs) trust anchor:
+// an MTC CA certificate (a ParsedCertificate with an MTC CA extension) and the
+// CertificateTrust for it. It shares ownership of the certificate and the
+// CertificateTrust's trusted subtrees. The MTC CA fields are read from the
+// certificate's MTC CA extension.
+//
+// TODO(crbug.com/575507260): Remove this class. MTC CA trust anchors will be
+// represented by their MTC CA certificate and CertificateTrust, like any other
+// trust anchor.
 class OPENSSL_EXPORT MTCAnchor {
  public:
   enum MtcSpecVersion {
-    // draft-ietf-plants-merkle-tree-certs-04
-    kPlants04
+    // draft-ietf-plants-merkle-tree-certs-07
+    kPlants07
   };
 
-  // Create an MTCAnchor with spec version kPlants04 for a trusted CA with
-  // `ca_id` containing the DER encoding of the relative OID of the CA's ID.
+  class Token {
+   private:
+    explicit Token() = default;
+    friend MTCAnchor;
+  };
+
+  // Returns an MTCAnchor for the MTC CA certificate `cert`, trusted with
+  // `trust`, or nullopt if `cert` does not have an MTC CA extension. `cert`
+  // must be non-null.
+  //
+  // TODO(crbug.com/575507260): Remove this compatibility shim once callers no
+  // longer use it.
+  static std::optional<MTCAnchor> Create(
+      std::shared_ptr<const ParsedCertificate> cert, CertificateTrust trust);
+
+  // Legacy code path for MTC CAs configured by individual fields rather than by
+  // a certificate. This builds an MTC CA certificate from the fields (see
+  // `EncodeMtcCaCertificate`), with the widest valid serial number range, and
+  // returns an MTCAnchor for it, trusted as a trust anchor with
+  // `log_trusted_subtrees`.
+  //
+  // `ca_id` is a valid DER-encoded relative OID specifying the CA's ID.
   // `ca_signature_algorithm` and `ca_key` configure the CA cosigner key.
-  // `ca_key` should be a DER-encoded SubjectPublicKeyInfo.
+  // `ca_key` must be a DER-encoded SubjectPublicKeyInfo.
   // The `log_trusted_subtrees` must be sorted by log number, and each
   // `trusted_subtrees` within must be sorted by their subtree ranges.
-  MTCAnchor(Span<const uint8_t> ca_id,
-            SignatureAlgorithm ca_signature_algorithm,
-            UniquePtr<CRYPTO_BUFFER> ca_key,
-            std::vector<LogTrustedSubtrees> log_trusted_subtrees);
+  // Returns nullptr on error.
+  //
+  // TODO(crbug.com/575507260): Remove this once callers configure MTC CAs by
+  // certificate.
+  static std::shared_ptr<const MTCAnchor> CreatePlants07(
+      Span<const uint8_t> ca_id, SignatureAlgorithm ca_signature_algorithm,
+      UniquePtr<CRYPTO_BUFFER> ca_key,
+      std::vector<LogTrustedSubtrees> log_trusted_subtrees);
 
-  // TODO(mattm): this constructor is deprecated, remove it once the
-  // chromium-side has been updated to use the new one.
-  // Create an MTCAnchor with spec version kPlants04 for a trusted CA with
-  // `ca_id` containing the DER encoding of the relative OID of the CA's ID.
-  // `ca_signature_algorithm` and `ca_key` configure the CA cosigner key.
-  // `ca_key` should be a DER-encoded SubjectPublicKeyInfo.
-  // The `trusted_subtrees` must be sorted by their subtree ranges.
-  MTCAnchor(Span<const uint8_t> ca_id,
-            SignatureAlgorithm ca_signature_algorithm,
-            UniquePtr<CRYPTO_BUFFER> ca_key,
-            std::map<uint16_t, std::vector<TrustedSubtree>> trusted_subtrees);
+  // This constructor is conceptually private, but needs to be public for
+  // make_shared to work. Uses the "passkey idiom" to prevent callers outside
+  // of the class from calling it.
+  // Outside callers should use the Create* static method(s).
+  MTCAnchor(Token, std::shared_ptr<const ParsedCertificate> cert,
+            CertificateTrust trust);
 
-  // Returns whether this MTCAnchor represents a valid anchor. This function
-  // exists because the c'tor inputs could be invalid.
-  bool IsValid() const;
+  // Accessors that return `Span` point into the certificate, so they are only
+  // valid while any copy of the certificate is alive. Note that this
+  // `MTCAnchor` may be the only owner of the certificate.
 
-  MtcSpecVersion spec_version() const { return kPlants04; }
-  Span<const uint8_t> ca_id() const {
-    return ca_id_;
+  // Returns the spec version of the MTC CA. Only the draft-07 MTC CA extension
+  // is supported.
+  MtcSpecVersion spec_version() const { return kPlants07; }
+
+  // Returns the DER-encoded contents (without ASN.1 header bytes) of the CA's
+  // ID as a RELATIVE-OID.
+  Span<const uint8_t> ca_id() const;
+
+  // Returns the CA cosigner's signature algorithm, or nullopt if it is not
+  // supported.
+  std::optional<SignatureAlgorithm> ca_signature_algorithm() const;
+
+  // Returns the CA cosigner's DER-encoded SubjectPublicKeyInfo.
+  Span<const uint8_t> ca_key() const;
+
+  Span<const uint8_t> NormalizedSubject() const;
+
+  const CertificateTrust &CertTrust() const { return trust_; }
+
+  // Returns the MTC CA certificate. This is never null.
+  const std::shared_ptr<const ParsedCertificate> &AsCert() const {
+    return cert_;
   }
-  SignatureAlgorithm ca_signature_algorithm() const {
-    return ca_signature_algorithm_;
-  }
-  const CRYPTO_BUFFER* ca_key() const {
-    return ca_key_.get();
-  }
-  // TODO(nharper): Move this function to TrustAnchor.
-  der::Input NormalizedSubject() const;
-  // TODO(nharper): Remove this function in favor of TrustAnchor's version.
-  CertificateTrust CertTrust() const;
-  // TODO(nharper): Move this function to TrustAnchor.
-  std::shared_ptr<const ParsedCertificate> AsCert() const;
 
+  // Looks up a `target_range`'s subtree hash within the trusted subtrees for
+  // `log_number`. Returns std::nullopt if not found, including if `CertTrust()`
+  // does not have trusted subtrees.
   std::optional<TreeHashConstSpan> SubtreeHash(uint16_t log_number,
                                                Subtree target_range) const;
   std::string TrustedSubtreesDebugString() const;
 
  private:
-  void CreateSyntheticCert(Span<const uint8_t> ca_id);
-
-  std::vector<uint8_t> ca_id_;
-  SignatureAlgorithm ca_signature_algorithm_;
-  UniquePtr<CRYPTO_BUFFER> ca_key_;
-  std::shared_ptr<const ParsedCertificate> synthetic_cert_;
-  std::vector<LogTrustedSubtrees> trusted_subtrees_;
+  // Non-null, and has an MTC CA extension.
+  std::shared_ptr<const ParsedCertificate> cert_;
+  CertificateTrust trust_;
 };
 
 // A TrustAnchor contains information about how a trust anchor is trusted and
-// what is trusted. It should be used in place of a (ParsedCertificate,
-// CertificateTrust) tuple as some trust information, e.g. MTC anchors, is not
+// what is trusted.
+//
+// TODO(crbug.com/575507260): This class was formerly the first step of a large
+// refactor to use TrustAnchor in place of a (ParsedCertificate,
+// CertificateTrust) tuple as some trust information, e.g. MTC anchors, was not
 // representable by such a tuple.
-//
-// TODO(nharper): This class is the first step of a large refactor to stop
-// representing TrustAnchors as ParsedCertificates. Prior to the introduction of
-// Merkle Tree Certs, the information about a trust anchor was split between
-// a ParsedCertificate (containing the anchor's Subject name and public key) and
-// a CertificateTrust struct (informing when/how the trust anchor is trusted, as
-// well as whether any additional constraints should be applied). With the
-// introduction of Merkle Tree Certs, some of this information about how to use
-// an MTC trust anchor fits in neither place. The eventual goal is that the
-// TrustAnchor class is the single place that contains all information about a
-// trust anchor, rather than that information being split across multiple
-// objects. This will allow a further goal of removing the dependency of
-// requiring that a trust anchor be representable as a ParsedCertificate: MTC
-// trust anchors only have a ParsedCertificate accessor for compatibility
-// reasons, and while draft-ietf-lamps-x509-alg-none improves the efficiency of
-// storing trust anchors in X.509 certs, this refactor will allow further
-// improvements for classical (non-MTC) roots.
-//
-// See also internal design doc:
+// Original internal TrustAnchor design doc:
 // https://docs.google.com/document/d/1wqHAmZqtF8oJzNObFBm41lzDt2JWRhjM32A3z6ampJE/edit
+//
+// The current plan is to align with the X.509 certificate representation of MTC
+// CAs in draft-ietf-plants-merkle-tree-certs-05 and up, and make the
+// (ParsedCertificate, CertificateTrust) representation work for all trust
+// anchors. After migrating to the X.509 representation, TrustAnchor will be
+// removed.
 class OPENSSL_EXPORT TrustAnchor {
  public:
   // Creates a default TrustAnchor with an unspecified CertificateTrust.
   TrustAnchor() = default;
 
   // Creates a TrustAnchor with no associated MTCAnchor.
-  explicit TrustAnchor(CertificateTrust trust);
+  explicit TrustAnchor(CertificateTrust trust) : TrustAnchor(trust, nullptr) {}
+
+  // Creates a TrustAnchor with an associated MTCAnchor.
   TrustAnchor(CertificateTrust trust,
-              std::shared_ptr<const MTCAnchor> mtc_anchor);
+              std::shared_ptr<const MTCAnchor> mtc_anchor)
+      : trust_(trust), mtc_anchor_(std::move(mtc_anchor)) {}
 
   // TODO(nharper): Temporarily add ParsedCertificate member and accessor.
 
@@ -260,7 +339,7 @@ class OPENSSL_EXPORT TrustAnchor {
   // TODO(nharper): Remove this function as part of the larger TrustAnchor
   // refactor.
   void OverrideCertTrust(CertificateTrust new_trust);
-  CertificateTrust CertTrust() const;
+  const CertificateTrust &CertTrust() const;
   std::shared_ptr<const bssl::MTCAnchor> MTCAnchor() const;
 
  private:
@@ -272,7 +351,7 @@ class OPENSSL_EXPORT TrustAnchor {
 // trustedness of certificates.
 class OPENSSL_EXPORT TrustStore : public CertIssuerSource {
  public:
-  TrustStore();
+  TrustStore() = default;
 
   TrustStore(const TrustStore &) = delete;
   TrustStore &operator=(const TrustStore &) = delete;
