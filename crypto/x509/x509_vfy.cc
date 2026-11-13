@@ -196,7 +196,7 @@ int check_lone_untrusted_leaf(X509_STORE_CTX *ctx) {
 
 // Check a certificate chains extensions for consistency with the supplied
 // purpose
-int check_chain_extensions(X509_STORE_CTX *ctx) {
+int check_chain_extensions(X509_STORE_CTX *ctx, bool trusted) {
   int plen = 0;
   int purpose = ctx->param->purpose;
   int num = static_cast<int>(sk_X509_num(ctx->chain));
@@ -211,14 +211,21 @@ int check_chain_extensions(X509_STORE_CTX *ctx) {
     }
 
     int must_be_ca = i > 0;
-    if (must_be_ca && !X509_check_ca(x)) {
+    // As in OpenSSL, keyCertSign alone makes a CA of a trust anchor that has no
+    // basicConstraints extension.
+    const bool is_key_usage_ca =
+        must_be_ca && trusted && i == num - 1 &&
+        (x->ex_flags & (EXFLAG_BCONS | EXFLAG_KUSAGE)) == EXFLAG_KUSAGE &&
+        (x->ex_kusage & X509v3_KU_KEY_CERT_SIGN);
+    if (must_be_ca && !is_key_usage_ca && !X509_check_ca(x)) {
       ctx->error = X509_V_ERR_INVALID_CA;
       if (!call_verify_cb_at_depth(0, ctx, i)) {
         return 0;
       }
     }
     if (ctx->param->purpose > 0 &&
-        X509_check_purpose(x, purpose, must_be_ca) != 1) {
+        (is_key_usage_ca ? x509_check_purpose_of_ca(x, purpose)
+                         : X509_check_purpose(x, purpose, must_be_ca)) != 1) {
       ctx->error = X509_V_ERR_INVALID_PURPOSE;
       if (!call_verify_cb_at_depth(0, ctx, i)) {
         return 0;
@@ -389,7 +396,7 @@ int check_id(X509_STORE_CTX *ctx) {
   return 1;
 }
 
-int check_trust(X509_STORE_CTX *ctx) {
+int check_trust(X509_STORE_CTX *ctx, bool allow_partial_chain) {
   // If this function is called, `ctx->chain` must end with some certificate
   // from the store. Determine if we should treat it as a trust anchor in this
   // context.
@@ -408,7 +415,7 @@ int check_trust(X509_STORE_CTX *ctx) {
 
   // If we accept partial chains, every certificate in the store is a trust
   // anchor.
-  if (ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN) {
+  if (allow_partial_chain && (ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN)) {
     return X509_TRUST_TRUSTED;
   }
 
@@ -615,6 +622,9 @@ int idp_check_dp(const DIST_POINT_NAME *dp_cert,
 // Check CRLDP and IDP
 int crl_crldp_check(const X509 *x, const X509_CRL *crl, int crl_score) {
   auto *impl = FromOpaque(x);
+  if (crl->idp && crl->idp->onlyattr) {
+    return 0;
+  }
   if (impl->ex_flags & EXFLAG_CA) {
     if (crl->idp && crl->idp->onlyuser) {
       return 0;
@@ -945,9 +955,18 @@ int verify_signature(X509_STORE_CTX *ctx, const X509 *x509,
   return ret ? X509_V_OK : X509_V_ERR_CERT_SIGNATURE_FAILURE;
 }
 
-int check_chain_signatures_and_time(X509_STORE_CTX *ctx) {
+int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
   size_t num = sk_X509_num(ctx->chain);
+  // As in OpenSSL, the validity of an intermediate whose issuer is missing does
+  // not replace the error for the missing issuer.
+  const X509 *last = sk_X509_last(ctx->chain);
+  const bool skip_last = !trusted && num > 1 &&
+                         !(ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN) &&
+                         X509_check_issued(last, last) != X509_V_OK;
   for (size_t i = num - 1; i < num; i--) {
+    if (skip_last && i == num - 1) {
+      continue;
+    }
     X509 *x509 = sk_X509_value(ctx->chain, i);
     if (i < num - 1) {
       X509 *issuer = sk_X509_value(ctx->chain, i + 1);
@@ -1069,16 +1088,17 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
   int trust = X509_TRUST_UNTRUSTED;
 
   // First, check if the target certificate already exists in the trust store as
-  // a trust "anchor".
-  if (UniquePtr<X509> store_cert = lookup_cert_match(ctx, ctx->cert);
-      store_cert != nullptr) {
+  // a trust "anchor". As in OpenSSL, `X509_V_FLAG_PARTIAL_CHAIN` only makes it
+  // one when no issuer can be, so that the issuer's CRLs and name constraints
+  // still apply.
+  UniquePtr<X509> store_cert = lookup_cert_match(ctx, ctx->cert);
+  if (store_cert != nullptr) {
     ctx->chain = sk_X509_new_null();
-    if (ctx->chain == nullptr ||
-        !PushToStack(ctx->chain, std::move(store_cert))) {
+    if (ctx->chain == nullptr || !PushToStack(ctx->chain, UpRef(store_cert))) {
       ctx->error = X509_V_ERR_OUT_OF_MEM;
       return 0;
     }
-    trust = check_trust(ctx);
+    trust = check_trust(ctx, /*allow_partial_chain=*/false);
     if (trust == X509_TRUST_REJECTED) {
       return 0;
     }
@@ -1124,7 +1144,7 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
         }
         have_store_cert = true;
         // Certificates from the store are candidates to be trust anchors.
-        trust = check_trust(ctx);
+        trust = check_trust(ctx, /*allow_partial_chain=*/true);
         if (trust == X509_TRUST_REJECTED) {
           return 0;
         }
@@ -1155,6 +1175,18 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
 
       // Couldn't find anything.
       break;
+    }
+
+    if (trust == X509_TRUST_UNTRUSTED && store_cert != nullptr &&
+        (param->flags & X509_V_FLAG_PARTIAL_CHAIN)) {
+      sk_X509_pop_free(ctx->chain, X509_free);
+      ctx->chain = sk_X509_new_null();
+      if (ctx->chain == nullptr ||
+          !PushToStack(ctx->chain, std::move(store_cert))) {
+        ctx->error = X509_V_ERR_OUT_OF_MEM;
+        return 0;
+      }
+      trust = X509_TRUST_TRUSTED;
     }
 
     // `X509_TRUST_REJECTED` should have returned early.
@@ -1190,14 +1222,15 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
   // verify callback, we now have either a path from the target certificate to
   // some trust anchor or a directly trusted leaf.
   assert(sk_X509_num(ctx->chain) >= 1);
-  if (!check_chain_extensions(ctx) ||           //
-      !check_id(ctx) ||                         //
-      !check_revocation(ctx) ||                 //
-      (trust != X509_TRUST_TRUSTED && !check_lone_untrusted_leaf(ctx)) ||
-      !check_blocklist(ctx) ||                  //
-      !check_chain_signatures_and_time(ctx) ||  //
-      !check_name_constraints(ctx) ||           //
-      !check_policy(ctx)) {
+  const bool trusted = trust == X509_TRUST_TRUSTED;
+  if (!check_chain_extensions(ctx, trusted) ||            //
+      !check_id(ctx) ||                                   //
+      !check_revocation(ctx) ||                           //
+      (!trusted && !check_lone_untrusted_leaf(ctx)) ||    //
+      !check_blocklist(ctx) ||                            //
+      !check_chain_signatures_and_time(ctx, trusted) ||   //
+      !check_name_constraints(ctx) ||                     //
+      (trusted && !check_policy(ctx))) {
     return 0;
   }
 

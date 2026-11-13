@@ -13858,9 +13858,83 @@ TEST_P(X509VerifyTest, UnableToVerifyLeafSignature) {
   EXPECT_EQ(collect(leaf.get(), {}, {}, X509_V_FLAG_PARTIAL_CHAIN),
             std::vector<int>{X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY});
 
+  // The validity of an intermediate without an issuer is not reported.
+  EXPECT_EQ(collect(leaf.get(), {}, {intermediate.get()}, 0, /*time_posix=*/0),
+            (std::vector<int>{X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+                              X509_V_ERR_CERT_NOT_YET_VALID}));
+
   // Without the callback, verification stops at the first error.
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
             Verify(leaf.get(), {root.get()}, {}, {}));
+}
+
+TEST_P(X509VerifyTest, AttributeCertificateCRL) {
+  UniquePtr<EVP_PKEY> key = PrivateKeyFromPEM(kP256Key);
+  ASSERT_TRUE(key);
+  UniquePtr<X509> ca = MakeTestCert("CA", "CA", key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(ca && X509_sign(ca.get(), key.get(), EVP_sha256()));
+  UniquePtr<X509> leaf = MakeTestCert("CA", "Leaf", key.get(), /*is_ca=*/false);
+  ASSERT_TRUE(leaf && X509_sign(leaf.get(), key.get(), EVP_sha256()));
+
+  UniquePtr<X509_CRL> crl = MakeTestCRL("CA", -1, 1);
+  UniquePtr<ISSUING_DIST_POINT> idp(ISSUING_DIST_POINT_new());
+  ASSERT_TRUE(crl && idp);
+  idp->onlyattr = ASN1_BOOLEAN_TRUE;
+  ASSERT_TRUE(X509_CRL_add1_ext_i2d(crl.get(), NID_issuing_distribution_point,
+                                    idp.get(), /*crit=*/1, /*flags=*/0));
+  crl = SignAndReencodeCRL(crl.get(), key.get(), EVP_sha256());
+  ASSERT_TRUE(crl);
+  EXPECT_EQ(X509_V_ERR_DIFFERENT_CRL_SCOPE,
+            Verify(leaf.get(), {ca.get()}, {}, {crl.get()},
+                   X509_V_FLAG_CRL_CHECK));
+}
+
+TEST_P(X509VerifyTest, PartialChainPrefersIssuerOverTarget) {
+  UniquePtr<EVP_PKEY> key = PrivateKeyFromPEM(kP256Key);
+  ASSERT_TRUE(key);
+  UniquePtr<X509> ca = MakeTestCert("CA", "CA", key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(ca && X509_sign(ca.get(), key.get(), EVP_sha256()));
+  UniquePtr<X509> intermediate =
+      MakeTestCert("CA", "Intermediate", key.get(), /*is_ca=*/true);
+  ASSERT_TRUE(intermediate &&
+              X509_sign(intermediate.get(), key.get(), EVP_sha256()));
+  UniquePtr<X509> leaf =
+      MakeTestCert("Intermediate", "Leaf", key.get(), /*is_ca=*/false);
+  ASSERT_TRUE(leaf && X509_sign(leaf.get(), key.get(), EVP_sha256()));
+  UniquePtr<X509_CRL> crl = MakeTestCRL("Intermediate", -1, 1);
+  ASSERT_TRUE(crl && AddRevokedSerialU64(crl.get(), kTestCertSerial, -1));
+  crl = SignAndReencodeCRL(crl.get(), key.get(), EVP_sha256());
+  ASSERT_TRUE(crl);
+
+  EXPECT_EQ(X509_V_ERR_CERT_REVOKED,
+            Verify(leaf.get(), {leaf.get(), intermediate.get()}, {},
+                   {crl.get()},
+                   X509_V_FLAG_PARTIAL_CHAIN | X509_V_FLAG_CRL_CHECK));
+
+  // The target is still an anchor when no issuer is trusted.
+  VerifyResult result =
+      VerifyAndReturnChain(leaf.get(), {leaf.get()}, {intermediate.get()}, {},
+                           X509_V_FLAG_PARTIAL_CHAIN);
+  EXPECT_EQ(X509_V_OK, result.err);
+  EXPECT_EQ(1u, sk_X509_num(result.chain.get()));
+}
+
+TEST_P(X509VerifyTest, NoBasicConstraintsCertSignTrustAnchor) {
+  UniquePtr<X509> root(CertFromPEM(kSANTypesRoot));
+  UniquePtr<X509> intermediate(
+      CertFromPEM(kNoBasicConstraintsCertSignIntermediate));
+  UniquePtr<X509> leaf(CertFromPEM(kNoBasicConstraintsCertSignLeaf));
+  ASSERT_TRUE(root && intermediate && leaf);
+  auto set_purpose = [](X509_STORE_CTX *ctx) {
+    ASSERT_TRUE(X509_STORE_CTX_set_purpose(ctx, X509_PURPOSE_SSL_SERVER));
+  };
+
+  EXPECT_EQ(X509_V_OK, Verify(leaf.get(), {intermediate.get()}, {}, {},
+                              X509_V_FLAG_PARTIAL_CHAIN, set_purpose));
+  // Being in the store is not enough.
+  EXPECT_EQ(X509_V_ERR_INVALID_CA,
+            Verify(leaf.get(), {root.get(), intermediate.get()}, {}, {}, 0,
+                   set_purpose));
 }
 
 // Populating a store must not re-sort on every insertion, but duplicates must

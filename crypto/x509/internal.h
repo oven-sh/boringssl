@@ -583,6 +583,10 @@ int x509v3_conf_name_matches(const char *name, const char *cmp);
 OPENSSL_EXPORT int x509v3_looks_like_dns_name(const unsigned char *in,
                                               size_t len);
 
+// x509_check_purpose_of_ca behaves like `X509_check_purpose` for a certificate
+// the caller has already determined to be a CA.
+int x509_check_purpose_of_ca(const X509 *x, int id);
+
 // x509v3_cache_extensions fills in a number of fields relating to X.509
 // extensions in `x`. It returns one on success and zero if some extensions were
 // invalid.

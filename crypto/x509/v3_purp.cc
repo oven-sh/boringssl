@@ -216,6 +216,12 @@ int X509_check_purpose(const X509 *x, int id, int ca) {
   return pt->check_purpose(pt, x, ca);
 }
 
+int bssl::x509_check_purpose_of_ca(const X509 *x, int id) {
+  const X509_PURPOSE *pt = X509_PURPOSE_get0(id);
+  return pt != nullptr && x509v3_cache_extensions(x) &&
+         pt->check_purpose(pt, x, /*ca=*/1);
+}
+
 const X509_PURPOSE *X509_PURPOSE_get0(int id) {
   for (const auto &p : xstandard) {
     if (p.purpose == id) {
