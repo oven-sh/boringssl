@@ -316,6 +316,25 @@ luci.cq_tryjob_verifier(
     ],
 )
 
+# Builds Chromium with the CL applied to third_party/boringssl/src (on top of
+# BoringSSL main, not the DEPS pin) to catch roll breakage before the
+# autoroller. Listed builders are ones that often break in BoringSSL Chromium
+# rolls. These are expected to take much longer to run than BoringSSL's own
+# builders, so use judiciously.
+[luci.cq_tryjob_verifier(
+    cq_group = "main-cq",
+    builder = "chromium:try/" + b,
+    owner_whitelist = ["project-boringssl-tryjob-access"],
+    includable_only = True,
+) for b in [
+    "android_compile_dbg",
+    "android-arm64-rel",
+    "linux-libfuzzer-asan-rel",
+    "linux-rel",
+    "mac_chromium_compile_dbg_ng",
+    "win_chromium_compile_dbg_ng",
+]]
+
 def compile_only(properties):
     compile_properties = dict(properties)
     compile_properties["run_unit_tests"] = False
@@ -857,6 +876,19 @@ both_builders(
     },
 )
 both_builders(
+    "linux_lto",
+    LINUX_HOST,
+    category = "linux|x86-64|gcc",
+    short_name = "lto",
+    properties = {
+        "cmake_args": {
+            "CMAKE_BUILD_TYPE": "Release",
+            "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+        },
+        "upload_to_cas": FINISHED_OUTPUT_FILES_LINUX_STATIC,
+    },
+)
+both_builders(
     "linux_prefixed_compile",
     LINUX_HOST,
     category = "linux|x86-64|gcc",
@@ -993,6 +1025,24 @@ both_builders(
         "clang": True,
         "cmake_args": {
             "CMAKE_BUILD_TYPE": "Release",
+        },
+        "upload_to_cas": FINISHED_OUTPUT_FILES_LINUX_STATIC,
+    },
+)
+cq_builders(
+    "linux_clang_lto",
+    LINUX_HOST,
+    cq_enabled = False,
+    #category = "linux|x86-64|clang",
+    #short_name = "lto",
+    properties = {
+        "clang": True,
+        "cmake_args": {
+            "CMAKE_BUILD_TYPE": "Release",
+            "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+            # We use Chromium's copy of clang, which requires -fuse-ld=lld if
+            # building with -flto.
+            "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=lld",
         },
         "upload_to_cas": FINISHED_OUTPUT_FILES_LINUX_STATIC,
     },
@@ -1374,6 +1424,19 @@ both_builders(
     }),
 )
 both_builders(
+    "mac_arm64_lto",
+    MAC_ARM64_HOST,
+    category = "mac|arm64|clang",
+    short_name = "lto",
+    properties = {
+        "cmake_args": {
+            "CMAKE_BUILD_TYPE": "Release",
+            "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+        },
+        "upload_to_cas": FINISHED_OUTPUT_FILES_MAC_STATIC,
+    },
+)
+both_builders(
     "mac_arm64_bazel",
     MAC_ARM64_HOST,
     category = "mac|arm64|clang",
@@ -1538,6 +1601,25 @@ both_builders(
         "prefixed_symbols": True,
         "check_prefixed_symbols": True,
         "upload_to_cas": FINISHED_OUTPUT_FILES_WIN_STATIC,
+    }),
+)
+
+# clang-cl in shared library mode matches Chromium's Windows component build.
+# clang-cl does not treat cross-DLL function addresses as constant expressions,
+# so this catches constexpr initializers in tests that the MSVC shared builders
+# have missed.
+both_builders(
+    "win64_clang_shared_compile",
+    WIN_HOST,
+    category = "win|x86-64|clang",
+    short_name = "sh",
+    properties = compile_only({
+        "clang": True,
+        "msvc_target": "x64",
+        "cmake_args": {
+            "BUILD_SHARED_LIBS": "1",
+        },
+        "upload_to_cas": FINISHED_OUTPUT_FILES_WIN_SHARED,
     }),
 )
 

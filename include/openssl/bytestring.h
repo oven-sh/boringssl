@@ -238,6 +238,7 @@ OPENSSL_EXPORT int CBS_get_u64_decimal(CBS *cbs, uint64_t *out);
 #define CBS_ASN1_OBJECT 0x6u
 #define CBS_ASN1_ENUMERATED 0xau
 #define CBS_ASN1_UTF8STRING 0xcu
+#define CBS_ASN1_RELATIVE_OID 0xdu
 #define CBS_ASN1_SEQUENCE (0x10u | CBS_ASN1_CONSTRUCTED)
 #define CBS_ASN1_SET (0x11u | CBS_ASN1_CONSTRUCTED)
 #define CBS_ASN1_NUMERICSTRING 0x12u
@@ -396,6 +397,12 @@ OPENSSL_EXPORT int CBS_is_valid_asn1_integer(const CBS *cbs,
 // CBS_is_unsigned_asn1_integer returns one if `cbs` is a valid non-negative
 // ASN.1 INTEGER body and zero otherwise.
 OPENSSL_EXPORT int CBS_is_unsigned_asn1_integer(const CBS *cbs);
+
+// CBS_is_valid_asn1_set_of returns one if `cbs` is an ASN.1 SET OF contents
+// (not including the element framing) with members sorted in nondescending
+// order according to DER rules, and zero otherwise. This function does not
+// parse the members and does not check that they are of any particular type.
+OPENSSL_EXPORT int CBS_is_valid_asn1_set_of(const CBS *cbs);
 
 // CBS_is_valid_asn1_oid returns one if `cbs` is a valid DER-encoded ASN.1
 // OBJECT IDENTIFIER contents (not including the element framing) and zero

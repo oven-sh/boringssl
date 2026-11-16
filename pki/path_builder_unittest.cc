@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -53,6 +55,7 @@ using ::testing::ContainerEq;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Invoke;
+using ::testing::Ref;
 using ::testing::Return;
 using ::testing::StrictMock;
 
@@ -2483,11 +2486,10 @@ class MTCCosignerNotCalledPathBuilderDelegate
     return std::nullopt;
   }
 
-  MOCK_METHOD(bool,
-      IsCosignatureVerificationResultAcceptable,
-      (const MTCAnchor* mtc_anchor,
-           std::vector<std::vector<uint8_t>> valid_additional_cosigners),
-      (override));
+  MOCK_METHOD(bool, IsMTCCosignatureVerificationResultAcceptable,
+              (const ParsedCertificate& mtc_ca_cert,
+               std::vector<std::vector<uint8_t>> valid_additional_cosigners),
+              (override));
 };
 
 class MtcCosignersPathBuilderDelegate : public CertPathBuilderDelegateBase {
@@ -2512,28 +2514,73 @@ class MtcCosignersPathBuilderDelegate : public CertPathBuilderDelegateBase {
     return std::nullopt;
   }
 
-  MOCK_METHOD(bool,
-      IsCosignatureVerificationResultAcceptable,
-      (const MTCAnchor* mtc_anchor,
-           std::vector<std::vector<uint8_t>> valid_additional_cosigners),
-      (override));
+  MOCK_METHOD(bool, IsMTCCosignatureVerificationResultAcceptable,
+              (const ParsedCertificate& mtc_ca_cert,
+               std::vector<std::vector<uint8_t>> valid_additional_cosigners),
+              (override));
 
  private:
   std::map<std::vector<uint8_t>, MTCCosigner> cosigners_;
 };
 
-class PathBuilderMTCPlants04Test : public PathBuilderSimpleChainTest {
+// A delegate that overrides the deprecated
+// `IsCosignatureVerificationResultAcceptable` instead of
+// `IsMTCCosignatureVerificationResultAcceptable`.
+class DeprecatedMtcCosignersPathBuilderDelegate
+    : public CertPathBuilderDelegateBase {
  public:
-  PathBuilderMTCPlants04Test() = default;
+  void CheckPathAfterVerification(const CertPathBuilder& path_builder,
+                                  CertPathBuilderResultPath* path) override {}
+
+  std::optional<MTCCosigner> GetMTCCosigner(
+      Span<const uint8_t> cosigner_id) override {
+    return std::nullopt;
+  }
+
+  MOCK_METHOD(bool, IsCosignatureVerificationResultAcceptable,
+              (const MTCAnchor* mtc_anchor,
+               std::vector<std::vector<uint8_t>> valid_additional_cosigners),
+              (override));
+};
+
+// Matches a `const MTCAnchor*` for the MTC CA certificate `expected_cert`.
+MATCHER_P(IsMTCAnchorFor, expected_cert, "") {
+  return arg != nullptr && arg->AsCert().get() == expected_cert;
+}
+
+class PathBuilderMTCTest : public PathBuilderSimpleChainTest {
+ public:
+  PathBuilderMTCTest() = default;
 
  protected:
+  std::string TestDataDir() const { return "mtc_plants07/"; }
+
+  std::string_view ExpectedSubtreeHashBase64() const {
+    return "K/o/0tKQMz/Qdk+F3U9ViXjhYBCgb675l9vH7atcQxQ=";
+  }
+
+  std::shared_ptr<const MTCAnchor> CreateMTCAnchor(
+      Span<const uint8_t> ca_id, SignatureAlgorithm ca_signature_algorithm,
+      UniquePtr<CRYPTO_BUFFER> ca_key,
+      std::vector<LogTrustedSubtrees> log_trusted_subtrees) const {
+    return MTCAnchor::CreatePlants07(ca_id, ca_signature_algorithm,
+                                     std::move(ca_key),
+                                     std::move(log_trusted_subtrees));
+  }
+
+  ::testing::AssertionResult ReadMTCTestCert(
+      const std::string &file_name,
+      std::shared_ptr<const ParsedCertificate> *result) const {
+    return ReadTestCert(TestDataDir() + file_name, result);
+  }
+
   void SetUp() override {
     PathBuilderSimpleChainTest::SetUp();
 
     // Set up the MTCAnchor.
     std::string subtree_hash;
-    ASSERT_TRUE(string_util::Base64Decode(
-        "ir6iVcgTrbuHdXB3lKGny6VKSlE1OB5Q+LrtdFH+qIE=", &subtree_hash));
+    ASSERT_TRUE(
+        string_util::Base64Decode(ExpectedSubtreeHashBase64(), &subtree_hash));
     TrustedSubtree subtree;
     ASSERT_EQ(subtree_hash.size(), subtree.hash.size());
     memcpy(subtree.hash.data(), subtree_hash.data(), subtree_hash.size());
@@ -2563,29 +2610,27 @@ class PathBuilderMTCPlants04Test : public PathBuilderSimpleChainTest {
         ExportPublicKeyFromSeed(kCaPrivateKeySeed2);
     ASSERT_TRUE(spki2);
 
-    mtc_anchor_ = std::make_shared<MTCAnchor>(
-        MakeSpan(kCaId), SignatureAlgorithm::kMldsa44, UpRef(spki), subtrees);
-    ASSERT_EQ(mtc_anchor_->spec_version(), MTCAnchor::kPlants04);
+    mtc_anchor_ = CreateMTCAnchor(MakeSpan(kCaId), SignatureAlgorithm::kMldsa44,
+                                  UpRef(spki), subtrees);
+    ASSERT_TRUE(mtc_anchor_);
 
-    mtc_anchor_wrong_key_ = std::make_shared<MTCAnchor>(
+    mtc_anchor_wrong_key_ = CreateMTCAnchor(
         MakeSpan(kCaId), SignatureAlgorithm::kMldsa44, UpRef(spki2), subtrees);
-    ASSERT_EQ(mtc_anchor_wrong_key_->spec_version(), MTCAnchor::kPlants04);
+    ASSERT_TRUE(mtc_anchor_wrong_key_);
 
-    mtc_anchor_wrong_subtree_hash_ = std::make_shared<MTCAnchor>(
+    mtc_anchor_wrong_subtree_hash_ = CreateMTCAnchor(
         MakeSpan(kCaId), SignatureAlgorithm::kMldsa44, UpRef(spki), subtrees2);
-    ASSERT_EQ(mtc_anchor_wrong_subtree_hash_->spec_version(),
-              MTCAnchor::kPlants04);
+    ASSERT_TRUE(mtc_anchor_wrong_subtree_hash_);
 
-    mtc_anchor_no_subtrees_ = std::make_shared<MTCAnchor>(
-        MakeSpan(kCaId), SignatureAlgorithm::kMldsa44, UpRef(spki),
-        std::vector<LogTrustedSubtrees>());
-    ASSERT_EQ(mtc_anchor_no_subtrees_->spec_version(), MTCAnchor::kPlants04);
+    mtc_anchor_no_subtrees_ =
+        CreateMTCAnchor(MakeSpan(kCaId), SignatureAlgorithm::kMldsa44,
+                        UpRef(spki), std::vector<LogTrustedSubtrees>());
+    ASSERT_TRUE(mtc_anchor_no_subtrees_);
 
-    mtc_anchor_no_subtrees_wrong_key_ = std::make_shared<MTCAnchor>(
-        MakeSpan(kCaId), SignatureAlgorithm::kMldsa44, UpRef(spki2),
-        std::vector<LogTrustedSubtrees>());
-    ASSERT_EQ(mtc_anchor_no_subtrees_wrong_key_->spec_version(),
-              MTCAnchor::kPlants04);
+    mtc_anchor_no_subtrees_wrong_key_ =
+        CreateMTCAnchor(MakeSpan(kCaId), SignatureAlgorithm::kMldsa44,
+                        UpRef(spki2), std::vector<LogTrustedSubtrees>());
+    ASSERT_TRUE(mtc_anchor_no_subtrees_wrong_key_);
   }
 
   CertPathBuilder::Result RunPathBuilder(
@@ -2609,19 +2654,18 @@ class PathBuilderMTCPlants04Test : public PathBuilderSimpleChainTest {
     return path_builder.Run();
   }
 
-  std::shared_ptr<MTCAnchor> mtc_anchor_;
-  std::shared_ptr<MTCAnchor> mtc_anchor_wrong_key_;
-  std::shared_ptr<MTCAnchor> mtc_anchor_wrong_subtree_hash_;
-  std::shared_ptr<MTCAnchor> mtc_anchor_no_subtrees_;
-  std::shared_ptr<MTCAnchor> mtc_anchor_no_subtrees_wrong_key_;
+  std::shared_ptr<const MTCAnchor> mtc_anchor_;
+  std::shared_ptr<const MTCAnchor> mtc_anchor_wrong_key_;
+  std::shared_ptr<const MTCAnchor> mtc_anchor_wrong_subtree_hash_;
+  std::shared_ptr<const MTCAnchor> mtc_anchor_no_subtrees_;
+  std::shared_ptr<const MTCAnchor> mtc_anchor_no_subtrees_wrong_key_;
 };
 
-TEST_F(PathBuilderMTCPlants04Test, Verification) {
+TEST_F(PathBuilderMTCTest, Verification) {
   std::shared_ptr<const ParsedCertificate> signatureless_leaf;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-leaf.pem", &signatureless_leaf));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf.pem", &signatureless_leaf));
   std::shared_ptr<const ParsedCertificate> standalone_leaf;
-  ASSERT_TRUE(
-      ReadTestCert("mtc_plants04/mtc-leaf-standalone.pem", &standalone_leaf));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone.pem", &standalone_leaf));
 
   TrustStoreInMemory trust_store_with_subtrees;
   ASSERT_TRUE(trust_store_with_subtrees.AddMTCTrustAnchor(mtc_anchor_));
@@ -2642,8 +2686,8 @@ TEST_F(PathBuilderMTCPlants04Test, Verification) {
   MTCCosignerNotCalledPathBuilderDelegate mtc_cosigner_not_called_delegate;
   StrictMock<MtcCosignersPathBuilderDelegate> no_cosigners_delegate;
   EXPECT_CALL(no_cosigners_delegate,
-              IsCosignatureVerificationResultAcceptable(
-                  mtc_anchor_no_subtrees_.get(), ElementsAre()))
+              IsMTCCosignatureVerificationResultAcceptable(
+                  Ref(*mtc_anchor_no_subtrees_->AsCert()), ElementsAre()))
       .WillRepeatedly(Return(true));
 
   // Signatureless cert should be valid when verified against the anchor
@@ -2663,10 +2707,16 @@ TEST_F(PathBuilderMTCPlants04Test, Verification) {
   result = RunPathBuilder(signatureless_leaf, &trust_store_no_subtrees, nullptr,
                           &mtc_cosigner_not_called_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kMtcLandmarkNotRecognized));
   result =
       RunPathBuilder(signatureless_leaf, &trust_store_no_subtrees_wrong_key,
                      nullptr, &mtc_cosigner_not_called_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kMtcLandmarkNotRecognized));
 
   // Standalone cert should be valid when verified against the anchor
   // configured with subtrees (regardless of what key the anchor is configured
@@ -2687,21 +2737,30 @@ TEST_F(PathBuilderMTCPlants04Test, Verification) {
   result = RunPathBuilder(standalone_leaf, &trust_store_no_subtrees_wrong_key,
                           nullptr, &no_cosigners_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 
   // Both certs should fail when verified against the anchor with wrong subtree
   // hash.
   result = RunPathBuilder(signatureless_leaf, &trust_store_wrong_subtreehash,
                           nullptr, &mtc_cosigner_not_called_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
   result = RunPathBuilder(standalone_leaf, &trust_store_wrong_subtreehash,
                           nullptr, &mtc_cosigner_not_called_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 
   // Cert with multiple cosigners (including valid CA cosigner) should validate
   // successfully, ignoring the unknown cosigners.
   std::shared_ptr<const ParsedCertificate> standalone_leaf_3_cosigners;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-leaf-standalone-3cosigners.pem",
-                           &standalone_leaf_3_cosigners));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone-3cosigners.pem",
+                              &standalone_leaf_3_cosigners));
   result = RunPathBuilder(standalone_leaf_3_cosigners, &trust_store_no_subtrees,
                           nullptr, &no_cosigners_delegate);
   EXPECT_TRUE(result.HasValidPath());
@@ -2711,38 +2770,48 @@ TEST_F(PathBuilderMTCPlants04Test, Verification) {
                           &trust_store_no_subtrees_wrong_key, nullptr,
                           &no_cosigners_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 
   // Cert with a cosigner but no CA cosigner should fail:
   std::shared_ptr<const ParsedCertificate> standalone_leaf_no_ca_signer;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-leaf-standalone-no_ca_signer.pem",
-                           &standalone_leaf_no_ca_signer));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone-no_ca_signer.pem",
+                              &standalone_leaf_no_ca_signer));
   result =
       RunPathBuilder(standalone_leaf_no_ca_signer, &trust_store_no_subtrees,
                      nullptr, &no_cosigners_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 
   // Cert with a duplicate CA cosigner should fail:
   std::shared_ptr<const ParsedCertificate> standalone_leaf_duplicate_ca_signer;
-  ASSERT_TRUE(
-      ReadTestCert("mtc_plants04/mtc-leaf-standalone-duplicate_ca_signer.pem",
-                   &standalone_leaf_duplicate_ca_signer));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone-duplicate_ca_signer.pem",
+                              &standalone_leaf_duplicate_ca_signer));
   result =
       RunPathBuilder(standalone_leaf_duplicate_ca_signer,
                      &trust_store_no_subtrees, nullptr, &no_cosigners_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 
   // Cert with a cosigners in non-sorted order should fail:
   std::shared_ptr<const ParsedCertificate> standalone_leaf_cosigner_wrong_order;
-  ASSERT_TRUE(
-      ReadTestCert("mtc_plants04/mtc-leaf-standalone-cosigner_wrong_order.pem",
-                   &standalone_leaf_cosigner_wrong_order));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone-cosigner_wrong_order.pem",
+                              &standalone_leaf_cosigner_wrong_order));
   result =
       RunPathBuilder(standalone_leaf_cosigner_wrong_order,
                      &trust_store_no_subtrees, nullptr, &no_cosigners_delegate);
   EXPECT_FALSE(result.HasValidPath());
+  ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+  EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+      cert_errors::kVerifySignedDataFailed));
 }
 
-TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
+TEST_F(PathBuilderMTCTest, CosignatureVerification) {
   static constexpr uint8_t kCosignerId1[] = {0x81, 0xfd, 0x59, 0x00};
   static constexpr uint8_t kCosignerPrivateKeySeed1[] = {
       0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
@@ -2767,8 +2836,8 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
       mtc_anchor_no_subtrees_wrong_key_));
 
   std::shared_ptr<const ParsedCertificate> standalone_leaf_3_cosigners;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-leaf-standalone-3cosigners.pem",
-                           &standalone_leaf_3_cosigners));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone-3cosigners.pem",
+                              &standalone_leaf_3_cosigners));
   CertPathBuilder::Result result;
 
   {
@@ -2786,8 +2855,8 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
     // Cert with multiple valid cosigners should validate successfully, and
     // return the valid cosigner ids.
     EXPECT_CALL(cosigners_delegate,
-                IsCosignatureVerificationResultAcceptable(
-                    mtc_anchor_no_subtrees_.get(),
+                IsMTCCosignatureVerificationResultAcceptable(
+                    Ref(*mtc_anchor_no_subtrees_->AsCert()),
                     ElementsAre(cosigner_id_1, cosigner_id_2)))
         .WillOnce(Return(true));
     result =
@@ -2809,11 +2878,14 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
         std::move(cosigners));
 
     // If the CA key is wrong it should fail and
-    // IsCosignatureVerificationResultAcceptable should not be called.
+    // IsMTCCosignatureVerificationResultAcceptable should not be called.
     result = RunPathBuilder(standalone_leaf_3_cosigners,
                             &trust_store_no_subtrees_wrong_key, nullptr,
                             &cosigners_delegate);
     EXPECT_FALSE(result.HasValidPath());
+    ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+    EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+        cert_errors::kVerifySignedDataFailed));
   }
 
   {
@@ -2830,10 +2902,9 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
 
     // If the CA key is correct but the cosigners fail to validate, it should
     // be called with empty valid cosigners list:
-    EXPECT_CALL(
-        wrong_cosigner_keys_delegate,
-        IsCosignatureVerificationResultAcceptable(
-            mtc_anchor_no_subtrees_.get(), ElementsAre()))
+    EXPECT_CALL(wrong_cosigner_keys_delegate,
+                IsMTCCosignatureVerificationResultAcceptable(
+                    Ref(*mtc_anchor_no_subtrees_->AsCert()), ElementsAre()))
         .WillOnce(Return(true));
     result =
         RunPathBuilder(standalone_leaf_3_cosigners, &trust_store_no_subtrees,
@@ -2857,8 +2928,8 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
     // one succeeded, it should be called with the valid one in the cosigners
     // list:
     EXPECT_CALL(wrong_ca1_cosigner_key_delegate,
-                IsCosignatureVerificationResultAcceptable(
-                    mtc_anchor_no_subtrees_.get(),
+                IsMTCCosignatureVerificationResultAcceptable(
+                    Ref(*mtc_anchor_no_subtrees_->AsCert()),
                     ElementsAre(cosigner_id_2)))
         .WillOnce(Return(true));
     result =
@@ -2882,21 +2953,46 @@ TEST_F(PathBuilderMTCPlants04Test, CosignatureVerification) {
     // Even with valid cosigners, if the delegate rejects the result, it should
     // fail.
     EXPECT_CALL(rejecting_delegate,
-                IsCosignatureVerificationResultAcceptable(
-                    mtc_anchor_no_subtrees_.get(),
+                IsMTCCosignatureVerificationResultAcceptable(
+                    Ref(*mtc_anchor_no_subtrees_->AsCert()),
                     ElementsAre(cosigner_id_1, cosigner_id_2)))
         .WillOnce(Return(false));
     result =
         RunPathBuilder(standalone_leaf_3_cosigners, &trust_store_no_subtrees,
                        nullptr, &rejecting_delegate);
     EXPECT_FALSE(result.HasValidPath());
+    ASSERT_TRUE(result.GetBestPathPossiblyInvalid());
+    EXPECT_TRUE(result.GetBestPathPossiblyInvalid()->errors.ContainsError(
+        cert_errors::kMtcUnacceptableCosignatureVerificationResult));
   }
 }
 
-TEST_F(PathBuilderMTCPlants04Test, CheckPathAfterVerification) {
+// Tests that a delegate that overrides the deprecated
+// `IsCosignatureVerificationResultAcceptable` is still called.
+TEST_F(PathBuilderMTCTest, DeprecatedCosignatureVerificationResultAcceptable) {
+  TrustStoreInMemory trust_store;
+  ASSERT_TRUE(trust_store.AddMTCTrustAnchor(mtc_anchor_no_subtrees_));
+  std::shared_ptr<const ParsedCertificate> standalone_leaf;
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone.pem", &standalone_leaf));
+
+  for (bool acceptable : {true, false}) {
+    SCOPED_TRACE(acceptable);
+    StrictMock<DeprecatedMtcCosignersPathBuilderDelegate> delegate;
+    EXPECT_CALL(delegate,
+                IsCosignatureVerificationResultAcceptable(
+                    IsMTCAnchorFor(mtc_anchor_no_subtrees_->AsCert().get()),
+                    ElementsAre()))
+        .WillOnce(Return(acceptable));
+    CertPathBuilder::Result result =
+        RunPathBuilder(standalone_leaf, &trust_store, nullptr, &delegate);
+    EXPECT_EQ(result.HasValidPath(), acceptable);
+  }
+}
+
+TEST_F(PathBuilderMTCTest, CheckPathAfterVerification) {
   // Set up MTC leaf and its trust anchor.
   std::shared_ptr<const ParsedCertificate> mtc_leaf;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-leaf.pem", &mtc_leaf));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf.pem", &mtc_leaf));
   TrustStoreInMemory in_memory;
   ASSERT_TRUE(in_memory.AddMTCTrustAnchor(mtc_anchor_));
 
@@ -2927,11 +3023,11 @@ TEST_F(PathBuilderMTCPlants04Test, CheckPathAfterVerification) {
       << error.DiagnosticString();
 }
 
-TEST_F(PathBuilderMTCPlants04Test, PathLength) {
+TEST_F(PathBuilderMTCTest, PathLength) {
   std::shared_ptr<const ParsedCertificate> leaf;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/leaf.pem", &leaf));
+  ASSERT_TRUE(ReadMTCTestCert("leaf.pem", &leaf));
   std::shared_ptr<const ParsedCertificate> ica;
-  ASSERT_TRUE(ReadTestCert("mtc_plants04/mtc-ica.pem", &ica));
+  ASSERT_TRUE(ReadMTCTestCert("mtc-ica.pem", &ica));
 
   // Test that verifying leaf succeeds using ica as the trusted root.
   {
@@ -2968,7 +3064,39 @@ TEST_F(PathBuilderMTCPlants04Test, PathLength) {
     EXPECT_EQ(leaf, path.certs[0]);
     EXPECT_EQ(ica, path.certs[1]);
     EXPECT_EQ(mtc_anchor_->AsCert(), path.certs[2]);
+    EXPECT_TRUE(path.errors.ContainsError(cert_errors::kMaxPathLengthViolated));
   }
+}
+
+// Tests that a standalone MTC is rejected if the MTC anchor's cosigner
+// algorithm is unsupported.
+TEST_F(PathBuilderMTCTest, UnsupportedCaSignatureAlgorithm) {
+  // The MTC CA cosigner key is Ed25519, which is unsupported.
+  std::shared_ptr<const ParsedCertificate> ca_cert =
+      ReadCryptoX509MTCTestCert("ca_unknown_sigalg/ca_cert.pem");
+  ASSERT_TRUE(ca_cert);
+  std::optional<MTCAnchor> anchor =
+      MTCAnchor::Create(ca_cert, CertificateTrust::ForTrustAnchor());
+  ASSERT_TRUE(anchor);
+  EXPECT_FALSE(anchor->ca_signature_algorithm());
+  std::shared_ptr<const ParsedCertificate> leaf =
+      ReadCryptoX509MTCTestCert("ca_unknown_sigalg/cert_1_0.pem");
+  ASSERT_TRUE(leaf);
+
+  TrustStoreInMemory in_memory;
+  ASSERT_TRUE(in_memory.AddMTCTrustAnchor(
+      std::make_shared<MTCAnchor>(*std::move(anchor))));
+  CertPathBuilder::Result result =
+      RunPathBuilder(leaf, &in_memory, nullptr, nullptr);
+  EXPECT_FALSE(result.HasValidPath());
+  const auto &path = *result.GetBestPathPossiblyInvalid();
+  ASSERT_EQ(2u, path.certs.size());
+  EXPECT_EQ(leaf, path.certs[0]);
+  EXPECT_EQ(ca_cert, path.certs[1]);
+  const CertErrors *leaf_errors = path.errors.GetErrorsForCert(0);
+  ASSERT_TRUE(leaf_errors) << path.errors.ToDebugString(path.certs);
+  EXPECT_TRUE(leaf_errors->ContainsError(cert_errors::kVerifySignedDataFailed))
+      << path.errors.ToDebugString(path.certs);
 }
 
 TEST(PathBuilderPrioritizationTest, DatePrioritization) {

@@ -10,6 +10,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -23,7 +24,6 @@ import (
 
 	"boringssl.googlesource.com/boringssl.git/ssl/test/runner/hpke"
 	"boringssl.googlesource.com/boringssl.git/ssl/test/runner/spake2plus"
-	"filippo.io/mldsa"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -1294,10 +1294,9 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg any) error {
 			}
 
 			hs.writeServerHash(certReq.marshal())
-
 			credential = c.config.Credential
-			if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
-				certReq.signatureAlgorithms = credential.signatureAlgorithms()
+			if err := hs.handleCertificateRequest(certReq, credential); err != nil {
+				return err
 			}
 
 			msg, err = c.readHandshake()
@@ -1776,10 +1775,9 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if ok {
 		certRequested = true
 		hs.writeServerHash(certReq.marshal())
-
 		credential = c.config.Credential
-		if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
-			certReq.signatureAlgorithms = credential.signatureAlgorithms()
+		if err := hs.handleCertificateRequest(certReq, credential); err != nil {
+			return err
 		}
 
 		msg, err = c.readHandshake()
@@ -1932,7 +1930,7 @@ func (hs *clientHandshakeState) verifyCertificates(certMsg *certificateMsg) erro
 	certs := make([]*x509.Certificate, len(certMsg.certificates))
 	if certMsg.certificateType == certTypeX509 {
 		for i, certEntry := range certMsg.certificates {
-			cert, err := ParseX509Certificate(certEntry.data)
+			cert, err := x509.ParseCertificate(certEntry.data)
 			if err != nil {
 				c.sendAlert(alertBadCertificate)
 				return errors.New("tls: failed to parse certificate from server: " + err.Error())
@@ -2661,4 +2659,17 @@ func (hs *clientHandshakeState) generatePSKBinders(hello *clientHelloMsg, firstC
 
 	// Clear the cached encoding.
 	hello.raw = nil
+}
+
+func (hs *clientHandshakeState) handleCertificateRequest(certReq *certificateRequestMsg, credential *Credential) error {
+	c := hs.c
+	if expected := c.config.Bugs.ExpectPeerSignatureAlgorithmPreferences; expected != nil {
+		if !slices.Equal(expected, certReq.signatureAlgorithms) {
+			return fmt.Errorf("tls: server offered signature algorithms %v, but expected %v", certReq.signatureAlgorithms, expected)
+		}
+	}
+	if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
+		certReq.signatureAlgorithms = credential.signatureAlgorithms()
+	}
+	return nil
 }

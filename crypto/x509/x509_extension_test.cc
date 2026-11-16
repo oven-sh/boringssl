@@ -30,7 +30,7 @@
 BSSL_NAMESPACE_BEGIN
 namespace {
 
-static std::string ASN1ObjectToString(const ASN1_OBJECT *obj) {
+std::string ASN1ObjectToString(const ASN1_OBJECT *obj) {
   char buf[128];
   if (OBJ_obj2txt(buf, sizeof(buf), obj, /*always_return_oid=*/0) < 0) {
     ADD_FAILURE() << "OBJ_obj2txt failed";
@@ -39,15 +39,15 @@ static std::string ASN1ObjectToString(const ASN1_OBJECT *obj) {
   return buf;
 }
 
-static Span<const uint8_t> ASN1StringAsBytes(const ASN1_STRING *str) {
+Span<const uint8_t> ASN1StringAsBytes(const ASN1_STRING *str) {
   return Span(ASN1_STRING_get0_data(str), ASN1_STRING_length(str));
 }
 
-static std::string_view ASN1StringAsView(const ASN1_STRING *str) {
+std::string_view ASN1StringAsView(const ASN1_STRING *str) {
   return BytesAsStringView(ASN1StringAsBytes(str));
 }
 
-static std::string ASN1StringToUTF8(const ASN1_STRING *str) {
+std::string ASN1StringToUTF8(const ASN1_STRING *str) {
   uint8_t *utf8;
   int utf8_len = ASN1_STRING_to_UTF8(&utf8, str);
   if (utf8_len < 0) {
@@ -239,6 +239,7 @@ TEST(X509ExtensionTest, ParseCertificatePolicies) {
         const uint8_t *p = rewritten.data();
         EXPECT_FALSE(UniquePtr<CERTIFICATEPOLICIES>(
             d2i_CERTIFICATEPOLICIES(nullptr, &p, rewritten.size())));
+        EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, std::nullopt}}));
       });
 
   // Test additional invalid inputs.
@@ -382,6 +383,7 @@ TEST(X509ExtensionTest, ParseCRLDistributionPoints) {
     const uint8_t *p = rewritten.data();
     EXPECT_FALSE(UniquePtr<CRL_DIST_POINTS>(
         d2i_CRL_DIST_POINTS(nullptr, &p, rewritten.size())));
+    EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, std::nullopt}}));
   });
 }
 

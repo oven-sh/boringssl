@@ -243,8 +243,9 @@ static void keccak_init(struct BORINGSSL_keccak_st *ctx,
 
 [[maybe_unused]] static bool keccak_can_parallel(
     enum boringssl_keccak_config_t config) {
-  return config == boringssl_sha3_256 || config == boringssl_sha3_512 ||
-         config == boringssl_shake128 || config == boringssl_shake256;
+  return config == boringssl_sha3_256 || config == boringssl_sha3_384 ||
+         config == boringssl_sha3_512 || config == boringssl_shake128 ||
+         config == boringssl_shake256;
 }
 
 static bool keccak_is_cshake(enum boringssl_keccak_config_t config) {

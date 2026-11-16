@@ -27,11 +27,15 @@
 #include <openssl/sha.h>
 #include <openssl/span.h>
 
+// IWYU pragma: begin_keep
 #include "../asn1/internal.h"
 #include "../fipsmodule/digest/internal.h"
-#include "../fipsmodule/keccak/internal.h"
-#include "../internal.h"
+// IWYU pragma: end_keep
 
+
+using namespace bssl;
+
+namespace {
 
 struct nid_to_digest {
   int nid;
@@ -40,7 +44,7 @@ struct nid_to_digest {
   const char *long_name;
 };
 
-static const struct nid_to_digest nid_to_digest_mapping[] = {
+const nid_to_digest nid_to_digest_mapping[] = {
     {NID_md4, EVP_md4, SN_md4, LN_md4},
     {NID_md5, EVP_md5, SN_md5, LN_md5},
     {NID_sha1, EVP_sha1, SN_sha1, LN_sha1},
@@ -76,22 +80,7 @@ static const struct nid_to_digest nid_to_digest_mapping[] = {
      LN_sha512WithRSAEncryption},
 };
 
-const EVP_MD *EVP_get_digestbynid(int nid) {
-  if (nid == NID_undef) {
-    // Skip the `NID_undef` entries in `nid_to_digest_mapping`.
-    return nullptr;
-  }
-
-  for (const auto &mapping : nid_to_digest_mapping) {
-    if (mapping.nid == nid) {
-      return mapping.md_func();
-    }
-  }
-
-  return nullptr;
-}
-
-static const struct {
+const struct {
   uint8_t oid[9];
   uint8_t oid_len;
   int nid;
@@ -112,14 +101,30 @@ static const struct {
     {{0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04}, 9, NID_sha224},
 };
 
-static int cbs_to_digest_nid(const CBS *cbs) {
+int cbs_to_digest_nid(const CBS *cbs) {
   for (const auto &md : kMDOIDs) {
-    if (bssl::Span<const uint8_t>(*cbs) ==
-        bssl::Span(md.oid).first(md.oid_len)) {
+    if (Span<const uint8_t>(*cbs) == Span(md.oid).first(md.oid_len)) {
       return md.nid;
     }
   }
   return NID_undef;
+}
+
+}  // namespace
+
+const EVP_MD *EVP_get_digestbynid(int nid) {
+  if (nid == NID_undef) {
+    // Skip the `NID_undef` entries in `nid_to_digest_mapping`.
+    return nullptr;
+  }
+
+  for (const auto &mapping : nid_to_digest_mapping) {
+    if (mapping.nid == nid) {
+      return mapping.md_func();
+    }
+  }
+
+  return nullptr;
 }
 
 const EVP_MD *EVP_get_digestbyobj(const ASN1_OBJECT *obj) {
@@ -174,8 +179,9 @@ const EVP_MD *EVP_parse_digest_algorithm(CBS *cbs) {
   return EVP_get_digestbynid(nid);
 }
 
-static int marshal_digest_algorithm(CBB *cbb, const EVP_MD *md,
-                                    bool with_null) {
+namespace {
+
+int marshal_digest_algorithm(CBB *cbb, const EVP_MD *md, bool with_null) {
   CBB algorithm, oid, null;
   if (!CBB_add_asn1(cbb, &algorithm, CBS_ASN1_SEQUENCE) ||
       !CBB_add_asn1(&algorithm, &oid, CBS_ASN1_OBJECT)) {
@@ -206,6 +212,8 @@ static int marshal_digest_algorithm(CBB *cbb, const EVP_MD *md,
 
   return 1;
 }
+
+}  // namespace
 
 int EVP_marshal_digest_algorithm(CBB *cbb, const EVP_MD *md) {
   return marshal_digest_algorithm(cbb, md, /*with_null=*/true);
@@ -255,202 +263,186 @@ int EVP_Q_digest(OSSL_LIB_CTX *libctx, const char *name, const char *propq,
   return 1;
 }
 
-static void blake2b256_init(EVP_MD_CTX *ctx) {
+namespace {
+
+void blake2b256_init(EVP_MD_CTX *ctx) {
   BLAKE2B256_Init(reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data));
 }
 
-static void blake2b256_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
+void blake2b256_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
   BLAKE2B256_Update(reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data), data, len);
 }
 
-static void blake2b256_final(EVP_MD_CTX *ctx, uint8_t *md) {
+void blake2b256_final(EVP_MD_CTX *ctx, uint8_t *md) {
   BLAKE2B256_Final(md, reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data));
 }
 
-static const EVP_MD evp_md_blake2b256 = {
-    NID_undef,       BLAKE2B256_DIGEST_LENGTH, 0,
-    blake2b256_init, blake2b256_update,        blake2b256_final,
-    BLAKE2B_CBLOCK,  sizeof(BLAKE2B_CTX),
+const EVP_MD evp_md_blake2b256 = {
+    /*type=*/NID_undef,
+    /*md_size=*/BLAKE2B256_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/blake2b256_init,
+    /*update=*/blake2b256_update,
+    /*final=*/blake2b256_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/BLAKE2B_CBLOCK,
+    /*ctx_size=*/sizeof(BLAKE2B_CTX),
 };
 
-const EVP_MD *EVP_blake2b256() { return &evp_md_blake2b256; }
-
-static void blake2b512_init(EVP_MD_CTX *ctx) {
+void blake2b512_init(EVP_MD_CTX *ctx) {
   BLAKE2B512_Init(reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data));
 }
 
-static void blake2b512_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
+void blake2b512_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
   BLAKE2B512_Update(reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data), data, len);
 }
 
-static void blake2b512_final(EVP_MD_CTX *ctx, uint8_t *md) {
+void blake2b512_final(EVP_MD_CTX *ctx, uint8_t *md) {
   BLAKE2B512_Final(md, reinterpret_cast<BLAKE2B_CTX *>(ctx->md_data));
 }
 
-static const EVP_MD evp_md_blake2b512 = {
-  NID_undef,
-  BLAKE2B512_DIGEST_LENGTH,
-  0,
-  blake2b512_init,
-  blake2b512_update,
-  blake2b512_final,
-  BLAKE2B_CBLOCK,
-  sizeof(BLAKE2B_CTX),
+const EVP_MD evp_md_blake2b512 = {
+    /*type=*/NID_undef,
+    /*md_size=*/BLAKE2B512_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/blake2b512_init,
+    /*update=*/blake2b512_update,
+    /*final=*/blake2b512_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/BLAKE2B_CBLOCK,
+    /*ctx_size=*/sizeof(BLAKE2B_CTX),
 };
 
-const EVP_MD *EVP_blake2b512(void) { return &evp_md_blake2b512; }
-
-static_assert(sizeof(BLAKE2B_CTX) <= EVP_MAX_MD_DATA_SIZE);
-
-
-static void ripemd160_init(EVP_MD_CTX *ctx) {
+void ripemd160_init(EVP_MD_CTX *ctx) {
   BSSL_CHECK(RIPEMD160_Init(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
 }
 
-static void ripemd160_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
+void ripemd160_update(EVP_MD_CTX *ctx, const void *data, size_t len) {
+  BSSL_CHECK(RIPEMD160_Update(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data),
+                              data, len));
+}
+
+void ripemd160_final(EVP_MD_CTX *ctx, uint8_t *md) {
   BSSL_CHECK(
-      RIPEMD160_Update(reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data), data, len));
+      RIPEMD160_Final(md, reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
 }
 
-static void ripemd160_final(EVP_MD_CTX *ctx, uint8_t *md) {
-  BSSL_CHECK(RIPEMD160_Final(md, reinterpret_cast<RIPEMD160_CTX *>(ctx->md_data)));
-}
-
-static const EVP_MD evp_md_ripemd160 = {
-    NID_ripemd160,    RIPEMD160_DIGEST_LENGTH, 0,
-    ripemd160_init,   ripemd160_update,
-    ripemd160_final,  64,
-    sizeof(RIPEMD160_CTX),
+const EVP_MD evp_md_ripemd160 = {
+    /*type=*/NID_ripemd160,
+    /*md_size=*/RIPEMD160_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/ripemd160_init,
+    /*update=*/ripemd160_update,
+    /*final=*/ripemd160_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/RIPEMD160_CBLOCK,
+    /*ctx_size=*/sizeof(RIPEMD160_CTX),
 };
 
-const EVP_MD *EVP_ripemd160(void) { return &evp_md_ripemd160; }
-
-static_assert(sizeof(RIPEMD160_CTX) <= EVP_MAX_MD_DATA_SIZE);
-
-
-// SHA-3
-
-static_assert(sizeof(bssl::BORINGSSL_keccak_st) <= EVP_MAX_MD_DATA_SIZE,
-              "EVP_MAX_MD_DATA_SIZE too small for Keccak state");
-
-#define DEFINE_SHA3(bits, block_bytes)                                    \
-  static void sha3_##bits##_init(EVP_MD_CTX *ctx) {                       \
-    bssl::BORINGSSL_keccak_init(                                          \
-        reinterpret_cast<bssl::BORINGSSL_keccak_st *>(ctx->md_data),      \
-        bssl::boringssl_sha3_##bits);                                     \
-  }                                                                       \
-  static void sha3_##bits##_update(EVP_MD_CTX *ctx, const void *data,     \
-                                   size_t len) {                          \
-    bssl::BORINGSSL_keccak_absorb(                                        \
-        reinterpret_cast<bssl::BORINGSSL_keccak_st *>(ctx->md_data),      \
-        reinterpret_cast<const uint8_t *>(data), len);                    \
-  }                                                                       \
-  static void sha3_##bits##_final(EVP_MD_CTX *ctx, uint8_t *md) {         \
-    bssl::BORINGSSL_keccak_squeeze(                                       \
-        reinterpret_cast<bssl::BORINGSSL_keccak_st *>(ctx->md_data), md,  \
-        (bits) / 8);                                                      \
-  }                                                                       \
-  static const EVP_MD evp_md_sha3_##bits = {                              \
-      NID_sha3_##bits,      (bits) / 8, 0,                                \
-      sha3_##bits##_init,   sha3_##bits##_update,                         \
-      sha3_##bits##_final,  (block_bytes),                                \
-      sizeof(bssl::BORINGSSL_keccak_st),                                  \
-  };                                                                      \
-  const EVP_MD *EVP_sha3_##bits() { return &evp_md_sha3_##bits; }
-
-DEFINE_SHA3(224, 144)
-DEFINE_SHA3(256, 136)
-DEFINE_SHA3(384, 104)
-DEFINE_SHA3(512, 72)
-
-#undef DEFINE_SHA3
-
-
-static void md4_init(EVP_MD_CTX *ctx) {
+void md4_init(EVP_MD_CTX *ctx) {
   BSSL_CHECK(MD4_Init(reinterpret_cast<MD4_CTX *>(ctx->md_data)));
 }
 
-static void md4_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
+void md4_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
   BSSL_CHECK(
       MD4_Update(reinterpret_cast<MD4_CTX *>(ctx->md_data), data, count));
 }
 
-static void md4_final(EVP_MD_CTX *ctx, uint8_t *out) {
+void md4_final(EVP_MD_CTX *ctx, uint8_t *out) {
   BSSL_CHECK(MD4_Final(out, reinterpret_cast<MD4_CTX *>(ctx->md_data)));
 }
 
-static const EVP_MD evp_md_md4 = {
-    NID_md4,            //
-    MD4_DIGEST_LENGTH,  //
-    0,
-    md4_init,
-    md4_update,
-    md4_final,
-    64,
-    sizeof(MD4_CTX),
+const EVP_MD evp_md_md4 = {
+    /*type=*/NID_md4,
+    /*md_size=*/MD4_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/md4_init,
+    /*update=*/md4_update,
+    /*final=*/md4_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/64,
+    /*ctx_size=*/sizeof(MD4_CTX),
 };
 
-const EVP_MD *EVP_md4() { return &evp_md_md4; }
-
-static_assert(sizeof(MD4_CTX) <= EVP_MAX_MD_DATA_SIZE);
-
-
-static void md5_init(EVP_MD_CTX *ctx) {
+void md5_init(EVP_MD_CTX *ctx) {
   BSSL_CHECK(MD5_Init(reinterpret_cast<MD5_CTX *>(ctx->md_data)));
 }
 
-static void md5_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
+void md5_update(EVP_MD_CTX *ctx, const void *data, size_t count) {
   BSSL_CHECK(
       MD5_Update(reinterpret_cast<MD5_CTX *>(ctx->md_data), data, count));
 }
 
-static void md5_final(EVP_MD_CTX *ctx, uint8_t *out) {
+void md5_final(EVP_MD_CTX *ctx, uint8_t *out) {
   BSSL_CHECK(MD5_Final(out, reinterpret_cast<MD5_CTX *>(ctx->md_data)));
 }
 
-static const EVP_MD evp_md_md5 = {
-    NID_md5,    MD5_DIGEST_LENGTH, 0,  md5_init,
-    md5_update, md5_final,         64, sizeof(MD5_CTX),
+const EVP_MD evp_md_md5 = {
+    /*type=*/NID_md5,
+    /*md_size=*/MD5_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/md5_init,
+    /*update=*/md5_update,
+    /*final=*/md5_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/64,
+    /*ctx_size=*/sizeof(MD5_CTX),
 };
 
-const EVP_MD *EVP_md5() { return &evp_md_md5; }
-
-static_assert(sizeof(MD5_CTX) <= EVP_MAX_MD_DATA_SIZE);
-
-
-typedef struct {
+struct MD5_SHA1_CTX {
   MD5_CTX md5;
   SHA_CTX sha1;
-} MD5_SHA1_CTX;
+};
 
-static void md5_sha1_init(EVP_MD_CTX *md_ctx) {
+void md5_sha1_init(EVP_MD_CTX *md_ctx) {
   MD5_SHA1_CTX *ctx = reinterpret_cast<MD5_SHA1_CTX *>(md_ctx->md_data);
   BSSL_CHECK(MD5_Init(&ctx->md5) && SHA1_Init(&ctx->sha1));
 }
 
-static void md5_sha1_update(EVP_MD_CTX *md_ctx, const void *data,
-                            size_t count) {
+void md5_sha1_update(EVP_MD_CTX *md_ctx, const void *data, size_t count) {
   MD5_SHA1_CTX *ctx = reinterpret_cast<MD5_SHA1_CTX *>(md_ctx->md_data);
   BSSL_CHECK(MD5_Update(&ctx->md5, data, count) &&
              SHA1_Update(&ctx->sha1, data, count));
 }
 
-static void md5_sha1_final(EVP_MD_CTX *md_ctx, uint8_t *out) {
+void md5_sha1_final(EVP_MD_CTX *md_ctx, uint8_t *out) {
   MD5_SHA1_CTX *ctx = reinterpret_cast<MD5_SHA1_CTX *>(md_ctx->md_data);
   BSSL_CHECK(MD5_Final(out, &ctx->md5) &&
              SHA1_Final(out + MD5_DIGEST_LENGTH, &ctx->sha1));
 }
 
 const EVP_MD evp_md_md5_sha1 = {
-    NID_md5_sha1,
-    MD5_DIGEST_LENGTH + SHA_DIGEST_LENGTH,
-    0,
-    md5_sha1_init,
-    md5_sha1_update,
-    md5_sha1_final,
-    64,
-    sizeof(MD5_SHA1_CTX),
+    /*type=*/NID_md5_sha1,
+    /*md_size=*/MD5_DIGEST_LENGTH + SHA_DIGEST_LENGTH,
+    /*flags=*/0,
+    /*init=*/md5_sha1_init,
+    /*update=*/md5_sha1_update,
+    /*final=*/md5_sha1_final,
+    /*squeeze=*/nullptr,
+    /*block_size=*/64,
+    /*ctx_size=*/sizeof(MD5_SHA1_CTX),
 };
+
+}  // namespace
+
+const EVP_MD *EVP_blake2b256() { return &evp_md_blake2b256; }
+const EVP_MD *EVP_blake2b512() { return &evp_md_blake2b512; }
+
+static_assert(sizeof(BLAKE2B_CTX) <= EVP_MAX_MD_DATA_SIZE);
+
+const EVP_MD *EVP_ripemd160() { return &evp_md_ripemd160; }
+
+static_assert(sizeof(RIPEMD160_CTX) <= EVP_MAX_MD_DATA_SIZE);
+
+const EVP_MD *EVP_md4() { return &evp_md_md4; }
+
+static_assert(sizeof(MD4_CTX) <= EVP_MAX_MD_DATA_SIZE);
+
+
+const EVP_MD *EVP_md5() { return &evp_md_md5; }
+
+static_assert(sizeof(MD5_CTX) <= EVP_MAX_MD_DATA_SIZE);
+
 
 const EVP_MD *EVP_md5_sha1() { return &evp_md_md5_sha1; }
 

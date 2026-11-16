@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "certificate_policies.h"
 #include "input.h"
 #include "parsed_certificate.h"
 #include "simple_path_builder_delegate.h"
@@ -90,9 +91,6 @@ template <size_t N>
 // Test cases are comprised of all the parameters to certificate
 // verification, as well as the expected outputs.
 struct VerifyCertChainTest {
-  VerifyCertChainTest();
-  ~VerifyCertChainTest();
-
   // The chain of certificates (with the zero-th being the target).
   ParsedCertificateList chain;
 
@@ -107,7 +105,7 @@ struct VerifyCertChainTest {
 
   InitialExplicitPolicy initial_explicit_policy = InitialExplicitPolicy::kFalse;
 
-  std::set<der::Input> user_initial_policy_set;
+  std::set<der::Input> user_initial_policy_set = {der::Input(kAnyPolicyOid)};
 
   InitialPolicyMappingInhibit initial_policy_mapping_inhibit =
       InitialPolicyMappingInhibit::kFalse;
@@ -147,6 +145,18 @@ std::shared_ptr<const ParsedCertificate> ReadCertFromFile(
 
 // Reads a data file relative to the src root directory.
 std::string ReadTestFileToString(const std::string &file_path_ascii);
+
+// Reads and parses a certificate from `file_name` (relative to
+// crypto/x509/test/mtc/) in the crypto/x509 MTC test data. Returns nullptr if
+// the certificate could not be read or parsed. Populates `errors`, if non-null,
+// with parse errrors.
+std::shared_ptr<const ParsedCertificate> ReadCryptoX509MTCTestCert(
+    const std::string &file_name, CertErrors *errors = nullptr);
+
+// Returns the CA cosigner key (a DER-encoded SubjectPublicKeyInfo) from the
+// crypto/x509 MTC CA test certificate, for tests that need a well-formed key
+// but do not verify cosignatures with it.
+UniquePtr<CRYPTO_BUFFER> ReadCryptoX509MtcTestCaKey();
 
 // Asserts that `actual_errors` matches `expected_errors_str`.
 //

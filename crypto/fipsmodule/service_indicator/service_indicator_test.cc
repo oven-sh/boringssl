@@ -1169,6 +1169,11 @@ static const struct RSATestVector kRSATestVectors[] = {
      FIPSStatus::NOT_APPROVED},
     {3071, &EVP_sha512, true, FIPSStatus::NOT_APPROVED,
      FIPSStatus::NOT_APPROVED},
+    // These sizes round up to an approved number of bytes.
+    {2041, &EVP_sha256, false, FIPSStatus::NOT_APPROVED,
+     FIPSStatus::NOT_APPROVED},
+    {2047, &EVP_sha256, true, FIPSStatus::NOT_APPROVED,
+     FIPSStatus::NOT_APPROVED},
     {4096, &EVP_md5, false, FIPSStatus::NOT_APPROVED, FIPSStatus::NOT_APPROVED},
 
     // RSA 1024 is not approved under FIPS 186-5.
@@ -1231,6 +1236,47 @@ static std::map<unsigned, bssl::UniquePtr<RSA>> &CachedRSAKeys() {
   return keys;
 }
 
+static UniquePtr<RSA> NewRSAKeyFromPrimes(unsigned bits, const BIGNUM *e) {
+  UniquePtr<BN_CTX> ctx(BN_CTX_new());
+  UniquePtr<BIGNUM> p(BN_new()), q(BN_new()), pm1(BN_new()), qm1(BN_new()),
+      phi(BN_new()), n(BN_new()), d(BN_new()), dmp1(BN_new()), dmq1(BN_new()),
+      iqmp(BN_new());
+  if (!ctx || !p || !q || !pm1 || !qm1 || !phi || !n || !d || !dmp1 || !dmq1 ||
+      !iqmp) {
+    abort();
+  }
+
+  // Generated primes have their top two bits set, so the product of a
+  // ceil(bits/2)-bit prime and a floor(bits/2)-bit prime has exactly `bits`
+  // bits.
+  for (;;) {
+    if (!BN_generate_prime_ex(p.get(), (bits + 1) / 2, /*safe=*/0, nullptr,
+                              nullptr, nullptr) ||
+        !BN_generate_prime_ex(q.get(), bits / 2, /*safe=*/0, nullptr, nullptr,
+                              nullptr) ||
+        !BN_copy(pm1.get(), p.get()) || !BN_sub_word(pm1.get(), 1) ||
+        !BN_copy(qm1.get(), q.get()) || !BN_sub_word(qm1.get(), 1) ||
+        !BN_mul(phi.get(), pm1.get(), qm1.get(), ctx.get())) {
+      abort();
+    }
+    // Retry in the unlikely case that `e` is not invertible.
+    if (BN_mod_inverse(d.get(), e, phi.get(), ctx.get()) != nullptr) {
+      break;
+    }
+    ERR_clear_error();
+  }
+
+  if (!BN_mul(n.get(), p.get(), q.get(), ctx.get()) ||
+      !BN_mod(dmp1.get(), d.get(), pm1.get(), ctx.get()) ||
+      !BN_mod(dmq1.get(), d.get(), qm1.get(), ctx.get()) ||
+      !BN_mod_inverse(iqmp.get(), q.get(), p.get(), ctx.get())) {
+    abort();
+  }
+  return UniquePtr<RSA>(RSA_new_private_key(n.get(), e, d.get(), p.get(),
+                                            q.get(), dmp1.get(), dmq1.get(),
+                                            iqmp.get()));
+}
+
 static RSA *GetRSAKey(unsigned bits) {
   auto it = CachedRSAKeys().find(bits);
   if (it != CachedRSAKeys().end()) {
@@ -1242,8 +1288,8 @@ static RSA *GetRSAKey(unsigned bits) {
     abort();
   }
 
-  UniquePtr<RSA> key(RSA_new());
-  if (!key || !RSA_generate_key_ex(key.get(), bits, e.get(), nullptr)) {
+  UniquePtr<RSA> key = NewRSAKeyFromPrimes(bits, e.get());
+  if (!key || RSA_bits(key.get()) != bits) {
     abort();
   }
 
@@ -1885,8 +1931,14 @@ TEST(ServiceIndicatorTest, CMAC) {
       approved, CMAC_Update(ctx.get(), kPlaintext, sizeof(kPlaintext))));
   EXPECT_EQ(approved, FIPSStatus::NOT_APPROVED);
 
+  // Querying the output length does not perform a CMAC operation.
   uint8_t mac[16];
   size_t out_len;
+  ASSERT_TRUE(CALL_SERVICE_AND_CHECK_APPROVED(
+      approved, CMAC_Final(ctx.get(), nullptr, &out_len)));
+  EXPECT_EQ(approved, FIPSStatus::NOT_APPROVED);
+  EXPECT_EQ(out_len, sizeof(mac));
+
   ASSERT_TRUE(CALL_SERVICE_AND_CHECK_APPROVED(
       approved, CMAC_Final(ctx.get(), mac, &out_len)));
   EXPECT_EQ(approved, FIPSStatus::APPROVED);
@@ -1898,6 +1950,26 @@ TEST(ServiceIndicatorTest, CMAC) {
       AES_CMAC(mac, kAESKey, sizeof(kAESKey), kPlaintext, sizeof(kPlaintext))));
   EXPECT_EQ(Bytes(kAESCMACOutput), Bytes(mac));
   EXPECT_EQ(approved, FIPSStatus::APPROVED);
+
+  // Only AES-128 and AES-256 CMAC are approved.
+  const struct {
+    const EVP_CIPHER *cipher;
+    Span<const uint8_t> key;
+    FIPSStatus expect_approved;
+  } kCiphers[] = {
+      {EVP_aes_256_cbc(), kAESKey_256, FIPSStatus::APPROVED},
+      {EVP_aes_192_cbc(), kAESKey_192, FIPSStatus::NOT_APPROVED},
+      {EVP_des_ede3_cbc(), kAESKey_192, FIPSStatus::NOT_APPROVED},
+  };
+  for (const auto &t : kCiphers) {
+    SCOPED_TRACE(EVP_CIPHER_nid(t.cipher));
+    ASSERT_TRUE(
+        CMAC_Init(ctx.get(), t.key.data(), t.key.size(), t.cipher, nullptr));
+    ASSERT_TRUE(CMAC_Update(ctx.get(), kPlaintext, sizeof(kPlaintext)));
+    ASSERT_TRUE(CALL_SERVICE_AND_CHECK_APPROVED(
+        approved, CMAC_Final(ctx.get(), mac, &out_len)));
+    EXPECT_EQ(approved, t.expect_approved);
+  }
 }
 
 TEST(ServiceIndicatorTest, BasicTest) {
