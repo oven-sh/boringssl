@@ -537,8 +537,14 @@ int check_blocklist(X509_STORE_CTX *ctx) {
 int crl_akid_check(X509_STORE_CTX *ctx, const X509_CRL *crl, X509 **out_issuer,
                    int *out_crl_score, int depth) {
   const X509_NAME *crl_name = X509_CRL_get_issuer(crl);
-  depth++;
-  assert(depth < static_cast<int>(sk_X509_num(ctx->chain)));
+  // The last certificate has no issuer in the path, unless it is its own.
+  if (depth + 1 < static_cast<int>(sk_X509_num(ctx->chain))) {
+    depth++;
+  } else if (X509_NAME_cmp(
+                 X509_get_subject_name(sk_X509_value(ctx->chain, depth)),
+                 crl_name)) {
+    return 0;
+  }
 
   X509 *crl_issuer = sk_X509_value(ctx->chain, depth);
   if (X509_check_akid(crl_issuer, crl->akid) == X509_V_OK) {
@@ -855,15 +861,13 @@ int check_revocation_for_cert(X509_STORE_CTX *ctx, int depth) {
 }
 
 int check_revocation(X509_STORE_CTX *ctx) {
-  if (!(ctx->param->flags & X509_V_FLAG_CRL_CHECK) ||
-      sk_X509_num(ctx->chain) <= 1) {
+  if (!(ctx->param->flags & X509_V_FLAG_CRL_CHECK)) {
     return 1;
   }
-  // Check either only the leaf, or everything but the trust anchor. The trust
-  // anchor is not formally part of RFC 5280 certification path and, without an
-  // issuer, we could not usefully process a CRL anyway.
+  // Upstream skips the trust anchor. OpenSSL 3.5 does not, so a directly
+  // trusted certificate can be revoked, and is rejected if it has no CRL.
   const int num_to_check = (ctx->param->flags & X509_V_FLAG_CRL_CHECK_ALL)
-                               ? static_cast<int>(sk_X509_num(ctx->chain)) - 1
+                               ? static_cast<int>(sk_X509_num(ctx->chain))
                                : 1;
   for (int i = 0; i < num_to_check; i++) {
     if (!check_revocation_for_cert(ctx, i)) {
