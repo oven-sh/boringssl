@@ -11169,8 +11169,8 @@ TEST_P(X509VerifyTest, CRLCheckAll) {
                    {ca_crl_empty.get(), root_crl_revoke_ca.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL));
 
-  // Revocation is not checked for the trust anchor, as this is not meaningful.
-  EXPECT_EQ(X509_V_OK,
+  // That includes the trust anchor, which is its own issuer.
+  EXPECT_EQ(X509_V_ERR_CERT_REVOKED,
             Verify(leaf.get(), {root.get()}, {ca.get()},
                    {ca_crl_empty.get(), root_crl_revoke_root.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL));
@@ -11187,41 +11187,65 @@ TEST_P(X509VerifyTest, CRLCheckAll) {
             Verify(leaf.get(), {ca.get()}, {}, {ca_crl_revoke_leaf.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
 
-  // `X509_V_FLAG_CRL_CHECK_ALL` likewise does not check for the trust anchor.
-  // It would not be possible because the trust anchor has no issuer. (If we
-  // tried to use the certificate that represents the trust anchor, we don't
-  // have the signing key. See crbug.com/561609863.)
+  // `X509_V_FLAG_CRL_CHECK_ALL` cannot succeed. The trust anchor's issuer, and
+  // so the key that signs its CRL, is not in the path.
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {ca.get()}, {}, {},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {ca.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {ca.get()}, {},
                    {ca_crl_empty.get(), root_crl_revoke_ca.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
 
   // If the "path" is a single leaf certificate that was already trusted in the
-  // root store, the same applies. `X509_V_FLAG_CRL_CHECK` and
-  // `X509_V_FLAG_CRL_CHECK_ALL` have no revocation to check.
-  EXPECT_EQ(X509_V_OK,
+  // root store, the same applies.
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
+
+  // It cannot vouch for itself by signing a CRL in the name of its issuer.
+  UniquePtr<X509_CRL> forged_crl = make_crl("CA", leaf_key.get(), {});
+  ASSERT_TRUE(forged_crl);
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
+            Verify(leaf.get(), {leaf.get()}, {}, {forged_crl.get()},
+                   X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
+
+  // A single self-signed certificate is checked against its own CRL.
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
+            Verify(root.get(), {root.get()}, {}, {},
+                   X509_V_FLAG_CRL_CHECK));
+  EXPECT_EQ(X509_V_OK,
+            Verify(root.get(), {root.get()}, {}, {root_crl_empty.get()},
+                   X509_V_FLAG_CRL_CHECK));
+  EXPECT_EQ(X509_V_ERR_CERT_REVOKED,
+            Verify(root.get(), {root.get()}, {}, {root_crl_revoke_root.get()},
+                   X509_V_FLAG_CRL_CHECK));
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
+            Verify(root.get(), {root.get()}, {}, {},
+                   X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL));
+  EXPECT_EQ(X509_V_OK,
+            Verify(root.get(), {root.get()}, {}, {root_crl_empty.get()},
+                   X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL));
+  EXPECT_EQ(X509_V_ERR_CERT_REVOKED,
+            Verify(root.get(), {root.get()}, {}, {root_crl_revoke_root.get()},
+                   X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL));
 }
 
 TEST(X509Test, ParseIPAddress) {
