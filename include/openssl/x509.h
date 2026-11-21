@@ -215,9 +215,9 @@ OPENSSL_EXPORT void X509_get0_uids(const X509 *x509,
 // should not be accepted.
 #define EXFLAG_CRITICAL 0x200
 // EXFLAG_SS indicates the certificate is likely self-signed. That is, if it is
-// self-issued, its authority key identifier (if any) matches itself, and its
-// key usage extension (if any) allows certificate signatures. The signature
-// itself is not checked in computing this bit.
+// self-issued, its authority key identifier (if any) and signature algorithm
+// match itself, and its key usage extension (if any) allows certificate
+// signatures. The signature itself is not checked in computing this bit.
 #define EXFLAG_SS 0x2000
 
 // X509_get_extension_flags decodes a set of extensions from `x509` and returns
@@ -3379,11 +3379,9 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1(X509_VERIFY_PARAM *to,
 // whose validity period does not cover the verification time as if it were
 // not there, so it can neither anchor a chain nor shadow a currently-valid
 // certificate for the same issuer supplied by the peer or elsewhere in the
-// store. A chain that reaches no usable anchor after such a certificate was
-// passed over still reports `X509_V_ERR_CERT_HAS_EXPIRED` (or
-// `X509_V_ERR_CERT_NOT_YET_VALID`) rather than an unknown-issuer error.
-// Untrusted (peer) certificates are unaffected. Has no effect with
-// `X509_V_FLAG_NO_CHECK_TIME`.
+// store. If that leaves no path to a trust anchor, the chain is built again
+// without this flag, and its errors are reported. Untrusted (peer) certificates
+// are unaffected. Has no effect with `X509_V_FLAG_NO_CHECK_TIME`.
 //
 // The value is kept away from the bits upstream allocates next.
 #define X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS 0x40000000
@@ -4673,8 +4671,9 @@ OPENSSL_EXPORT int X509_supported_extension(const X509_EXTENSION *ex);
 OPENSSL_EXPORT int X509_check_ca(const X509 *x509);
 
 // X509_check_issued checks if `issuer` and `subject`'s name, authority key
-// identifier, and key usage fields allow `issuer` to have issued `subject`. It
-// returns `X509_V_OK` on success and an `X509_V_ERR_*` value otherwise.
+// identifier, algorithm, and key usage fields allow `issuer` to have issued
+// `subject`. It returns `X509_V_OK` on success and an `X509_V_ERR_*` value
+// otherwise.
 //
 // This function does not check the signature on `subject`. Rather, it is
 // intended to prune the set of possible issuer certificates during
@@ -4759,6 +4758,9 @@ OPENSSL_EXPORT int X509_check_ip_asc(const X509 *x509, const char *ipasc,
 // was found, it returns one and sets `*out_issuer` to the issuer. The caller
 // must release `*out_issuer` with `X509_free` when done. If none was found, it
 // returns zero and leaves `*out_issuer` unchanged.
+//
+// Of several candidates, it returns the first added to the store that is in its
+// validity period, or else the one that expires last.
 //
 // This function only searches for trusted issuers. It does not consider
 // untrusted intermediates passed in to `X509_STORE_CTX_init`.

@@ -258,6 +258,16 @@ int X509_supported_extension(const X509_EXTENSION *ex) {
          nid == NID_pe_mtcCertificationAuthority_SHA256;
 }
 
+// sig_alg_reject returns whether `subject` was signed with another type of key
+// than that of `issuer`. See `check_sig_alg_match` in OpenSSL.
+static bool sig_alg_reject(const X509 *issuer, const X509 *subject) {
+  int sig_nid = X509_get_signature_nid(subject), pkey_nid;
+  int issuer_nid = OBJ_obj2nid(FromOpaque(issuer)->key.algor->algorithm);
+  return OBJ_find_sigid_algs(sig_nid, nullptr, &pkey_nid) &&
+         issuer_nid != pkey_nid &&
+         !(sig_nid == NID_rsassaPss && issuer_nid == NID_rsassaPss);
+}
+
 int bssl::x509v3_cache_extensions(const X509 *x) {
   BASIC_CONSTRAINTS *bs;
   ASN1_BIT_STRING *usage;
@@ -392,7 +402,7 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
     impl->ex_flags |= EXFLAG_SI;
     // If SKID matches AKID also indicate self signed
     if (X509_check_akid(x, impl->akid.get()) == X509_V_OK &&
-        !ku_reject(x, X509v3_KU_KEY_CERT_SIGN)) {
+        !sig_alg_reject(x, x) && !ku_reject(x, X509v3_KU_KEY_CERT_SIGN)) {
       impl->ex_flags |= EXFLAG_SS;
     }
   }
@@ -448,6 +458,10 @@ int X509_check_issued(const X509 *issuer, const X509 *subject) {
     if (ret != X509_V_OK) {
       return ret;
     }
+  }
+
+  if (sig_alg_reject(issuer, subject)) {
+    return X509_V_ERR_CERT_SIGNATURE_FAILURE;
   }
 
   if (ku_reject(issuer, X509v3_KU_KEY_CERT_SIGN)) {

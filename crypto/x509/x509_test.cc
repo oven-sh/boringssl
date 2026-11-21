@@ -5986,13 +5986,13 @@ TEST_P(X509VerifyTest, SignatureVerification) {
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.bad_key.get()},
                    {intermediate.valid.get()}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
             Verify(leaf.valid.get(), {root.bad_key_type.get()},
                    {intermediate.valid.get()}, {}));
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.valid.get()},
                    {intermediate.bad_key.get()}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
             Verify(leaf.valid.get(), {root.valid.get()},
                    {intermediate.bad_key_type.get()}, {}));
 
@@ -13780,14 +13780,14 @@ TEST_P(X509VerifyTest, IgnoreExpiredTrustAnchors) {
       // Expired intermediate trusted, peer sends the valid one: it no longer shadows it.
       {{root.get(), int_old.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
       // Both trusted, either order: the valid one is found.
-      {{root.get(), int_old.get(), int_new.get()}, {}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
+      {{root.get(), int_old.get(), int_new.get()}, {}, X509_V_OK, X509_V_OK},
       {{root.get(), int_new.get(), int_old.get()}, {}, X509_V_OK, X509_V_OK},
       // Only the expired intermediate trusted, nothing valid anywhere: absent, and the failure still says why.
       {{root.get(), int_old.get()}, {}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_ERR_CERT_HAS_EXPIRED},
       // Expired root: likewise.
       {{root_old.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_ERR_CERT_HAS_EXPIRED},
       // Expired and valid root both trusted: valid one anchors.
-      {{root_old.get(), root.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
+      {{root_old.get(), root.get()}, {int_new.get()}, X509_V_OK, X509_V_OK},
   };
   int i = 0;
   for (const auto &t : kCases) {
@@ -13959,6 +13959,251 @@ TEST_P(X509VerifyTest, NoBasicConstraintsCertSignTrustAnchor) {
   EXPECT_EQ(X509_V_ERR_INVALID_CA,
             Verify(leaf.get(), {root.get(), intermediate.get()}, {}, {}, 0,
                    set_purpose));
+}
+
+// Several certificates match one issuer.
+class X509IssuerSelectionTest : public X509VerifyTest {
+ protected:
+  void SetUp() override {
+    key_.reset(EVP_PKEY_generate_from_alg(EVP_pkey_ec_p256()));
+    ed25519_.reset(EVP_PKEY_generate_from_alg(EVP_pkey_ed25519()));
+    ASSERT_TRUE(key_ && ed25519_);
+    root_ = Cert("Root", "Root");
+    not_ca_ = Cert("Root", "Root", /*is_ca=*/false);
+    leaf_ = Cert("Root", "Leaf", /*is_ca=*/false);
+  }
+
+  // Cert returns a certificate with a new serial number, signed by `key_`.
+  X509 *Cert(std::string_view issuer, std::string_view subject,
+             bool is_ca = true, int not_after_days = 1,
+             EVP_PKEY *key = nullptr, int not_before_days = -100) {
+    UniquePtr<X509> cert =
+        MakeTestCert(issuer, subject, key ? key : key_.get(), is_ca);
+    BSSL_CHECK(cert);
+    BSSL_CHECK(ASN1_INTEGER_set_uint64(X509_get_serialNumber(cert.get()),
+                                       certs_.size() + 1));
+    BSSL_CHECK(ASN1_TIME_adj(X509_getm_notBefore(cert.get()), kReferenceTime,
+                             not_before_days, 0));
+    BSSL_CHECK(ASN1_TIME_adj(X509_getm_notAfter(cert.get()), kReferenceTime,
+                             not_after_days, 0));
+    BSSL_CHECK(X509_sign(cert.get(), key_.get(), EVP_sha256()));
+    certs_.push_back(ReencodeCertificate(cert.get()));
+    BSSL_CHECK(certs_.back());
+    return certs_.back().get();
+  }
+
+  UniquePtr<X509_LAZY_CERT_SET> LazySet(
+      const std::vector<std::vector<uint8_t>> &ders) {
+    std::vector<UniquePtr<CRYPTO_BUFFER>> owned;
+    std::vector<CRYPTO_BUFFER *> bufs;
+    for (const auto &der : ders) {
+      owned.emplace_back(CRYPTO_BUFFER_new(der.data(), der.size(), nullptr));
+      bufs.push_back(owned.back().get());
+    }
+    return UniquePtr<X509_LAZY_CERT_SET>(
+        X509_LAZY_CERT_SET_new(bufs.data(), bufs.size()));
+  }
+
+  UniquePtr<EVP_PKEY> key_, ed25519_;
+  std::vector<UniquePtr<X509>> certs_;
+  X509 *root_, *not_ca_, *leaf_;
+};
+
+INSTANTIATE_TEST_SUITE_P(/* no prefix */, X509IssuerSelectionTest,
+                         testing::Bool());
+
+TEST_P(X509IssuerSelectionTest, FirstAddedWins) {
+  std::vector<X509 *> others;
+  for (int i = 0; i < 40; i++) {
+    std::string name = (i % 2 ? "Roo" : "Rop") + std::to_string(i % 10);
+    others.push_back(Cert(name, name));
+  }
+  for (size_t at = 0; at <= others.size(); at++) {
+    for (bool root_first : {true, false}) {
+      SCOPED_TRACE(at);
+      std::vector<X509 *> roots = others;
+      roots.insert(roots.begin() + at, root_first ? root_ : not_ca_);
+      roots.push_back(root_first ? not_ca_ : root_);
+      const int expected = root_first ? X509_V_OK : X509_V_ERR_INVALID_CA;
+      EXPECT_EQ(expected, Verify(leaf_, roots, {}, {}));
+
+      std::vector<std::vector<uint8_t>> ders;
+      for (X509 *root : roots) {
+        ders.push_back(CertToDER(root));
+      }
+      UniquePtr<X509_STORE> store(X509_STORE_new());
+      ASSERT_TRUE(
+          X509_STORE_add_lazy_cert_set(store.get(), LazySet(ders).get()));
+      EXPECT_EQ(expected, VerifyWithStore(leaf_, store.get(), {}));
+    }
+  }
+}
+
+TEST_P(X509IssuerSelectionTest, LazyCertsKeepTheirPlace) {
+  for (bool lazy_first : {true, false}) {
+    UniquePtr<X509_STORE> store(X509_STORE_new());
+    UniquePtr<X509_LAZY_CERT_SET> set = LazySet({CertToDER(root_)});
+    ASSERT_TRUE(!lazy_first ||
+                X509_STORE_add_lazy_cert_set(store.get(), set.get()));
+    ASSERT_TRUE(X509_STORE_add_cert(store.get(), not_ca_));
+    ASSERT_TRUE(X509_STORE_add_lazy_cert_set(store.get(), set.get()));
+    EXPECT_EQ(lazy_first ? X509_V_OK : X509_V_ERR_INVALID_CA,
+              VerifyWithStore(leaf_, store.get(), {}));
+  }
+}
+
+TEST_P(X509IssuerSelectionTest, LazyCertAddedAgain) {
+  for (bool root_first : {true, false}) {
+    X509 *first = root_first ? root_ : not_ca_;
+    X509 *last = root_first ? not_ca_ : root_;
+    for (X509 *again : {first, last}) {
+      UniquePtr<X509_STORE> store(X509_STORE_new());
+      ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
+          store.get(), LazySet({CertToDER(first), CertToDER(last)}).get()));
+      ASSERT_TRUE(X509_STORE_add_cert(store.get(), again));
+      EXPECT_EQ(2u, sk_X509_OBJECT_num(X509_STORE_get0_objects(store.get())));
+      EXPECT_EQ(root_first ? X509_V_OK : X509_V_ERR_INVALID_CA,
+                VerifyWithStore(leaf_, store.get(), {}));
+    }
+  }
+}
+
+TEST_P(X509IssuerSelectionTest, LazyCertThatDoesNotParse) {
+  std::vector<uint8_t> bad = CertToDER(root_);
+  // Corrupt notBefore.
+  const uint8_t kUTCTime[] = {CBS_ASN1_UTCTIME, 13};
+  auto it = std::search(bad.begin(), bad.end(), std::begin(kUTCTime),
+                        std::end(kUTCTime));
+  ASSERT_NE(it, bad.end());
+  it[2] = 'X';
+  UniquePtr<X509_STORE> store(X509_STORE_new());
+  ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
+      store.get(), LazySet({bad, CertToDER(root_)}).get()));
+  EXPECT_EQ(X509_V_OK, VerifyWithStore(leaf_, store.get(), {}));
+  EXPECT_EQ(0u, ERR_peek_error());
+}
+
+TEST_P(X509IssuerSelectionTest, Validity) {
+  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
+  X509 *valid = Cert("Root", "CA");
+  X509 *older = Cert("Root", "CA", true, -3);
+  X509 *newer = Cert("Root", "CA", true, -2);
+  EXPECT_EQ(X509_V_OK, Verify(leaf, {root_, older, valid}, {}, {}));
+  EXPECT_EQ(X509_V_OK, Verify(leaf, {root_}, {older, valid}, {}));
+  for (const std::vector<X509 *> &expired :
+       {std::vector{older, newer}, std::vector{newer, older}}) {
+    UniquePtr<X509_STORE> store(X509_STORE_new());
+    for (X509 *cert : expired) {
+      ASSERT_TRUE(X509_STORE_add_cert(store.get(), cert));
+    }
+    UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+    ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), nullptr, nullptr));
+    X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
+    X509 *issuer = nullptr;
+    ASSERT_TRUE(X509_STORE_CTX_get1_issuer(&issuer, ctx.get(), leaf));
+    EXPECT_EQ(issuer, newer);
+    X509_free(issuer);
+  }
+}
+
+TEST_P(X509IssuerSelectionTest, NoPathAroundIgnoredAnchors) {
+  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
+  X509 *ca = Cert("Root", "CA");
+  X509 *ca_expired = Cert("Root", "CA", true, -1);
+  X509 *ca_future = Cert("Root", "CA", true, 3, nullptr, 2);
+  X509 *root_expired = Cert("Root", "Root", true, -1);
+  X509 *root_future = Cert("Root", "Root", true, 3, nullptr, 2);
+  X509 *cross = Cert("Unknown", "Root");
+  const struct {
+    std::vector<X509 *> roots, untrusted;
+    int first, last;
+  } kTests[] = {
+      {{root_expired, root_future},
+       {ca},
+       X509_V_ERR_CERT_NOT_YET_VALID,
+       X509_V_ERR_CERT_NOT_YET_VALID},
+      {{ca_future, ca, root_expired},
+       {},
+       X509_V_ERR_CERT_HAS_EXPIRED,
+       X509_V_ERR_CERT_HAS_EXPIRED},
+      {{ca_expired, root_future},
+       {ca},
+       X509_V_ERR_CERT_NOT_YET_VALID,
+       X509_V_ERR_CERT_HAS_EXPIRED},
+      {{root_expired},
+       {ca, cross},
+       X509_V_ERR_CERT_HAS_EXPIRED,
+       X509_V_ERR_CERT_HAS_EXPIRED},
+      {{ca_expired, ca},
+       {},
+       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
+       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT},
+      {{ca_expired},
+       {ca},
+       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
+       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT},
+  };
+  const unsigned long kFlag = X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS;
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(&t - kTests);
+    EXPECT_EQ(t.first, Verify(leaf, t.roots, t.untrusted, {}, kFlag));
+
+    static thread_local int last;
+    Verify(leaf, t.roots, t.untrusted, {}, kFlag, [](X509_STORE_CTX *ctx) {
+      X509_STORE_CTX_set_verify_cb(ctx, [](int, X509_STORE_CTX *c) {
+        last = X509_STORE_CTX_get_error(c);
+        return 1;
+      });
+    });
+    EXPECT_EQ(t.last, last);
+  }
+
+  UniquePtr<X509_STORE> store(X509_STORE_new());
+  ASSERT_TRUE(X509_STORE_add_cert(store.get(), root_expired));
+  UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+  ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), leaf_, nullptr));
+  X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
+  X509_STORE_CTX_set_flags(ctx.get(), kFlag);
+  EXPECT_FALSE(X509_verify_cert(ctx.get()));
+  EXPECT_TRUE(X509_VERIFY_PARAM_get_flags(X509_STORE_CTX_get0_param(ctx.get())) &
+              kFlag);
+}
+
+TEST_P(X509IssuerSelectionTest, Loop) {
+  for (int not_after_days : {1, -1}) {
+    SCOPED_TRACE(not_after_days);
+    static thread_local size_t length;
+    EXPECT_EQ(
+        X509_V_ERR_CERT_CHAIN_TOO_LONG,
+        Verify(leaf_,
+               {Cert("Other", "Root", true, not_after_days),
+                Cert("Root", "Other")},
+               {}, {}, X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS,
+               [](X509_STORE_CTX *ctx) {
+                 X509_STORE_CTX_set_verify_cb(
+                     ctx, [](int ok, X509_STORE_CTX *c) {
+                       length = sk_X509_num(X509_STORE_CTX_get0_chain(c));
+                       return ok;
+                     });
+               }));
+    EXPECT_EQ(4u, length);
+  }
+
+  // The store alone has no loop.
+  X509 *target = Cert("Other", "Root");
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
+            Verify(target, {target}, {Cert("Root", "Other")}, {}));
+}
+
+TEST_P(X509IssuerSelectionTest, KeyType) {
+  X509 *link = Cert("Root", "Root", true, 1, ed25519_.get());
+  EXPECT_NE(X509_V_OK, X509_check_issued(link, leaf_));
+  EXPECT_EQ(uint32_t{EXFLAG_SI},
+            X509_get_extension_flags(link) & (EXFLAG_SI | EXFLAG_SS));
+  EXPECT_EQ(X509_V_OK, Verify(leaf_, {link, root_}, {}, {}));
+  EXPECT_EQ(X509_V_OK, Verify(link, {root_}, {}, {}));
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+            Verify(leaf_, {link}, {}, {}));
 }
 
 // Populating a store must not re-sort on every insertion, but duplicates must

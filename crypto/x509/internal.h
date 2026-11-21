@@ -90,6 +90,12 @@ DECLARE_ASN1_ITEM(X509_NAME_ENTRY)
 int x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
                                      const X509 *x509);
 
+// x509_consider_issuer chooses among matching issuers as OpenSSL does. It
+// returns true, with `candidate` in `*best`, if `candidate` is in its validity
+// period. Otherwise it returns false and keeps the one that expires last.
+bool x509_consider_issuer(const X509_STORE_CTX *ctx, X509 *candidate,
+                          X509 **best);
+
 // x509_name_canon_from_der parses a DER-encoded Name from `cbs` and sets `out`
 // to its canonical form, as `X509_NAME_cmp` would compare it, without
 // constructing an `X509_NAME`. It returns one on success and zero on error.
@@ -330,6 +336,9 @@ struct x509_object_st {
     X509_CRL *crl;
     EVP_PKEY *pkey;
   } data;
+  // order counts the objects of a store from one, as they were added. It is
+  // zero in an object that is only searched for.
+  size_t order = 0;
 } /* X509_OBJECT */;
 
 BSSL_NAMESPACE_BEGIN
@@ -387,15 +396,18 @@ class X509LazyCertSet : public x509_lazy_cert_set_st,
   }
 
   // AddMatchesToStore parses every certificate whose subject is `name` and adds
-  // it to `store`. It returns false on error; no match is not an error.
-  bool AddMatchesToStore(X509Store *store, const X509_NAME *name);
+  // it to `store`. It returns false on error; no match, or one that does not
+  // parse, is not an error. `parsed`, if not null, saves parsing a certificate
+  // with the same encoding.
+  bool AddMatchesToStore(X509Store *store, const X509_NAME *name,
+                         const X509 *parsed);
 
  private:
   friend RefCounted;
   ~X509LazyCertSet();
 
   Array<X509LazyCert> certs_;
-  // by_subject_ holds indices into `certs_` sorted by `canon`.
+  // by_subject_ holds indices into `certs_` sorted by `canon`, then by value.
   Array<size_t> by_subject_;
 };
 
@@ -408,7 +420,8 @@ class X509Store : public x509_store_st, public RefCounted<X509Store> {
 
   // MaterializeLazy adds any not-yet-parsed lazily trusted certificates with
   // subject `name` to `objs`. It must be called without `objs_lock` held.
-  void MaterializeLazy(int type, const X509_NAME *name);
+  void MaterializeLazy(int type, const X509_NAME *name,
+                       const X509 *parsed = nullptr);
 
   // The following is a cache of trusted certs
   UniquePtr<STACK_OF(X509_OBJECT)> objs;  // Cache of all objects
@@ -466,10 +479,9 @@ struct x509_store_ctx_st {
   int error_depth;
   int error;
   X509 *current_cert;
-  // With X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS: the time error of the last
-  // trust anchor a lookup skipped, so a chain that then fails as untrusted can
-  // be reported as that instead. Zero if none was skipped.
-  int ignored_anchor_error;
+  // Whether X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS made a lookup skip a
+  // certificate.
+  bool ignored_anchor;
 
   CRYPTO_EX_DATA ex_data;
 } /* X509_STORE_CTX */;

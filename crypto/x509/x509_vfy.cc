@@ -148,14 +148,16 @@ UniquePtr<X509> lookup_cert_match(X509_STORE_CTX *ctx, const X509 *x) {
 // Given a STACK_OF(X509) find the issuer of cert (if any)
 X509 *find_issuer(X509_STORE_CTX *ctx, const STACK_OF(X509) *sk,
                   const X509 *x) {
+  X509 *best = nullptr;
   for (X509 *issuer : sk) {
     if (x509_check_issued_with_callback(ctx, x, issuer) &&
         (sk != ctx->trusted_stack ||
-         x509_verify_trusted_cert_in_time(ctx, issuer))) {
-      return issuer;
+         x509_verify_trusted_cert_in_time(ctx, issuer)) &&
+        x509_consider_issuer(ctx, issuer, &best)) {
+      break;
     }
   }
-  return nullptr;
+  return best;
 }
 
 UniquePtr<X509> get_trusted_issuer(X509_STORE_CTX *ctx, const X509 *x) {
@@ -172,13 +174,6 @@ UniquePtr<X509> get_trusted_issuer(X509_STORE_CTX *ctx, const X509 *x) {
   return UniquePtr<X509>(issuer);
 }
 
-// untrusted_chain_error picks the error for a chain that reached no usable
-// trust anchor: if one was passed over only because it is outside its validity
-// period, say that rather than that no issuer exists.
-int untrusted_chain_error(const X509_STORE_CTX *ctx, int err) {
-  return ctx->ignored_anchor_error != 0 ? ctx->ignored_anchor_error : err;
-}
-
 // check_lone_untrusted_leaf runs once the verify callback has suppressed the
 // error for a chain that reached no trust anchor. If no issuer was found for
 // the target certificate at all, it reports
@@ -189,8 +184,7 @@ int check_lone_untrusted_leaf(X509_STORE_CTX *ctx) {
       X509_check_issued(ctx->cert, ctx->cert) == X509_V_OK) {
     return 1;
   }
-  ctx->error =
-      untrusted_chain_error(ctx, X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE);
+  ctx->error = X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE;
   return call_verify_cb_at_depth(0, ctx, /*depth=*/0);
 }
 
@@ -997,11 +991,9 @@ int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
 
 }  // namespace
 
-int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
-                                           const X509 *x509) {
-  if (!(ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS) ||
-      (ctx->param->flags & X509_V_FLAG_NO_CHECK_TIME)) {
-    return 1;
+static bool cert_in_time(const X509_STORE_CTX *ctx, const X509 *x509) {
+  if (ctx->param->flags & X509_V_FLAG_NO_CHECK_TIME) {
+    return true;
   }
   int64_t ptime = (ctx->param->flags & X509_V_FLAG_USE_CHECK_TIME)
                       ? ctx->param->check_time
@@ -1012,15 +1004,32 @@ int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
                : X509_cmp_time_posix(t, ptime);
   };
   // As `check_cert_time`: notBefore must compare earlier, notAfter later.
-  if (cmp(X509_get0_notBefore(x509)) >= 0) {
-    ctx->ignored_anchor_error = X509_V_ERR_CERT_NOT_YET_VALID;
-    return 0;
+  return cmp(X509_get0_notBefore(x509)) < 0 &&
+         cmp(X509_get0_notAfter(x509)) > 0;
+}
+
+int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
+                                           const X509 *x509) {
+  if (!(ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS) ||
+      cert_in_time(ctx, x509)) {
+    return 1;
   }
-  if (cmp(X509_get0_notAfter(x509)) <= 0) {
-    ctx->ignored_anchor_error = X509_V_ERR_CERT_HAS_EXPIRED;
-    return 0;
+  ctx->ignored_anchor = true;
+  return 0;
+}
+
+bool bssl::x509_consider_issuer(const X509_STORE_CTX *ctx, X509 *candidate,
+                                X509 **best) {
+  const bool in_time = cert_in_time(ctx, candidate);
+  int64_t best_not_after;
+  if (in_time || *best == nullptr ||
+      (ASN1_TIME_to_posix_nonstandard(X509_get0_notAfter(*best),
+                                      &best_not_after) &&
+       X509_cmp_time_posix_nonstandard(X509_get0_notAfter(candidate),
+                                       best_not_after) > 0)) {
+    *best = candidate;
   }
-  return 1;
+  return in_time;
 }
 
 // Given a possible certificate and issuer check them
@@ -1121,7 +1130,7 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
     }
 
     // Add certificates to the path until we reach a trust anchor, or fail.
-    bool have_store_cert = false;
+    bool have_store_cert = false, is_loop = false;
     for (;;) {
       if (static_cast<int>(sk_X509_num(ctx->chain)) >= max_chain) {
         break;
@@ -1142,9 +1151,15 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
       // Prioritize looking for issuers in the store.
       if (UniquePtr<X509> issuer = get_trusted_issuer(ctx, last);
           issuer != nullptr) {
+        is_loop =
+            have_store_cert && sk_X509_find(ctx->chain, nullptr, issuer.get());
         if (!PushToStack(ctx->chain, std::move(issuer))) {
           ctx->error = X509_V_ERR_OUT_OF_MEM;
           return 0;
+        }
+        if (is_loop) {
+          // The same issuers would follow again until the chain is too long.
+          break;
         }
         have_store_cert = true;
         // Certificates from the store are candidates to be trust anchors.
@@ -1193,27 +1208,36 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
       trust = X509_TRUST_TRUSTED;
     }
 
+    if (trust == X509_TRUST_UNTRUSTED && ctx->ignored_anchor) {
+      // There is no path around what was ignored, so fail on the path through
+      // it.
+      sk_X509_pop_free(ctx->chain, X509_free);
+      ctx->chain = nullptr;
+      ctx->ignored_anchor = false;
+      const unsigned long flags = param->flags;
+      ctx->param->flags &= ~X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS;
+      ok = X509_verify_cert(ctx);
+      ctx->param->flags = flags;
+      return ok;
+    }
+
     // `X509_TRUST_REJECTED` should have returned early.
     assert(trust == X509_TRUST_UNTRUSTED || X509_TRUST_TRUSTED);
     if (trust == X509_TRUST_UNTRUSTED) {
-      if (static_cast<int>(sk_X509_num(ctx->chain)) >= max_chain) {
+      if (is_loop || static_cast<int>(sk_X509_num(ctx->chain)) >= max_chain) {
         ctx->error = X509_V_ERR_CERT_CHAIN_TOO_LONG;
       } else if (have_store_cert) {
-        ctx->error =
-            untrusted_chain_error(ctx, X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT);
+        ctx->error = X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT;
       } else {
         int is_self_signed;
         if (!cert_self_signed(sk_X509_last(ctx->chain), &is_self_signed)) {
           ctx->error = X509_V_ERR_INVALID_EXTENSION;
         } else if (!is_self_signed) {
-          ctx->error = untrusted_chain_error(
-              ctx, X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
+          ctx->error = X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY;
         } else if (sk_X509_num(ctx->chain) == 1) {
-          ctx->error = untrusted_chain_error(
-              ctx, X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT);
+          ctx->error = X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT;
         } else {
-          ctx->error =
-              untrusted_chain_error(ctx, X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN);
+          ctx->error = X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN;
         }
       }
       if (!call_verify_cb_at_depth(0, ctx, sk_X509_num(ctx->chain) - 1)) {
