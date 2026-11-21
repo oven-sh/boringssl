@@ -27,10 +27,27 @@
 #include "../mem_internal.h"
 #include "internal.h"
 
+#if !defined(OPENSSL_NO_FILESYSTEM)
+#include <sys/stat.h>
+#endif
+
 
 BSSL_NAMESPACE_BEGIN
 
 namespace {
+
+// path_exists returns whether there is anything at `path`, be it a broken link.
+bool path_exists(const char *path) {
+#if defined(OPENSSL_NO_FILESYSTEM)
+  return false;
+#elif defined(OPENSSL_WINDOWS)
+  struct _stat st;
+  return _stat(path, &st) == 0;
+#else
+  struct stat st;
+  return lstat(path, &st) == 0;
+#endif
+}
 
 // A ByDirEntry tracks state for a single directory, notably the starting suffix
 // for CRL lookups.
@@ -226,20 +243,16 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
           return 0;
         }
         UniquePtr<char> free_path(path);
-        if (type == X509_LU_X509) {
-          if ((X509_load_cert_file(xl, path, ent->dir_type())) == 0) {
-            // Don't expose the lower level error, All of these boil down to "we
-            // could not find a CA".
-            ERR_clear_error();
-            break;
-          }
-        } else if (type == X509_LU_CRL) {
-          if ((X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
-            // Don't expose the lower level error, All of these boil down to "we
-            // could not find a CRL".
-            ERR_clear_error();
-            break;
-          }
+        if (!path_exists(path)) {
+          break;
+        }
+        // As in OpenSSL, a file that does not load does not hide the next ones.
+        if ((type == X509_LU_X509
+                 ? X509_load_cert_file(xl, path, ent->dir_type())
+                 : X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
+          // Don't expose the lower level error, All of these boil down to "we
+          // could not find a CA or CRL".
+          ERR_clear_error();
         }
         // The lack of a CA or CRL will be caught higher up.
         suffix++;

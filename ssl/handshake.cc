@@ -263,7 +263,7 @@ static bool peer_certificates_equal(const SSLSession *session,
   return true;
 }
 
-enum ssl_verify_result_t ssl_verify_peer_cert(SSL_HANDSHAKE *hs) {
+static enum ssl_verify_result_t verify_peer_cert(SSL_HANDSHAKE *hs) {
   SSLImpl *const ssl = hs->ssl;
   const SSLSession *prev_session = ssl->s3->established_session.get();
   if (prev_session != nullptr) {
@@ -336,6 +336,17 @@ enum ssl_verify_result_t ssl_verify_peer_cert(SSL_HANDSHAKE *hs) {
     }
   }
 
+  return ret;
+}
+
+enum ssl_verify_result_t ssl_verify_peer_cert(SSL_HANDSHAKE *hs) {
+  enum ssl_verify_result_t ret = verify_peer_cert(hs);
+  // A certificate only authenticates the peer for the uses that it allows.
+  if (ret == ssl_verify_ok && hs->new_session->verify_result == X509_V_OK &&
+      !ssl_check_peer_key_usage(hs)) {
+    ssl_send_alert(hs->ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
+    return ssl_verify_invalid;
+  }
   return ret;
 }
 

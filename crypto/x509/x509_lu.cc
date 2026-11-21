@@ -514,12 +514,11 @@ X509LazyCertSet::~X509LazyCertSet() {
   }
 }
 
-// x509_cert_subject sets `out` to the subject Name TLV of the DER Certificate
-// in `cbs`, without parsing anything else.
-static bool x509_cert_subject(CBS cbs, CBS *out) {
+// x509_cert_subject reads a DER Certificate from `cbs` and sets `out` to its
+// subject Name TLV, without parsing anything else.
+static bool x509_cert_subject(CBS *cbs, CBS *out) {
   CBS cert, tbs;
-  if (!CBS_get_asn1(&cbs, &cert, CBS_ASN1_SEQUENCE) ||  //
-      CBS_len(&cbs) != 0 ||                             //
+  if (!CBS_get_asn1(cbs, &cert, CBS_ASN1_SEQUENCE) ||  //
       !CBS_get_asn1(&cert, &tbs, CBS_ASN1_SEQUENCE) ||
       // version
       !CBS_get_optional_asn1(
@@ -555,10 +554,11 @@ bool X509LazyCertSet::Init(CRYPTO_BUFFER *const *certs, size_t num) {
     certs_[i].der = UpRef(certs[i]);
     CBS cbs, subject;
     CRYPTO_BUFFER_init_CBS(certs[i], &cbs);
-    if (!x509_cert_subject(cbs, &subject)) {
+    if (!x509_cert_subject(&cbs, &subject)) {
       OPENSSL_PUT_ERROR(X509, X509_R_INVALID_PARAMETER);
       return false;
     }
+    certs_[i].has_aux = CBS_len(&cbs) != 0;
     certs_[i].subject = subject;
     if (!x509_name_canon_from_der(&subject, &certs_[i].canon)) {
       OPENSSL_PUT_ERROR(X509, X509_R_INVALID_PARAMETER);
@@ -582,7 +582,11 @@ X509 *X509LazyCertSet::Get(size_t idx) {
   if (x509 != nullptr) {
     return x509;
   }
-  UniquePtr<X509> parsed(X509_parse_from_buffer(cert.der.get()));
+  const uint8_t *der = CRYPTO_BUFFER_data(cert.der.get());
+  UniquePtr<X509> parsed(
+      cert.has_aux
+          ? d2i_X509_AUX(nullptr, &der, CRYPTO_BUFFER_len(cert.der.get()))
+          : X509_parse_from_buffer(cert.der.get()));
   if (parsed == nullptr) {
     return nullptr;
   }
@@ -617,7 +621,9 @@ bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
       break;
     }
     const CRYPTO_BUFFER *a = GetDER(idx);
-    const CRYPTO_BUFFER *b = parsed ? FromOpaque(parsed)->buf.get() : nullptr;
+    const CRYPTO_BUFFER *b = parsed && !FromOpaque(parsed)->aux
+                                 ? FromOpaque(parsed)->buf.get()
+                                 : nullptr;
     const bool is_parsed =
         b != nullptr && Span(CRYPTO_BUFFER_data(a), CRYPTO_BUFFER_len(a)) ==
                             Span(CRYPTO_BUFFER_data(b), CRYPTO_BUFFER_len(b));
@@ -720,7 +726,7 @@ int X509_LAZY_CERT_SET_can_index(const uint8_t *der, size_t len) {
   CBS cbs, subject;
   CBS_init(&cbs, der, len);
   Array<uint8_t> canon;
-  return x509_cert_subject(cbs, &subject) &&
+  return x509_cert_subject(&cbs, &subject) && CBS_len(&cbs) == 0 &&
          x509_name_canon_from_der(&subject, &canon);
 }
 
@@ -759,8 +765,8 @@ int X509_STORE_add_lazy_cert_set(X509_STORE *store, X509_LAZY_CERT_SET *set) {
   return impl->lazy_cert_sets.Push(UpRef(FromOpaque(set))) ? 1 : 0;
 }
 
-int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
-                               const X509 *x) {
+int bssl::x509_get1_trusted_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
+                                   const X509 *x) {
   X509_OBJECT obj;
   X509_NAME *xn = X509_get_issuer_name(x);
   if (!X509_STORE_CTX_get_by_subject(ctx, X509_LU_X509, xn, &obj)) {
@@ -768,9 +774,7 @@ int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
   }
   // If certificate matches all OK
   X509 *best = nullptr;
-  if (x509_check_issued_with_callback(ctx, x, obj.data.x509) &&
-      x509_verify_trusted_cert_in_time(ctx, obj.data.x509) &&
-      x509_consider_issuer(ctx, obj.data.x509, &best)) {
+  if (x509_consider_issuer(ctx, x, obj.data.x509, /*trusted=*/true, &best)) {
     *out_issuer = obj.data.x509;
     return 1;
   }
@@ -796,9 +800,8 @@ int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
       if (X509_NAME_cmp(xn, X509_get_subject_name(pobj->data.x509))) {
         break;
       }
-      if (x509_check_issued_with_callback(ctx, x, pobj->data.x509) &&
-          x509_verify_trusted_cert_in_time(ctx, pobj->data.x509) &&
-          x509_consider_issuer(ctx, pobj->data.x509, &best)) {
+      if (x509_consider_issuer(ctx, x, pobj->data.x509, /*trusted=*/true,
+                               &best)) {
         break;
       }
     }

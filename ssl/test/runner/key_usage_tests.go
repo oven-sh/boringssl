@@ -18,6 +18,36 @@ import (
 	"crypto/x509"
 )
 
+// addClientKeyUsageFailure adds tests that the key usage of the server's
+// certificate is part of verifying it.
+func addClientKeyUsageFailure(name string, config Config, fatal bool) {
+	for _, t := range []struct {
+		suffix     string
+		flags      []string
+		shouldFail bool
+	}{
+		{"", []string{"-verify-peer"}, true},
+		{"-CustomCallback", []string{"-use-custom-verify-callback"}, true},
+		{"-NoVerify", nil, fatal},
+		{"-NoVerify-CustomCallback", []string{"-use-custom-verify-callback", "-verify-fail"}, fatal},
+	} {
+		test := testCase{
+			testType: clientTest,
+			name:     name + t.suffix,
+			config:   config,
+			flags:    t.flags,
+		}
+		if t.shouldFail {
+			test.shouldFail = true
+			test.expectedError = ":KEY_USAGE_BIT_INCORRECT:"
+		}
+		if fatal {
+			test.expectedError = ":ECC_CERT_NOT_FOR_SIGNING:"
+		}
+		testCases = append(testCases, test)
+	}
+}
+
 func addECDSAKeyUsageTests() {
 	cert := rootCA.Issue(X509Info{
 		PrivateKey: &ecdsaP256Key,
@@ -32,17 +62,11 @@ func addECDSAKeyUsageTests() {
 			continue
 		}
 
-		testCases = append(testCases, testCase{
-			testType: clientTest,
-			name:     "ECDSAKeyUsage-Client-" + ver.name,
-			config: Config{
-				MinVersion: ver.version,
-				MaxVersion: ver.version,
-				Credential: &cert,
-			},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
-		})
+		addClientKeyUsageFailure("ECDSAKeyUsage-Client-"+ver.name, Config{
+			MinVersion: ver.version,
+			MaxVersion: ver.version,
+			Credential: &cert,
+		}, ver.version < VersionTLS13)
 
 		testCases = append(testCases, testCase{
 			testType: serverTest,
@@ -82,18 +106,12 @@ func addRSAKeyUsageTests() {
 	}
 
 	for _, ver := range tlsVersions {
-		testCases = append(testCases, testCase{
-			testType: clientTest,
-			name:     "RSAKeyUsage-Client-WantSignature-GotEncipherment-" + ver.name,
-			config: Config{
-				MinVersion:   ver.version,
-				MaxVersion:   ver.version,
-				Credential:   &encCert,
-				CipherSuites: dsSuites,
-			},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
-		})
+		addClientKeyUsageFailure("RSAKeyUsage-Client-WantSignature-GotEncipherment-"+ver.name, Config{
+			MinVersion:   ver.version,
+			MaxVersion:   ver.version,
+			Credential:   &encCert,
+			CipherSuites: dsSuites,
+		}, false)
 
 		testCases = append(testCases, testCase{
 			testType: clientTest,
@@ -119,18 +137,12 @@ func addRSAKeyUsageTests() {
 				},
 			})
 
-			testCases = append(testCases, testCase{
-				testType: clientTest,
-				name:     "RSAKeyUsage-Client-WantEncipherment-GotSignature-" + ver.name,
-				config: Config{
-					MinVersion:   ver.version,
-					MaxVersion:   ver.version,
-					Credential:   &dsCert,
-					CipherSuites: encSuites,
-				},
-				shouldFail:    true,
-				expectedError: ":KEY_USAGE_BIT_INCORRECT:",
-			})
+			addClientKeyUsageFailure("RSAKeyUsage-Client-WantEncipherment-GotSignature-"+ver.name, Config{
+				MinVersion:   ver.version,
+				MaxVersion:   ver.version,
+				Credential:   &dsCert,
+				CipherSuites: encSuites,
+			}, false)
 		}
 
 		// The server expects signatures from the client and always enforces it.
@@ -158,5 +170,18 @@ func addRSAKeyUsageTests() {
 			flags: []string{"-require-any-client-certificate"},
 		})
 
+		if ver.version < VersionTLS13 {
+			testCases = append(testCases, testCase{
+				testType: serverTest,
+				name:     "RSAKeyUsage-Server-WantSignature-GotSignature-RSAKeyExchange-" + ver.name,
+				config: Config{
+					MinVersion:   ver.version,
+					MaxVersion:   ver.version,
+					Credential:   &dsCert,
+					CipherSuites: encSuites,
+				},
+				flags: []string{"-require-any-client-certificate"},
+			})
+		}
 	}
 }

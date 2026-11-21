@@ -256,6 +256,15 @@ static bool ssl_crypto_x509_session_verify_cert_chain(SSLSession *session,
     verify_ret = X509_verify_cert(ctx.get());
   }
 
+  // Upstream fails the handshake for this even if the caller does not care who
+  // the peer is. OpenSSL does not check it.
+  if (verify_ret > 0 && X509_STORE_CTX_get_error(ctx.get()) == X509_V_OK &&
+      !ssl_check_peer_key_usage(hs)) {
+    X509_STORE_CTX_set_error(ctx.get(), X509_V_ERR_INVALID_PURPOSE);
+    verify_ret = hs->config->verify_callback != nullptr &&
+                 hs->config->verify_callback(0, ctx.get());
+  }
+
   session->verify_result = X509_STORE_CTX_get_error(ctx.get());
 
   // If `SSL_VERIFY_NONE`, the error is non-fatal, but we keep the result.

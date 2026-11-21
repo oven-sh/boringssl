@@ -1360,22 +1360,6 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
   Array<uint8_t> pms;
   uint32_t alg_k = hs->new_cipher->algorithm_mkey;
   uint32_t alg_a = hs->new_cipher->algorithm_auth;
-  if (ssl_cipher_uses_certificate_auth(hs->new_cipher) &&
-      hs->new_session->peer_cert_type == TLSEXT_cert_type_x509) {
-    const CRYPTO_BUFFER *leaf =
-        sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), 0);
-    CBS leaf_cbs;
-    CRYPTO_BUFFER_init_CBS(leaf, &leaf_cbs);
-
-    // Check the key usage matches the cipher suite. Key usage is only checked
-    // for X.509 certs. (RPKs have no keyUsage to enforce.)
-    ssl_key_usage_t intended_use = (alg_k & SSL_kRSA)
-                                       ? key_usage_encipherment
-                                       : key_usage_digital_signature;
-    if (!ssl_cert_check_key_usage(&leaf_cbs, intended_use)) {
-      return ssl_hs_error;
-    }
-  }
 
   // If using a PSK key exchange, prepare the pre-shared key.
   unsigned psk_len = 0;

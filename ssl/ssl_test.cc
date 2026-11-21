@@ -9899,12 +9899,34 @@ RHrQbWsFUakETXL9QMlegh5t
   bssl::UniquePtr<X509> bad = CertFromPEM(kBadKeyUsage);
   ASSERT_TRUE(bad);
 
-  // We check key usage when configuring EC certificates to distinguish ECDSA
-  // and ECDH.
-  bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
-  ASSERT_TRUE(ctx);
-  EXPECT_TRUE(SSL_CTX_use_certificate(ctx.get(), good.get()));
-  EXPECT_FALSE(SSL_CTX_use_certificate(ctx.get(), bad.get()));
+  // As in OpenSSL, key usage is left to the peer to check.
+  bssl::UniquePtr<EVP_PKEY> key = GetECDSATestKey();
+  ASSERT_TRUE(key);
+  for (X509 *cert : {good.get(), bad.get()}) {
+    bssl::UniquePtr<SSL_CTX> server_ctx(SSL_CTX_new(TLS_method()));
+    ASSERT_TRUE(server_ctx);
+    ASSERT_TRUE(SSL_CTX_use_certificate(server_ctx.get(), cert));
+    ASSERT_TRUE(SSL_CTX_use_PrivateKey(server_ctx.get(), key.get()));
+
+    for (bool go_on : {false, true}) {
+      bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
+      ASSERT_TRUE(client_ctx);
+      SSL_CTX_set_cert_verify_callback(client_ctx.get(), VerifySucceed,
+                                       nullptr);
+      SSL_CTX_set_verify(
+          client_ctx.get(), SSL_VERIFY_PEER,
+          go_on ? +[](int, X509_STORE_CTX *) { return 1; }
+                : +[](int ok, X509_STORE_CTX *) { return ok; });
+      bssl::UniquePtr<SSL> client, server;
+      ASSERT_EQ(cert == good.get() || go_on,
+                ConnectClientAndServer(&client, &server, client_ctx.get(),
+                                       server_ctx.get()));
+      if (go_on) {
+        EXPECT_EQ(cert == good.get() ? X509_V_OK : X509_V_ERR_INVALID_PURPOSE,
+                  SSL_get_verify_result(client.get()));
+      }
+    }
+  }
 }
 
 // Test that `SSL_can_release_private_key` reports true as early as expected.

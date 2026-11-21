@@ -422,6 +422,20 @@ bool ssl_cert_check_key_usage(const CBS *in, enum ssl_key_usage_t bit) {
   return true;
 }
 
+bool ssl_check_peer_key_usage(const SSL_HANDSHAKE *hs) {
+  // RPKs have no keyUsage to enforce.
+  if (hs->new_session->peer_cert_type != TLSEXT_cert_type_x509) {
+    return true;
+  }
+  CBS leaf;
+  CRYPTO_BUFFER_init_CBS(
+      sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), 0), &leaf);
+  return ssl_cert_check_key_usage(
+      &leaf, !hs->ssl->server && (hs->new_cipher->algorithm_mkey & SSL_kRSA)
+                 ? key_usage_encipherment
+                 : key_usage_digital_signature);
+}
+
 UniquePtr<STACK_OF(CRYPTO_BUFFER)> SSL_parse_CA_list(SSLImpl *ssl,
                                                      uint8_t *out_alert,
                                                      CBS *cbs) {
@@ -527,13 +541,21 @@ bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, EVP_PKEY *pkey,
                                 const CRYPTO_BUFFER *leaf) {
   assert(ssl_protocol_version(hs->ssl) < TLS1_3_VERSION);
 
-  // Check the certificate's type matches the cipher. This does not check key
-  // usage restrictions, which are handled separately.
+  // Check the certificate's type matches the cipher. Most key usage
+  // restrictions are handled separately.
   //
   // TODO(davidben): Put the key type and key usage checks in one place.
   if (!(hs->new_cipher->algorithm_auth &
         ssl_cipher_auth_mask_for_key(pkey, /*sign_ok=*/true))) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_CERTIFICATE_TYPE);
+    return false;
+  }
+
+  // This is the one key usage check that is fatal in OpenSSL.
+  if ((hs->new_cipher->algorithm_auth & SSL_aECDSA) &&
+      !ssl_check_peer_key_usage(hs)) {
+    ERR_clear_error();
+    OPENSSL_PUT_ERROR(SSL, SSL_R_ECC_CERT_NOT_FOR_SIGNING);
     return false;
   }
 
