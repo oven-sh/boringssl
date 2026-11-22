@@ -569,6 +569,9 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
     return 0;
   }
 
+  // As in OpenSSL, what follows a NUL in a line is dropped.
+  bool has_nul = false;
+
   // 255 characters + newline + \0. Lines are split where OpenSSL splits them.
   char buf[257];
   buf[255] = '\0';
@@ -593,7 +596,7 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
     buf[++i] = '\0';
 
     if (strncmp(buf, "-----BEGIN ", 11) == 0) {
-      i = strlen(&(buf[11]));
+      i -= 11;
 
       if (strncmp(&(buf[11 + i - 6]), "-----\n", 6) != 0) {
         continue;
@@ -604,6 +607,7 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       }
       OPENSSL_memcpy(nameB->data, &(buf[11]), i - 6);
       nameB->data[i - 6] = '\0';
+      has_nul = OPENSSL_memchr(buf + 11, '\0', i) != nullptr;
       break;
     }
   }
@@ -624,8 +628,9 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
 
   bool failed = false;   // Set to true (and error put into queue) on failure.
   bool partial = false;  // Whether `buf` was too small for the line.
-  // After a header, OpenSSL wants all lines but the last to have 64 characters.
-  bool short_line = false, odd_lines = false;
+  // OpenSSL takes a colon for part of a header. After a header, it wants all
+  // lines but the last to have 64 characters.
+  bool has_colon = false, short_line = false, odd_lines = false;
   auto read_until_end = [&](BUF_MEM *out, size_t &out_len,
                             bool stop_at_newline) {
     // Invariant: buf[255] < ' '. It may get overwritten by '\n' or '\0' only.
@@ -642,6 +647,7 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       buf[++i] = '\n';
       buf[++i] = '\0';
 
+      has_colon |= OPENSSL_memchr(buf, ':', i) != nullptr;
       if (was_partial && buf[0] == '\n') {
         // As in OpenSSL, this ends that line and is not an empty one.
         continue;
@@ -657,6 +663,8 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
         odd_lines |= short_line || i == 1 || i > 65;
         short_line = i < 65;
       }
+      has_nul |= OPENSSL_memchr(buf, '\0', i) != nullptr;
+      i = strlen(buf);
       if (static_cast<size_t>(i) > SIZE_MAX - hl - 1) {
         OPENSSL_PUT_ERROR(PEM, ERR_R_OVERFLOW);
         failed = true;
@@ -705,20 +713,22 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   }
 
   // As in OpenSSL, a dash ends the data. This reads a block that has lost its
-  // END line up to the next BEGIN line. As that drops the next block, it is
-  // only done if OpenSSL gets this far. It takes a colon for part of a header.
+  // END line up to the next BEGIN line.
   const void *dash = OPENSSL_memchr(dataB->data, '-', bl);
-  if (dash != nullptr &&
-      (has_header ? !odd_lines
-                  : OPENSSL_memchr(dataB->data, ':', bl) == nullptr &&
-                        strchr(nameB->data, ':') == nullptr)) {
+  if (dash != nullptr) {
     bl = static_cast<const char *>(dash) - dataB->data;
+  }
+  // What is dropped may be another block, so only do it where OpenSSL does.
+  const bool drops_text = has_nul || dash != nullptr;
+  if (drops_text && (has_header ? odd_lines : has_colon)) {
+    OPENSSL_PUT_ERROR(PEM, PEM_R_BAD_BASE64_DECODE);
+    return 0;
   }
 
   int decoded_length;
 #if defined(BORINGSSL_PEM_FAST_PUBLIC_BASE64)
   // The embedder may skip characters that OpenSSL does not.
-  if (dash == nullptr && pem_label_is_public(nameB->data)) {
+  if (!drops_text && pem_label_is_public(nameB->data)) {
     // Four input bytes decode to at most three, and `bl` <= INT_MAX / 2.
     bssl::UniquePtr<BUF_MEM> decodedB(BUF_MEM_new());
     size_t decoded_size;

@@ -205,7 +205,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
     lookup_cert.reset(X509_new());
     if (lookup_cert == nullptr ||
         !X509_set_subject_name(lookup_cert.get(), name)) {
-      return 0;
+      return -1;
     }
     stmp.data.x509 = lookup_cert.get();
     postfix = "";
@@ -213,7 +213,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
     lookup_crl.reset(X509_CRL_new());
     if (lookup_crl == nullptr ||
         !X509_CRL_set_issuer_name(lookup_crl.get(), name)) {
-      return 0;
+      return -1;
     }
     stmp.data.crl = lookup_crl.get();
     postfix = "r";
@@ -241,7 +241,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
         if (OPENSSL_asprintf(&path, "%s/%08" PRIx32 ".%s%d", ent->dir(), hash,
                              postfix, suffix) == -1) {
           OPENSSL_PUT_ERROR(X509, ERR_R_BUF_LIB);
-          return 0;
+          return -1;
         }
         UniquePtr<char> free_path(path);
         if (!path_exists(path)) {
@@ -276,7 +276,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       // next time.
       // TODO(crbug.com/42290566): Is this what we want?
       if (type == X509_LU_CRL && !ent->UpdateCRLSuffix(hash, suffix)) {
-        return 0;
+        return -1;
       }
 
       if (found != nullptr) {

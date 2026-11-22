@@ -85,11 +85,16 @@ class X509NameEntry : public X509_name_entry_st {
 DECLARE_ASN1_ITEM(X509_NAME_ENTRY)
 
 // x509_consider_issuer chooses an issuer for `x` as OpenSSL does, except for
-// detours. It returns true, with `candidate` in `*best`, if `candidate` matches
-// and is in its validity period. Otherwise it returns false and keeps the match
-// that expires last. `trusted` is whether `candidate` is from the trust store.
+// detours. It returns true, with `candidate` in `*best`, if `candidate`
+// matches, is in its validity period and has a key. Otherwise it returns false
+// and keeps the match that expires last. `trusted` is whether `candidate` is
+// from the trust store.
 bool x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x, X509 *candidate,
                           bool trusted, X509 **best);
+
+// x509_take_malloc_failure clears the error queue and returns whether it said
+// that memory ran out.
+bool x509_take_malloc_failure();
 
 // x509_get1_trusted_issuer behaves like `X509_STORE_CTX_get1_issuer`, but may
 // find nothing on a detour.

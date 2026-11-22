@@ -481,6 +481,9 @@ wr6JtaX2G+pOmwcSPymZC4u2TncAP7KHgS8UGcMw8CE=
 }
 
 TEST(PEMTest, ParsingErrorsAndSuccesses) {
+  const std::string trailing_space = "-----BEGIN TEST-----\n\nYmFzZTY0-" +
+                                     std::string(254 - 9, ' ') +
+                                     "\n-----END TEST-----";
   const struct {
     const char *name;
     const char *pem;
@@ -548,6 +551,13 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
        "-----BEGIN TEST-----\n\nYmFzZTY0-"
        "0000000000000000000000000000000000000000000000000000000\n"
        "0\n-----END TEST-----",
+       0, "TEST", "", "base64"},
+      {"DashAfterShortLine",
+       "-----BEGIN TEST-----\n\nYmFzZTY0-"
+       "000000000000000000000000000000000000000000000000000000\n"
+       "0\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"DashBeforeTrailingSpaceOK", trailing_space.c_str(),  //
        0, "TEST", "", "base64"},
       {"DashAfterLongLine",
        "-----BEGIN TEST-----\n\nYmFzZTY0-"
@@ -656,6 +666,41 @@ TEST(PEMTest, LongLineBeforeBegin) {
     OPENSSL_free(name);
     OPENSSL_free(header);
     OPENSSL_free(data);
+  }
+}
+
+TEST(PEMTest, NULEndsLine) {
+  using namespace std::string_view_literals;
+  const struct {
+    std::string_view pem;
+    const char *want_header;  // Or null for an error.
+  } kTests[] = {
+      {"-----BEGIN TEST-----\nYmFz\0!\nZTY0\n-----END TEST-----"sv, ""},
+      {"-----BEGIN TEST\0!-----\nYmFzZTY0\n-----END TEST-----"sv, ""},
+      {"-----BEGIN TEST-----\nYmFz\0-\nZTY0\n-----END TEST-----"sv, ""},
+      {"-----BEGIN TEST-----\n\0!\nX: h\n\nYmFzZTY0\n-----END TEST-----"sv,
+       "X: h\n"},
+      {"-----BEGIN TEST-----\nYmFzZTY0\0:\n-----END TEST-----"sv, nullptr},
+      {"-----BEGIN TEST-----\n\nYmFz\0!\nZTY0\n-----END TEST-----"sv, nullptr},
+      {"-----BEGIN TEST\0!-----\n\nYmFz\nZTY0\n-----END TEST-----"sv, nullptr},
+      {"-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST\0!-----"sv, nullptr},
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(Bytes(t.pem));
+    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(t.pem.data(), t.pem.size()));
+    char *name, *header;
+    uint8_t *data;
+    long len;
+    ASSERT_EQ(t.want_header != nullptr,
+              PEM_read_bio(bio.get(), &name, &header, &data, &len));
+    if (t.want_header != nullptr) {
+      EXPECT_EQ(Bytes("TEST"), Bytes(name));
+      EXPECT_EQ(Bytes(t.want_header), Bytes(header));
+      EXPECT_EQ(Bytes("base64"), Bytes(data, len));
+      OPENSSL_free(name);
+      OPENSSL_free(header);
+      OPENSSL_free(data);
+    }
   }
 }
 

@@ -58,8 +58,8 @@ int X509_LOOKUP_by_subject(X509_LOOKUP *ctx, int type, const X509_NAME *name,
   // Note `get_by_subject` leaves `ret` in an inconsistent state. It has
   // pointers to an `X509` or `X509_CRL`, but has not bumped the refcount yet.
   // For now, the caller is expected to fix this, but ideally we'd fix the
-  // `X509_LOOKUP` convention itself.
-  return ctx->method->get_by_subject(ctx, type, name, ret) > 0;
+  // `X509_LOOKUP` convention itself. The result is negative if memory ran out.
+  return ctx->method->get_by_subject(ctx, type, name, ret);
 }
 
 // x509_object_cmp_name compares `a` against the specified type and name. This
@@ -351,7 +351,12 @@ int X509_STORE_CTX_get_by_subject(X509_STORE_CTX *vs, int type,
 
   if (tmp == nullptr || type == X509_LU_CRL) {
     for (const auto &lu : ctx->get_cert_methods) {
-      if (X509_LOOKUP_by_subject(lu.get(), type, name, &stmp)) {
+      int found = X509_LOOKUP_by_subject(lu.get(), type, name, &stmp);
+      if (found < 0) {
+        vs->lookup_failed = true;
+        return 0;
+      }
+      if (found) {
         tmp = &stmp;
         break;
       }
@@ -511,6 +516,14 @@ STACK_OF(X509_CRL) *X509_STORE_CTX_get1_crls(X509_STORE_CTX *ctx,
   return sk;
 }
 
+bool bssl::x509_take_malloc_failure() {
+  bool found = false;
+  while (uint32_t err = ERR_get_error()) {
+    found |= ERR_equals(err, ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+  }
+  return found;
+}
+
 // Lazily-parsed trust anchors.
 
 X509LazyCertSet::X509LazyCertSet() : RefCounted(CheckSubClass()) {}
@@ -594,10 +607,12 @@ X509 *X509LazyCertSet::Get(size_t idx) {
       cert.has_aux
           ? d2i_X509_AUX(nullptr, &der, CRYPTO_BUFFER_len(cert.der.get()))
           : X509_parse_from_buffer(cert.der.get()));
+  if (parsed == nullptr) {
+    return nullptr;
+  }
   // The extensions would stay invalid after running out of memory.
-  if (parsed == nullptr ||
-      (!x509v3_cache_extensions(parsed.get()) &&
-       ERR_GET_REASON(ERR_peek_last_error()) == ERR_R_MALLOC_FAILURE)) {
+  if (!x509v3_cache_extensions(parsed.get()) && x509_take_malloc_failure()) {
+    OPENSSL_PUT_ERROR(CRYPTO, ERR_R_MALLOC_FAILURE);
     return nullptr;
   }
   X509 *expected = nullptr;
@@ -640,10 +655,8 @@ bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
     const X509 *x509 = is_parsed ? parsed : Get(idx);
     if (x509 == nullptr) {
       // Only skip a certificate for what is wrong with it.
-      while (uint32_t err = ERR_get_error()) {
-        if (ERR_GET_REASON(err) == ERR_R_MALLOC_FAILURE) {
-          return false;
-        }
+      if (x509_take_malloc_failure()) {
+        return false;
       }
       continue;
     }

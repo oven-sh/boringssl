@@ -3391,10 +3391,11 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1(X509_VERIFY_PARAM *to,
 //
 // The value is kept away from the bits upstream allocates next.
 #define X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS 0x40000000
-// X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS makes chain building treat certificates
-// without a signature (RFC 9925) as if they were not there. It is for chains
-// that are built to be sent, not to be checked.
-#define X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS 0x20000000
+// X509_V_FLAG_CHAIN_TO_SEND is for a chain that is built to be sent to a peer,
+// not to be checked. It leaves out certificates that only say what is trusted
+// here: those without a signature (RFC 9925), and those that are only chosen
+// for being rejected.
+#define X509_V_FLAG_CHAIN_TO_SEND 0x20000000
 
 // Deprecated flags.
 

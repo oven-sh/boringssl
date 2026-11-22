@@ -14344,36 +14344,50 @@ TEST_P(X509IssuerSelectionTest, KeyThatDoesNotParse) {
     it[4] ^= 1;
     const uint8_t *inp = der.data();
     certs_.emplace_back(d2i_X509(nullptr, &inp, der.size()));
-    BSSL_CHECK(certs_.back());
+    BSSL_CHECK(certs_.back() &&
+               X509_sign(certs_.back().get(), key_.get(), EVP_sha256()));
     return certs_.back().get();
   };
   const std::pair<int, int> kNoKey =
       Both(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY);
   X509 *bad_root = without_key(root_);
   EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {bad_root, root_}));
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {bad_root, Cert("Other", "Other")},
-                                    {Cert("Other", "Root")}));
+  EXPECT_EQ(std::pair(X509_V_ERR_INVALID_CA, X509_V_ERR_INVALID_PURPOSE),
+            Errors(leaf_, {bad_root, not_ca_}));
+  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
   X509 *ca = Cert("Root", "CA");
-  EXPECT_EQ(Both(X509_V_OK), Errors(Cert("CA", "Leaf", /*is_ca=*/false),
-                                    {root_}, {without_key(ca), ca}));
-  // OpenSSL reports that there is no issuer, but parses more kinds of keys.
-  EXPECT_EQ(kNoKey, Errors(leaf_, {bad_root}));
-  EXPECT_EQ(kNoKey, Errors(leaf_, {bad_root, not_ca_}));
+  EXPECT_EQ(Both(X509_V_OK), Errors(leaf, {root_}, {without_key(ca), ca}));
+  // OpenSSL would find no issuer in the store, but parses more kinds of keys.
   // This may be another encoding of the same key.
+  EXPECT_EQ(kNoKey, Errors(leaf_, {bad_root}));
+  EXPECT_EQ(kNoKey, Errors(leaf, {root_, without_key(ca)}, {ca}));
+  X509 *invalid = without_key(
+      Custom("Root", "Root", {{NID_basic_constraints, "DER:30"}}));
+  for (X509 *cert : {bad_root, invalid}) {
+    EXPECT_EQ(
+        std::pair(X509_V_ERR_CERT_REJECTED,
+                  X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY),
+        Errors(leaf_, {WithSettings(cert, NID_undef, NID_server_auth), root_}));
+  }
   EXPECT_EQ(
-      std::pair(X509_V_ERR_CERT_REJECTED,
-                X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY),
-      Errors(leaf_,
-             {WithSettings(bad_root, NID_undef, NID_server_auth), root_}));
+      Both(X509_V_ERR_CERT_NOT_YET_VALID),
+      Errors(leaf_, {Cert("Root", "Root", true, 3, nullptr, 2), bad_root}));
 }
 
-TEST_P(X509IssuerSelectionTest, IgnoreUnsignedIssuers) {
+TEST_P(X509IssuerSelectionTest, ChainToSend) {
   UniquePtr<X509> unsigned_root(X509_dup(not_ca_));
   ASSERT_TRUE(X509_set1_signature_value(unsigned_root.get(), nullptr, 0));
   EXPECT_EQ(X509_V_ERR_INVALID_CA,
             Verify(leaf_, {unsigned_root.get(), root_}, {}, {}));
   EXPECT_EQ(X509_V_OK, Verify(leaf_, {unsigned_root.get(), root_}, {}, {},
-                              X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS));
+                              X509_V_FLAG_CHAIN_TO_SEND));
+
+  X509 *rejected =
+      WithSettings(Custom("Root", "Root", {{NID_basic_constraints, "DER:30"}}),
+                   NID_undef, NID_anyExtendedKeyUsage);
+  EXPECT_EQ(X509_V_ERR_CERT_REJECTED, Verify(leaf_, {rejected, root_}, {}, {}));
+  EXPECT_EQ(X509_V_OK, Verify(leaf_, {rejected, root_}, {}, {},
+                              X509_V_FLAG_CHAIN_TO_SEND));
 }
 
 TEST_P(X509IssuerSelectionTest, IssuerThatMayNotSign) {
@@ -14439,6 +14453,17 @@ TEST_P(X509IssuerSelectionTest, NoWayAroundDistrust) {
       std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_CERT_HAS_EXPIRED),
       Errors(leaf, {root_, WithSettings(expired, NID_undef, NID_server_auth)},
              {ca}));
+  EXPECT_EQ(
+      std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_CERT_HAS_EXPIRED),
+      Errors(leaf, {root_, WithSettings(expired, NID_client_auth, NID_undef)},
+             {ca}));
+  // Only the settings in the store count.
+  X509 *ca_no_sign =
+      Custom("Root", "CA", {{NID_key_usage, "digitalSignature"}});
+  EXPECT_EQ(
+      Both(X509_V_OK),
+      Errors(leaf, {root_},
+             {WithSettings(ca_no_sign, NID_undef, NID_server_auth), ca}));
   // Nor is there after it.
   X509 *no_sign = Custom("Root", "Root", {{NID_key_usage, "digitalSignature"}});
   EXPECT_EQ(
@@ -14450,6 +14475,14 @@ TEST_P(X509IssuerSelectionTest, NoWayAroundDistrust) {
                    X509_V_ERR_KEYUSAGE_NO_CERTSIGN}),
       AllErrors(leaf, {WithSettings(ca, NID_undef, NID_anyExtendedKeyUsage),
                        no_sign, root_}));
+
+  UniquePtr<EVP_PKEY> key(EVP_PKEY_generate_from_alg(EVP_pkey_ec_p256()));
+  EXPECT_EQ(
+      std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_CERT_SIGNATURE_FAILURE),
+      Errors(leaf,
+             {root_, WithSettings(Cert("Root", "CA", true, 1, key.get()),
+                                  NID_undef, NID_server_auth)},
+             {ca}));
 
   // OpenSSL parses the first of these. Unlike there, the second counts too.
   for (const char *value : {"DER:3081030101ff", "DER:30"}) {
@@ -14465,8 +14498,14 @@ TEST_P(X509IssuerSelectionTest, NoWayAroundDistrust) {
         Errors(leaf, {root_, WithSettings(invalid, NID_undef, NID_client_auth)},
                {ca}));
     EXPECT_EQ(
-        Both(X509_V_OK),
+        std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_INVALID_PURPOSE),
         Errors(leaf, {root_, WithSettings(invalid, NID_client_auth, NID_undef)},
+               {ca}));
+    X509 *other =
+        Custom("Root", "CA", {{NID_basic_constraints, value}}, key.get());
+    EXPECT_EQ(
+        Both(X509_V_OK),
+        Errors(leaf, {root_, WithSettings(other, NID_undef, NID_server_auth)},
                {ca}));
   }
 

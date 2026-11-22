@@ -1096,40 +1096,46 @@ static bool cert_in_time(const X509_STORE_CTX *ctx, const X509 *x509) {
 bool bssl::x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x,
                                 X509 *candidate, bool trusted, X509 **best) {
   const auto *impl = FromOpaque(candidate);
-  auto rejected = [&](int flags) {
-    return trusted && impl->aux != nullptr &&
-           X509_check_trust(candidate, ctx->param->trust, flags) ==
-               X509_TRUST_REJECTED;
-  };
-  if (((ctx->param->flags & X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS) &&
-       impl->signature->length == 0) ||
-      // They may be valid for OpenSSL, which parses more.
-      !x509_check_issued_with_callback(
-          ctx, x, candidate,
-          /*allow_invalid=*/rejected(X509_TRUST_NO_IMPLIED_REJECT)) ||
+  const bool to_send = ctx->param->flags & X509_V_FLAG_CHAIN_TO_SEND;
+  // There is no way around distrust.
+  const bool rejected = trusted && !to_send && impl->aux != nullptr &&
+                        X509_check_trust(candidate, ctx->param->trust,
+                                         /*flags=*/0) == X509_TRUST_REJECTED;
+  if ((to_send && impl->signature->length == 0) ||
+      !x509_check_issued_with_callback(ctx, x, candidate,
+                                       /*allow_invalid=*/rejected) ||
       (!trusted && chain_contains(ctx, candidate))) {
     return false;
   }
+  // Its extensions may be valid for OpenSSL, which parses more. There is no
+  // relying on its key identifier.
+  if (rejected && !x509v3_cache_extensions(candidate) &&
+      verify_signature(ctx, x, candidate) ==
+          X509_V_ERR_CERT_SIGNATURE_FAILURE) {
+    ctx->lookup_failed |= x509_take_malloc_failure();
+    return false;
+  }
   const bool in_time = cert_in_time(ctx, candidate);
-  if (!ctx->no_detour &&
-      (((!may_sign_certs(candidate) || impl->key.pkey == nullptr) &&
-        X509_cmp(candidate, x) != 0) ||
+  if (!ctx->no_detour && !rejected &&
+      ((!may_sign_certs(candidate) && X509_cmp(candidate, x) != 0) ||
        (trusted && !in_time &&
-        (ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS))) &&
-      // There is no way around distrust.
-      !rejected(/*flags=*/0)) {
+        (ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS)))) {
     ctx->is_detour = true;
     return false;
   }
+  // OpenSSL passes over a key that it cannot parse, but it may parse this one.
+  // So it is still a match, and its constraints cannot be escaped with a
+  // certificate that the peer sends.
+  const bool found = in_time && (rejected || impl->key.pkey != nullptr);
   int64_t best_not_after;
-  if (in_time || *best == nullptr ||
+  if (found || *best == nullptr ||
       (ASN1_TIME_to_posix_nonstandard(X509_get0_notAfter(*best),
                                       &best_not_after) &&
        X509_cmp_time_posix_nonstandard(X509_get0_notAfter(candidate),
                                        best_not_after) > 0)) {
     *best = candidate;
   }
-  return in_time;
+  return found;
 }
 
 int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
