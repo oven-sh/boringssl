@@ -321,6 +321,7 @@ static bool ssl_crypto_x509_ssl_auto_chain_if_needed(SSL_HANDSHAKE *hs) {
   // in the store.
   X509_VERIFY_PARAM_clear_flags(X509_STORE_CTX_get0_param(ctx.get()),
                                 X509_V_FLAG_PARTIAL_CHAIN);
+  X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS);
 
   // Attempt to build a chain, ignoring the result.
   X509_verify_cert(ctx.get());
