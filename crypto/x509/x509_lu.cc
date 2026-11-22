@@ -340,7 +340,10 @@ int X509_STORE_CTX_get_by_subject(X509_STORE_CTX *vs, int type,
                                   const X509_NAME *name, X509_OBJECT *ret) {
   X509Store *ctx = FromOpaque(vs->ctx);
   X509_OBJECT stmp;
-  ctx->MaterializeLazy(type, name);
+  if (!ctx->MaterializeLazy(type, name)) {
+    vs->lookup_failed = true;
+    return 0;
+  }
   ctx->objs_lock.LockWrite();
   X509_OBJECT *tmp =
       X509_OBJECT_retrieve_by_subject(ctx->objs.get(), type, name);
@@ -427,12 +430,13 @@ STACK_OF(X509_OBJECT) *X509_STORE_get0_objects(X509_STORE *store) {
 STACK_OF(X509) *X509_STORE_CTX_get1_certs(X509_STORE_CTX *ctx,
                                           const X509_NAME *nm) {
   int cnt;
+  X509Store *store = FromOpaque(ctx->ctx);
   STACK_OF(X509) *sk = sk_X509_new_null();
-  if (sk == nullptr) {
+  if (sk == nullptr || !store->MaterializeLazy(X509_LU_X509, nm)) {
+    ctx->lookup_failed = true;
+    sk_X509_free(sk);
     return nullptr;
   }
-  X509Store *store = FromOpaque(ctx->ctx);
-  store->MaterializeLazy(X509_LU_X509, nm);
   store->objs_lock.LockWrite();
   int idx = x509_object_idx_cnt(store->objs.get(), X509_LU_X509, nm, &cnt);
   if (idx < 0) {
@@ -457,6 +461,7 @@ STACK_OF(X509) *X509_STORE_CTX_get1_certs(X509_STORE_CTX *ctx,
     X509_OBJECT *obj = sk_X509_OBJECT_value(store->objs.get(), idx);
     X509 *x = obj->data.x509;
     if (!sk_X509_push(sk, x)) {
+      ctx->lookup_failed = true;
       store->objs_lock.UnlockWrite();
       sk_X509_pop_free(sk, X509_free);
       return nullptr;
@@ -589,7 +594,10 @@ X509 *X509LazyCertSet::Get(size_t idx) {
       cert.has_aux
           ? d2i_X509_AUX(nullptr, &der, CRYPTO_BUFFER_len(cert.der.get()))
           : X509_parse_from_buffer(cert.der.get()));
-  if (parsed == nullptr) {
+  // The extensions would stay invalid after running out of memory.
+  if (parsed == nullptr ||
+      (!x509v3_cache_extensions(parsed.get()) &&
+       ERR_GET_REASON(ERR_peek_last_error()) == ERR_R_MALLOC_FAILURE)) {
     return nullptr;
   }
   X509 *expected = nullptr;
@@ -651,7 +659,6 @@ bool X509Store::MaterializeLazy(int type, const X509_NAME *name,
   if (type != X509_LU_X509) {
     return true;
   }
-  bool ok = true;
   // Snapshot the sets so `X509_STORE_add_lazy_cert_set` may run concurrently
   // with lookups, as `X509_STORE_add_cert` may. `AddMatchesToStore` takes
   // `objs_lock` for writing, so it cannot run under the read lock.
@@ -667,9 +674,7 @@ bool X509Store::MaterializeLazy(int type, const X509_NAME *name,
       if (i < kInline) {
         inline_sets[i] = std::move(ref);
       } else if (!more_sets.Push(std::move(ref))) {
-        num = i;
-        ok = false;
-        break;
+        return false;
       }
     }
   }
@@ -677,12 +682,12 @@ bool X509Store::MaterializeLazy(int type, const X509_NAME *name,
     X509LazyCertSet *set =
         i < kInline ? inline_sets[i].get() : more_sets[i - kInline].get();
     if (!set->AddMatchesToStore(this, name, parsed)) {
-      // The anchors are treated as absent, as when a lookup method fails.
+      // The other sets have to come later.
       ERR_clear_error();
-      ok = false;
+      return false;
     }
   }
-  return ok;
+  return true;
 }
 
 X509_LAZY_CERT_SET *X509_LAZY_CERT_SET_new(CRYPTO_BUFFER *const *certs,

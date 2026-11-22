@@ -488,6 +488,8 @@ struct x509_store_ctx_st {
   bool is_detour;
   // Whether detours are ruled out.
   bool no_detour;
+  // Whether memory ran out while looking for certificates in the store.
+  bool lookup_failed;
 
   CRYPTO_EX_DATA ex_data;
 } /* X509_STORE_CTX */;
@@ -568,8 +570,9 @@ int X509_policy_check(const STACK_OF(X509) *certs,
                       int *out_error_depth);
 
 // x509_likely_issued behaves like `X509_check_issued`, but does not check the
-// key usage of `issuer`.
-int x509_likely_issued(const X509 *issuer, const X509 *subject);
+// key usage of `issuer`. If `allow_invalid`, its extensions may be invalid.
+int x509_likely_issued(const X509 *issuer, const X509 *subject,
+                       bool allow_invalid = false);
 
 // x509_check_issued_with_callback calls `x509_likely_issued`, but allows the
 // verify callback to override the result. It returns one on success and zero on
@@ -579,7 +582,7 @@ int x509_likely_issued(const X509 *issuer, const X509 *subject);
 // callback only runs with `X509_V_FLAG_CB_ISSUER_CHECK`, which is only used by
 // one internal project and rust-openssl, who use it by mistake.
 int x509_check_issued_with_callback(X509_STORE_CTX *ctx, const X509 *x,
-                                    const X509 *issuer);
+                                    const X509 *issuer, bool allow_invalid);
 
 // x509v3_bytes_to_hex encodes `len` bytes from `in` to hex and returns a
 // newly-allocated NUL-terminated string containing the result, or NULL on

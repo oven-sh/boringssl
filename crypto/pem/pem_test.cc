@@ -526,6 +526,42 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
        "-----BEGIN TEST-----\nYmFzZTY0\n"
        "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
        0, "TEST", "", "base64"},
+      {"MissingEndAfterBlankLine",
+       "-----BEGIN TEST-----\n\nYmFzZTY0\n"
+       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"MissingEndAfterHeaders",
+       "-----BEGIN TEST-----\nX: h\n\nYmFzZTY0\n"
+       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"MissingEndColonInName",
+       "-----BEGIN A:B-----\nYmFzZTY0\n"
+       "-----BEGIN TEST-----\nb3RoZXI=\n-----END A:B-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"HeadersNoBlankLine",
+       "-----BEGIN TEST-----\nProc-Type: 4\nYmFzZTY0\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"DashAfterHeadersOK",
+       "-----BEGIN TEST-----\nX: h\n\nYmFzZTY0-\n-----END TEST-----",  //
+       0, "TEST", "X: h\n", "base64"},
+      {"DashAfterFullLineOK",
+       "-----BEGIN TEST-----\n\nYmFzZTY0-"
+       "0000000000000000000000000000000000000000000000000000000\n"
+       "0\n-----END TEST-----",
+       0, "TEST", "", "base64"},
+      {"DashAfterLongLine",
+       "-----BEGIN TEST-----\n\nYmFzZTY0-"
+       "00000000000000000000000000000000000000000000000000000000\n"
+       "-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"DashAfterTwoBlankLines",
+       "-----BEGIN TEST-----\n\n\nYmFzZTY0-\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"DashBeforeSecondBlankLine",
+       "-----BEGIN TEST-----\n\nYmFzZTY0-"
+       "0000000000000000000000000000000000000000000000000000000\n"
+       "\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
       {"DashWithinQuad",  //
        "-----BEGIN TEST-----\nYmFzZT-Y0\n-----END TEST-----",
        PEM_R_BAD_BASE64_DECODE},
@@ -623,19 +659,38 @@ TEST(PEMTest, LongLineBeforeBegin) {
   }
 }
 
-TEST(PEMTest, NULEndsLine) {
-  static const char kPEM[] =
-      "-----BEGIN TEST-----\n\0junk\n\nYmFz\0!\nZTY0\n-----END TEST-----";
-  bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(kPEM, sizeof(kPEM) - 1));
-  char *name, *header;
-  uint8_t *data;
-  long len;
-  ASSERT_TRUE(PEM_read_bio(bio.get(), &name, &header, &data, &len));
-  EXPECT_EQ(Bytes(""), Bytes(header));
-  EXPECT_EQ(Bytes("base64"), Bytes(data, len));
-  OPENSSL_free(name);
-  OPENSSL_free(header);
-  OPENSSL_free(data);
+TEST(PEMTest, Decrypt) {
+  static const char kHeader[] =
+      "Proc-Type: 4,ENCRYPTED\n"
+      "DEK-Info: AES-128-CBC,00000000000000000000000000000000";
+  static const uint8_t kEncrypted[] = {0x9b, 0x44, 0xd7, 0x3a, 0x79, 0xe6,
+                                       0x96, 0xa2, 0x03, 0x2e, 0x9d, 0xcb,
+                                       0xec, 0x54, 0x41, 0x3c};
+  char password[] = "password", wrong[] = "wrong";
+  const struct {
+    const char *header;
+    char *password;
+    int err_reason;
+    Bytes want;
+  } kTests[] = {
+      {kHeader, password, 0, Bytes("base64")},
+      {kHeader, wrong, PEM_R_BAD_DECRYPT, Bytes("")},
+      {"", password, 0, Bytes(kEncrypted)},
+      {"X-Hdr: h\n", password, PEM_R_NOT_PROC_TYPE, Bytes("")},
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(t.header);
+    std::vector<uint8_t> data(std::begin(kEncrypted), std::end(kEncrypted));
+    long len = data.size();
+    if (PEM_decrypt(t.header, data.data(), &len, nullptr, t.password)) {
+      EXPECT_EQ(t.err_reason, 0);
+      EXPECT_EQ(t.want, Bytes(data.data(), len));
+    } else {
+      EXPECT_TRUE(
+          ErrorEquals(ERR_peek_last_error(), ERR_LIB_PEM, t.err_reason));
+      ERR_clear_error();
+    }
+  }
 }
 
 // The placeholder ANY PRIVATE KEY value is not a valid key type.

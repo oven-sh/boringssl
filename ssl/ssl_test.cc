@@ -5012,6 +5012,13 @@ TEST_P(SSLVersionTest, AutoChainOmitsUnsigned) {
   ASSERT_TRUE(Connect());
   EXPECT_TRUE(
       ChainsEqual(SSL_get_peer_full_cert_chain(client_.get()), {cert_.get()}));
+
+  intermediate = GetChainTestIntermediate();
+  ASSERT_TRUE(X509_STORE_add_cert(SSL_CTX_get_cert_store(server_ctx_.get()),
+                                  intermediate.get()));
+  ASSERT_TRUE(Connect());
+  EXPECT_TRUE(ChainsEqual(SSL_get_peer_full_cert_chain(client_.get()),
+                          {cert_.get(), intermediate.get()}));
 }
 
 TEST_P(SSLVersionTest, AutoChain) {

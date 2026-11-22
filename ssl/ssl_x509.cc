@@ -321,6 +321,7 @@ static bool ssl_crypto_x509_ssl_auto_chain_if_needed(SSL_HANDSHAKE *hs) {
   // in the store.
   X509_VERIFY_PARAM_clear_flags(X509_STORE_CTX_get0_param(ctx.get()),
                                 X509_V_FLAG_PARTIAL_CHAIN);
+  X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS);
 
   // Attempt to build a chain, ignoring the result.
   X509_verify_cert(ctx.get());
@@ -332,21 +333,6 @@ static bool ssl_crypto_x509_ssl_auto_chain_if_needed(SSL_HANDSHAKE *hs) {
     return false;
   }
   X509_free(sk_X509_shift(chain.get()));
-
-  // A certificate without a signature only says what is trusted here. See RFC
-  // 9925.
-  size_t num_signed = 0;
-  for (const X509 *cert : chain.get()) {
-    const ASN1_BIT_STRING *signature;
-    X509_get0_signature(&signature, nullptr, cert);
-    if (signature->length == 0) {
-      break;
-    }
-    num_signed++;
-  }
-  while (sk_X509_num(chain.get()) > num_signed) {
-    X509_free(sk_X509_pop(chain.get()));
-  }
 
   return SSL_set1_chain(ssl, chain.get());
 }

@@ -622,10 +622,12 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   }
   dataB->data[0] = '\0';
 
-  bool failed = false;  // Set to true (and error put into queue) on failure.
+  bool failed = false;   // Set to true (and error put into queue) on failure.
+  bool partial = false;  // Whether `buf` was too small for the line.
+  // After a header, OpenSSL wants all lines but the last to have 64 characters.
+  bool short_line = false, odd_lines = false;
   auto read_until_end = [&](BUF_MEM *out, size_t &out_len,
                             bool stop_at_newline) {
-    bool partial = false;  // Whether `buf` was too small for the line.
     // Invariant: buf[255] < ' '. It may get overwritten by '\n' or '\0' only.
     for (;;) {
       int i = BIO_gets(bp, buf, 255);
@@ -640,19 +642,21 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       buf[++i] = '\n';
       buf[++i] = '\0';
 
+      if (was_partial && buf[0] == '\n') {
+        // As in OpenSSL, this ends that line and is not an empty one.
+        continue;
+      }
       if (stop_at_newline && buf[0] == '\n') {
-        if (was_partial) {
-          // As in OpenSSL, this ends that line and is not an empty one.
-          continue;
-        }
         // End of header, start of body.
         return true;
       }
       if (strncmp(buf, "-----END ", 9) == 0) {
         return false;
       }
-      // As in OpenSSL, what follows a NUL is dropped.
-      i = strlen(buf);
+      if (!stop_at_newline) {
+        odd_lines |= short_line || i == 1 || i > 65;
+        short_line = i < 65;
+      }
       if (static_cast<size_t>(i) > SIZE_MAX - hl - 1) {
         OPENSSL_PUT_ERROR(PEM, ERR_R_OVERFLOW);
         failed = true;
@@ -679,7 +683,9 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
     return false;
   };
 
-  if (read_until_end(headerB.get(), hl, /*stop_at_newline=*/true)) {
+  const bool has_header =
+      read_until_end(headerB.get(), hl, /*stop_at_newline=*/true);
+  if (has_header) {
     read_until_end(dataB.get(), bl, /*stop_at_newline=*/false);
   } else {
     // Actually we've read the body, as there is no header.
@@ -699,14 +705,20 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   }
 
   // As in OpenSSL, a dash ends the data. This reads a block that has lost its
-  // END line up to the next BEGIN line.
-  if (const void *dash = OPENSSL_memchr(dataB->data, '-', bl)) {
+  // END line up to the next BEGIN line. As that drops the next block, it is
+  // only done if OpenSSL gets this far. It takes a colon for part of a header.
+  const void *dash = OPENSSL_memchr(dataB->data, '-', bl);
+  if (dash != nullptr &&
+      (has_header ? !odd_lines
+                  : OPENSSL_memchr(dataB->data, ':', bl) == nullptr &&
+                        strchr(nameB->data, ':') == nullptr)) {
     bl = static_cast<const char *>(dash) - dataB->data;
   }
 
   int decoded_length;
 #if defined(BORINGSSL_PEM_FAST_PUBLIC_BASE64)
-  if (pem_label_is_public(nameB->data)) {
+  // The embedder may skip characters that OpenSSL does not.
+  if (dash == nullptr && pem_label_is_public(nameB->data)) {
     // Four input bytes decode to at most three, and `bl` <= INT_MAX / 2.
     bssl::UniquePtr<BUF_MEM> decodedB(BUF_MEM_new());
     size_t decoded_size;
@@ -782,6 +794,18 @@ int PEM_read_bio(BIO *bp, char **name, char **header, unsigned char **data,
   *header = owned_header.release();
   owned_data.Release(data, &ulen);
   // Safety: we checked that `ulen` <= `LONG_MAX`.
+  *len = static_cast<long>(ulen);
+  return 1;
+}
+
+int PEM_decrypt(const char *header, unsigned char *data, long *len,
+                pem_password_cb *cb, void *u) {
+  EVP_CIPHER_INFO cipher;
+  size_t ulen = *len;
+  if (!PEM_get_EVP_CIPHER_INFO(header, &cipher) ||
+      !PEM_do_header(&cipher, data, &ulen, cb, u)) {
+    return 0;
+  }
   *len = static_cast<long>(ulen);
   return 1;
 }

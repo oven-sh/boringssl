@@ -249,7 +249,7 @@ int check_chain_extensions(X509_STORE_CTX *ctx, int num_untrusted,
         return 0;
       }
     }
-    // `check_target` reports invalid extensions, which no issuer has.
+    // `check_target` reports invalid extensions of the target.
     if (ctx->param->purpose > 0 &&
         (must_be_ca || !(x->ex_flags & EXFLAG_INVALID)) &&
         !purpose_ok(ctx, x, must_be_ca,
@@ -1046,7 +1046,8 @@ int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
     X509 *x509 = sk_X509_value(ctx->chain, i);
     if (i < num - 1) {
       X509 *issuer = sk_X509_value(ctx->chain, i + 1);
-      if (!may_sign_certs(issuer)) {
+      // `check_chain_extensions` has reported invalid extensions.
+      if (x509v3_cache_extensions(issuer) && !may_sign_certs(issuer)) {
         ctx->error = X509_V_ERR_KEYUSAGE_NO_CERTSIGN;
         if (!call_verify_cb_at_depth(0, ctx, static_cast<int>(i + 1))) {
           return 0;
@@ -1094,18 +1095,29 @@ static bool cert_in_time(const X509_STORE_CTX *ctx, const X509 *x509) {
 
 bool bssl::x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x,
                                 X509 *candidate, bool trusted, X509 **best) {
-  if (!x509_check_issued_with_callback(ctx, x, candidate) ||
+  const auto *impl = FromOpaque(candidate);
+  auto rejected = [&](int flags) {
+    return trusted && impl->aux != nullptr &&
+           X509_check_trust(candidate, ctx->param->trust, flags) ==
+               X509_TRUST_REJECTED;
+  };
+  if (((ctx->param->flags & X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS) &&
+       impl->signature->length == 0) ||
+      // They may be valid for OpenSSL, which parses more.
+      !x509_check_issued_with_callback(
+          ctx, x, candidate,
+          /*allow_invalid=*/rejected(X509_TRUST_NO_IMPLIED_REJECT)) ||
       (!trusted && chain_contains(ctx, candidate))) {
     return false;
   }
   const bool in_time = cert_in_time(ctx, candidate);
   if (!ctx->no_detour &&
-      ((!may_sign_certs(candidate) && X509_cmp(candidate, x) != 0) ||
+      (((!may_sign_certs(candidate) || impl->key.pkey == nullptr) &&
+        X509_cmp(candidate, x) != 0) ||
        (trusted && !in_time &&
         (ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS))) &&
       // There is no way around distrust.
-      !(trusted && X509_check_trust(candidate, ctx->param->trust,
-                                    /*flags=*/0) == X509_TRUST_REJECTED)) {
+      !rejected(/*flags=*/0)) {
     ctx->is_detour = true;
     return false;
   }
@@ -1141,9 +1153,10 @@ int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
 
 // Given a possible certificate and issuer check them
 int bssl::x509_check_issued_with_callback(X509_STORE_CTX *ctx, const X509 *x,
-                                          const X509 *issuer) {
+                                          const X509 *issuer,
+                                          bool allow_invalid) {
   int ret;
-  ret = x509_likely_issued(issuer, x);
+  ret = x509_likely_issued(issuer, x, allow_invalid);
   if (ret == X509_V_OK) {
     return 1;
   }
@@ -1392,6 +1405,11 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
     ctx->no_detour = true;
     ERR_clear_error();
     ok = verify_cert(ctx);
+  }
+  if (ctx->lookup_failed) {
+    // What was not found may have withdrawn trust.
+    ctx->error = X509_V_ERR_OUT_OF_MEM;
+    return 0;
   }
   return ok;
 }

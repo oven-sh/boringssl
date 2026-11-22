@@ -506,12 +506,13 @@ int X509_check_ca(const X509 *x) {
   return check_ca(x);
 }
 
-int bssl::x509_likely_issued(const X509 *issuer, const X509 *subject) {
+int bssl::x509_likely_issued(const X509 *issuer, const X509 *subject,
+                             bool allow_invalid) {
   if (X509_NAME_cmp(X509_get_subject_name(issuer),
                     X509_get_issuer_name(subject))) {
     return X509_V_ERR_SUBJECT_ISSUER_MISMATCH;
   }
-  if (!x509v3_cache_extensions(issuer) ||
+  if ((!x509v3_cache_extensions(issuer) && !allow_invalid) ||
       !x509v3_cache_extensions(subject)) {
     return X509_V_ERR_UNSPECIFIED;
   }
