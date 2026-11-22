@@ -610,6 +610,10 @@ OPENSSL_EXPORT int x509v3_looks_like_dns_name(const unsigned char *in,
 // certificate for being self-signed.
 #define X509_TRUST_NO_SS_COMPAT (1 << 2)
 
+// X509_TRUST_NO_IMPLIED_REJECT is a flag for `X509_check_trust` to not reject a
+// certificate for being trusted for other uses only.
+#define X509_TRUST_NO_IMPLIED_REJECT (1 << 5)
+
 // x509v3_cache_extensions fills in a number of fields relating to X.509
 // extensions in `x`. It returns one on success and zero if some extensions were
 // invalid.

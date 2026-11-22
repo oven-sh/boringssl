@@ -14600,6 +14600,20 @@ TEST_P(X509IssuerSelectionTest, TrustSettings) {
             Errors(leaf, {WithSettings(leaf, NID_undef, NID_server_auth)}, {},
                    X509_V_FLAG_PARTIAL_CHAIN));
 
+  // A target that is trusted for another use is no anchor, but may have one.
+  X509 *for_clients = WithSettings(leaf_, NID_client_auth, NID_undef);
+  EXPECT_EQ(Both(X509_V_ERR_CERT_REJECTED),
+            Errors(leaf_, {for_clients}, {}, X509_V_FLAG_PARTIAL_CHAIN));
+  for (unsigned long flags : {0, X509_V_FLAG_PARTIAL_CHAIN}) {
+    EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {for_clients, root_}, {}, flags));
+    for (int nid : {NID_server_auth, NID_anyExtendedKeyUsage}) {
+      X509 *rejected = WithSettings(leaf_, NID_client_auth, nid);
+      EXPECT_EQ(Both(X509_V_ERR_CERT_REJECTED),
+                Errors(leaf_, {rejected, root_}, {}, flags));
+    }
+  }
+  EXPECT_EQ(X509_V_OK, Verify(leaf_, {for_clients, root_}, {}, {}));
+
   UniquePtr<ASN1_OBJECT> unknown(OBJ_txt2obj("1.2.3.4", /*dont_search=*/1));
   X509 *for_unknown = WithSettings(root_, NID_undef, NID_undef);
   ASSERT_TRUE(X509_add1_trust_object(for_unknown, unknown.get()));

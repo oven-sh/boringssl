@@ -35,7 +35,7 @@ struct x509_trust_st {
 
 // obj_trust checks the trust settings of `x` for `id` or, if it is not
 // `NID_undef`, `other_id`.
-int obj_trust(int id, int other_id, const X509 *x) {
+int obj_trust(int id, int other_id, const X509 *x, int flags) {
   auto *impl = FromOpaque(x);
   X509_CERT_AUX *ax = impl->aux;
   if (!ax) {
@@ -57,7 +57,9 @@ int obj_trust(int id, int other_id, const X509 *x) {
     return X509_TRUST_TRUSTED;
   }
   // As in OpenSSL, a list of trusted uses rejects the others.
-  return ax->trust != nullptr ? X509_TRUST_REJECTED : X509_TRUST_UNTRUSTED;
+  return ax->trust != nullptr && !(flags & X509_TRUST_NO_IMPLIED_REJECT)
+             ? X509_TRUST_REJECTED
+             : X509_TRUST_UNTRUSTED;
 }
 
 int trust_compat(const X509_TRUST *trust, const X509 *x, int flags) {
@@ -73,7 +75,7 @@ int trust_compat(const X509_TRUST *trust, const X509 *x, int flags) {
 }
 
 int trust_1oidany(const X509_TRUST *trust, const X509 *x, int flags) {
-  int rv = obj_trust(trust->nid, NID_anyExtendedKeyUsage, x);
+  int rv = obj_trust(trust->nid, NID_anyExtendedKeyUsage, x, flags);
   if (rv != X509_TRUST_UNTRUSTED) {
     return rv;
   }
@@ -107,7 +109,7 @@ int X509_check_trust(const X509 *x, int id, int flags) {
   }
   // We get this as a default value
   if (id == 0) {
-    int rv = obj_trust(NID_anyExtendedKeyUsage, NID_undef, x);
+    int rv = obj_trust(NID_anyExtendedKeyUsage, NID_undef, x, flags);
     if (rv != X509_TRUST_UNTRUSTED) {
       return rv;
     }
@@ -118,7 +120,7 @@ int X509_check_trust(const X509 *x, int id, int flags) {
     // Unknown trust IDs are silently reintrepreted as NIDs. This is unreachable
     // from the certificate verifier itself, but wpa_supplicant relies on it.
     // Note this relies on commonly-used NIDs and trust IDs not colliding.
-    return obj_trust(id, NID_undef, x);
+    return obj_trust(id, NID_undef, x, flags);
   }
   return pt->check_trust(pt, x, flags);
 }

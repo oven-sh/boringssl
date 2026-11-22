@@ -951,13 +951,16 @@ int check_policy(X509_STORE_CTX *ctx) {
 }
 
 // check_target refuses a target certificate with invalid extensions, which
-// OpenSSL accepts if the store has it, or that the store rejects, which OpenSSL
-// overlooks if the store has an issuer.
-int check_target(X509_STORE_CTX *ctx, int target_trust) {
+// OpenSSL accepts if the store has it, or whose copy in the store, if any, is
+// rejected, which OpenSSL overlooks if the store has an issuer.
+int check_target(X509_STORE_CTX *ctx, const X509 *store_cert) {
   if (!x509v3_cache_extensions(sk_X509_value(ctx->chain, 0))) {
     return report_extra_error(ctx, X509_V_ERR_INVALID_EXTENSION, /*depth=*/0);
   }
-  return target_trust != X509_TRUST_REJECTED ||
+  return store_cert == nullptr ||
+         X509_check_trust(store_cert, ctx->param->trust,
+                          X509_TRUST_NO_IMPLIED_REJECT) !=
+             X509_TRUST_REJECTED ||
          report_extra_error(ctx, X509_V_ERR_CERT_REJECTED, /*depth=*/0);
 }
 
@@ -1370,7 +1373,7 @@ static int verify_cert(X509_STORE_CTX *ctx) {
       !check_chain_signatures_and_time(ctx, trusted) ||   //
       !check_name_constraints(ctx) ||                     //
       (trusted && !check_policy(ctx)) ||                  //
-      !check_target(ctx, target_trust)) {
+      !check_target(ctx, store_cert.get())) {
     return 0;
   }
 
