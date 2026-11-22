@@ -4998,6 +4998,22 @@ static bool BuffersEqual(const STACK_OF(CRYPTO_BUFFER) *chain,
   return true;
 }
 
+TEST_P(SSLVersionTest, AutoChainOmitsUnsigned) {
+  cert_ = GetChainTestCertificate();
+  key_ = GetChainTestKey();
+  bssl::UniquePtr<X509> intermediate = GetChainTestIntermediate();
+  ASSERT_TRUE(cert_ && key_ && intermediate);
+  ASSERT_TRUE(X509_set1_signature_value(intermediate.get(), nullptr, 0));
+
+  ASSERT_TRUE(UseCertAndKey(server_ctx_.get()));
+  ASSERT_TRUE(X509_STORE_add_cert(SSL_CTX_get_cert_store(server_ctx_.get()),
+                                  intermediate.get()));
+  SSL_CTX_clear_mode(server_ctx_.get(), SSL_MODE_NO_AUTO_CHAIN);
+  ASSERT_TRUE(Connect());
+  EXPECT_TRUE(
+      ChainsEqual(SSL_get_peer_full_cert_chain(client_.get()), {cert_.get()}));
+}
+
 TEST_P(SSLVersionTest, AutoChain) {
   cert_ = GetChainTestCertificate();
   ASSERT_TRUE(cert_);

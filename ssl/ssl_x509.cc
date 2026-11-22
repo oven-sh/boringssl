@@ -333,6 +333,21 @@ static bool ssl_crypto_x509_ssl_auto_chain_if_needed(SSL_HANDSHAKE *hs) {
   }
   X509_free(sk_X509_shift(chain.get()));
 
+  // A certificate without a signature only says what is trusted here. See RFC
+  // 9925.
+  size_t num_signed = 0;
+  for (const X509 *cert : chain.get()) {
+    const ASN1_BIT_STRING *signature;
+    X509_get0_signature(&signature, nullptr, cert);
+    if (signature->length == 0) {
+      break;
+    }
+    num_signed++;
+  }
+  while (sk_X509_num(chain.get()) > num_signed) {
+    X509_free(sk_X509_pop(chain.get()));
+  }
+
   return SSL_set1_chain(ssl, chain.get());
 }
 

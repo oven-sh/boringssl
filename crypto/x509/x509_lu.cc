@@ -367,9 +367,11 @@ int X509_STORE_CTX_get_by_subject(X509_STORE_CTX *vs, int type,
 }
 
 int X509_STORE_add_cert(X509_STORE *ctx, const X509 *x) {
-  if (x != nullptr) {
-    // The lazy certificates were added first.
-    FromOpaque(ctx)->MaterializeLazy(X509_LU_X509, X509_get_subject_name(x), x);
+  // The lazy certificates were added first.
+  if (x != nullptr && !FromOpaque(ctx)->MaterializeLazy(
+                          X509_LU_X509, X509_get_subject_name(x), x)) {
+    OPENSSL_PUT_ERROR(CRYPTO, ERR_R_MALLOC_FAILURE);
+    return 0;
   }
   return x509_store_add(FromOpaque(ctx), x, /*is_crl=*/0);
 }
@@ -644,11 +646,12 @@ bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
   return true;
 }
 
-void X509Store::MaterializeLazy(int type, const X509_NAME *name,
+bool X509Store::MaterializeLazy(int type, const X509_NAME *name,
                                 const X509 *parsed) {
   if (type != X509_LU_X509) {
-    return;
+    return true;
   }
+  bool ok = true;
   // Snapshot the sets so `X509_STORE_add_lazy_cert_set` may run concurrently
   // with lookups, as `X509_STORE_add_cert` may. `AddMatchesToStore` takes
   // `objs_lock` for writing, so it cannot run under the read lock.
@@ -665,6 +668,7 @@ void X509Store::MaterializeLazy(int type, const X509_NAME *name,
         inline_sets[i] = std::move(ref);
       } else if (!more_sets.Push(std::move(ref))) {
         num = i;
+        ok = false;
         break;
       }
     }
@@ -675,8 +679,10 @@ void X509Store::MaterializeLazy(int type, const X509_NAME *name,
     if (!set->AddMatchesToStore(this, name, parsed)) {
       // The anchors are treated as absent, as when a lookup method fails.
       ERR_clear_error();
+      ok = false;
     }
   }
+  return ok;
 }
 
 X509_LAZY_CERT_SET *X509_LAZY_CERT_SET_new(CRYPTO_BUFFER *const *certs,

@@ -422,8 +422,9 @@ class X509Store : public x509_store_st, public RefCounted<X509Store> {
   X509Store();
 
   // MaterializeLazy adds any not-yet-parsed lazily trusted certificates with
-  // subject `name` to `objs`. It must be called without `objs_lock` held.
-  void MaterializeLazy(int type, const X509_NAME *name,
+  // subject `name` to `objs`. It must be called without `objs_lock` held. It
+  // returns false if memory ran out before all of them were added.
+  bool MaterializeLazy(int type, const X509_NAME *name,
                        const X509 *parsed = nullptr);
 
   // The following is a cache of trusted certs

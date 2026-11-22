@@ -569,11 +569,12 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
     return 0;
   }
 
-  char buf[256];  // 254 characters + newline + \0.
-  buf[254] = '\0';
-  // Invariant: buf[254] < ' '. It may get overwritten by '\n' or '\0' only.
+  // 255 characters + newline + \0. Lines are split where OpenSSL splits them.
+  char buf[257];
+  buf[255] = '\0';
+  // Invariant: buf[255] < ' '. It may get overwritten by '\n' or '\0' only.
   for (bool first = true;; first = false) {
-    int i = BIO_gets(bp, buf, 254);
+    int i = BIO_gets(bp, buf, 255);
     if (i <= 0) {
       OPENSSL_PUT_ERROR(PEM, PEM_R_NO_START_LINE);
       return 0;
@@ -625,14 +626,14 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   auto read_until_end = [&](BUF_MEM *out, size_t &out_len,
                             bool stop_at_newline) {
     bool partial = false;  // Whether `buf` was too small for the line.
-    // Invariant: buf[254] < ' '. It may get overwritten by '\n' or '\0' only.
+    // Invariant: buf[255] < ' '. It may get overwritten by '\n' or '\0' only.
     for (;;) {
-      int i = BIO_gets(bp, buf, 254);
+      int i = BIO_gets(bp, buf, 255);
       if (i <= 0) {
         break;
       }
       const bool was_partial =
-          std::exchange(partial, i == 253 && buf[252] != '\n');
+          std::exchange(partial, i == 254 && buf[253] != '\n');
       while ((i >= 0) && (buf[i] <= ' ')) {
         i--;
       }
@@ -650,6 +651,8 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       if (strncmp(buf, "-----END ", 9) == 0) {
         return false;
       }
+      // As in OpenSSL, what follows a NUL is dropped.
+      i = strlen(buf);
       if (static_cast<size_t>(i) > SIZE_MAX - hl - 1) {
         OPENSSL_PUT_ERROR(PEM, ERR_R_OVERFLOW);
         failed = true;
@@ -693,6 +696,12 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       (strncmp(&(buf[9 + name_len]), "-----\n", 6) != 0)) {
     OPENSSL_PUT_ERROR(PEM, PEM_R_BAD_END_LINE);
     return 0;
+  }
+
+  // As in OpenSSL, a dash ends the data. This reads a block that has lost its
+  // END line up to the next BEGIN line.
+  if (const void *dash = OPENSSL_memchr(dataB->data, '-', bl)) {
+    bl = static_cast<const char *>(dash) - dataB->data;
   }
 
   int decoded_length;

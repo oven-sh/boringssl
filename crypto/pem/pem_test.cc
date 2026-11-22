@@ -522,6 +522,15 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
        PEM_R_NO_START_LINE},
       {"OnlyByteOrderMark", "\xef\xbb\xbf",  //
        PEM_R_NO_START_LINE},
+      {"MissingEndOK",
+       "-----BEGIN TEST-----\nYmFzZTY0\n"
+       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
+       0, "TEST", "", "base64"},
+      {"DashWithinQuad",  //
+       "-----BEGIN TEST-----\nYmFzZT-Y0\n-----END TEST-----",
+       PEM_R_BAD_BASE64_DECODE},
+      {"DashFirst",  //
+       "-----BEGIN TEST-----\n-YmFzZTY0\n-----END TEST-----", PEM_R_NO_DATA},
       {"Empty", "",  //
        PEM_R_NO_START_LINE},
       {"NoStart",           //
@@ -595,6 +604,38 @@ TEST(PEMTest, LongLines) {
       }
     }
   }
+}
+
+TEST(PEMTest, LongLineBeforeBegin) {
+  for (size_t junk = 1; junk < 600; junk++) {
+    SCOPED_TRACE(junk);
+    const std::string pem = std::string(junk, 'x') +
+                            "-----BEGIN TEST-----\nAAAA\n-----END TEST-----";
+    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(pem.data(), pem.size()));
+    char *name = nullptr, *header = nullptr;
+    uint8_t *data = nullptr;
+    long len;
+    EXPECT_EQ(junk % 254 == 0,
+              PEM_read_bio(bio.get(), &name, &header, &data, &len));
+    OPENSSL_free(name);
+    OPENSSL_free(header);
+    OPENSSL_free(data);
+  }
+}
+
+TEST(PEMTest, NULEndsLine) {
+  static const char kPEM[] =
+      "-----BEGIN TEST-----\n\0junk\n\nYmFz\0!\nZTY0\n-----END TEST-----";
+  bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(kPEM, sizeof(kPEM) - 1));
+  char *name, *header;
+  uint8_t *data;
+  long len;
+  ASSERT_TRUE(PEM_read_bio(bio.get(), &name, &header, &data, &len));
+  EXPECT_EQ(Bytes(""), Bytes(header));
+  EXPECT_EQ(Bytes("base64"), Bytes(data, len));
+  OPENSSL_free(name);
+  OPENSSL_free(header);
+  OPENSSL_free(data);
 }
 
 // The placeholder ANY PRIVATE KEY value is not a valid key type.
