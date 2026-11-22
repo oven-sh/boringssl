@@ -516,7 +516,9 @@ STACK_OF(X509_CRL) *X509_STORE_CTX_get1_crls(X509_STORE_CTX *ctx,
   return sk;
 }
 
-bool bssl::x509_take_malloc_failure() {
+// take_malloc_failure clears the error queue and returns whether it said that
+// memory ran out.
+static bool take_malloc_failure() {
   bool found = false;
   while (uint32_t err = ERR_get_error()) {
     found |= ERR_equals(err, ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
@@ -611,7 +613,7 @@ X509 *X509LazyCertSet::Get(size_t idx) {
     return nullptr;
   }
   // The extensions would stay invalid after running out of memory.
-  if (!x509v3_cache_extensions(parsed.get()) && x509_take_malloc_failure()) {
+  if (!x509v3_cache_extensions(parsed.get()) && take_malloc_failure()) {
     OPENSSL_PUT_ERROR(CRYPTO, ERR_R_MALLOC_FAILURE);
     return nullptr;
   }
@@ -655,7 +657,7 @@ bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
     const X509 *x509 = is_parsed ? parsed : Get(idx);
     if (x509 == nullptr) {
       // Only skip a certificate for what is wrong with it.
-      if (x509_take_malloc_failure()) {
+      if (take_malloc_failure()) {
         return false;
       }
       continue;

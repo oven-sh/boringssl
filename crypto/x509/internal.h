@@ -85,16 +85,11 @@ class X509NameEntry : public X509_name_entry_st {
 DECLARE_ASN1_ITEM(X509_NAME_ENTRY)
 
 // x509_consider_issuer chooses an issuer for `x` as OpenSSL does, except for
-// detours. It returns true, with `candidate` in `*best`, if `candidate`
-// matches, is in its validity period and has a key. Otherwise it returns false
-// and keeps the match that expires last. `trusted` is whether `candidate` is
-// from the trust store.
+// detours. It returns true, with `candidate` in `*best`, if `candidate` matches
+// and is in its validity period. Otherwise it returns false and keeps the match
+// that expires last. `trusted` is whether `candidate` is from the trust store.
 bool x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x, X509 *candidate,
                           bool trusted, X509 **best);
-
-// x509_take_malloc_failure clears the error queue and returns whether it said
-// that memory ran out.
-bool x509_take_malloc_failure();
 
 // x509_get1_trusted_issuer behaves like `X509_STORE_CTX_get1_issuer`, but may
 // find nothing on a detour.
@@ -575,9 +570,8 @@ int X509_policy_check(const STACK_OF(X509) *certs,
                       int *out_error_depth);
 
 // x509_likely_issued behaves like `X509_check_issued`, but does not check the
-// key usage of `issuer`. If `allow_invalid`, its extensions may be invalid.
-int x509_likely_issued(const X509 *issuer, const X509 *subject,
-                       bool allow_invalid = false);
+// key usage of `issuer`.
+int x509_likely_issued(const X509 *issuer, const X509 *subject);
 
 // x509_check_issued_with_callback calls `x509_likely_issued`, but allows the
 // verify callback to override the result. It returns one on success and zero on
@@ -587,7 +581,7 @@ int x509_likely_issued(const X509 *issuer, const X509 *subject,
 // callback only runs with `X509_V_FLAG_CB_ISSUER_CHECK`, which is only used by
 // one internal project and rust-openssl, who use it by mistake.
 int x509_check_issued_with_callback(X509_STORE_CTX *ctx, const X509 *x,
-                                    const X509 *issuer, bool allow_invalid);
+                                    const X509 *issuer);
 
 // x509v3_bytes_to_hex encodes `len` bytes from `in` to hex and returns a
 // newly-allocated NUL-terminated string containing the result, or NULL on
