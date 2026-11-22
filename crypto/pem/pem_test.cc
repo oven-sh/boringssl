@@ -15,6 +15,7 @@
 #include <openssl/pem.h>
 
 #include <functional>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -506,6 +507,21 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
       {"NoHeadersNoBlankLineButRubbishOK",
        "a\n-----BEGIN ZEST-----\nYmFzZTY0\n-----END ZEST-----\nb",  //
        0, "ZEST", "", "base64"},
+      {"ByteOrderMarkOK",
+       "\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",  //
+       0, "TEST", "", "base64"},
+      {"ByteOrderMarkAndRubbishOK",
+       "\xef\xbb\xbf\n-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",  //
+       0, "TEST", "", "base64"},
+      {"ByteOrderMarkAfterRubbish",
+       "a\n\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",
+       PEM_R_NO_START_LINE},
+      {"TwoByteOrderMarks",
+       "\xef\xbb\xbf\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END "
+       "TEST-----",
+       PEM_R_NO_START_LINE},
+      {"OnlyByteOrderMark", "\xef\xbb\xbf",  //
+       PEM_R_NO_START_LINE},
       {"Empty", "",  //
        PEM_R_NO_START_LINE},
       {"NoStart",           //
@@ -552,6 +568,31 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
       EXPECT_NE(t.err_reason, 0);
       EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_PEM, t.err_reason));
       ERR_clear_error();
+    }
+  }
+}
+
+TEST(PEMTest, LongLines) {
+  const std::string kBody(1024, 'A');
+  for (const char *eol : {"\n", "\r\n", "  \r\n"}) {
+    for (size_t split = 1; split < kBody.size(); split++) {
+      SCOPED_TRACE(split);
+      const std::string first = kBody.substr(0, split) + eol;
+      const std::string rest = kBody.substr(split) + eol + "-----END TEST-----";
+      for (bool has_header : {false, true}) {
+        const std::string pem = "-----BEGIN TEST-----\n" + first +
+                                (has_header ? eol + first : "") + rest;
+        bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(pem.data(), pem.size()));
+        char *name, *header;
+        uint8_t *data;
+        long len;
+        ASSERT_TRUE(PEM_read_bio(bio.get(), &name, &header, &data, &len));
+        EXPECT_EQ(has_header, header[0] != '\0');
+        EXPECT_EQ(768, len);
+        OPENSSL_free(name);
+        OPENSSL_free(header);
+        OPENSSL_free(data);
+      }
     }
   }
 }

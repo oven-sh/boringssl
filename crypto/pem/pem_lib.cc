@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include <string_view>
+#include <utility>
 
 #include <openssl/asn1.h>
 #include <openssl/base.h>
@@ -571,11 +572,17 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   char buf[256];  // 254 characters + newline + \0.
   buf[254] = '\0';
   // Invariant: buf[254] < ' '. It may get overwritten by '\n' or '\0' only.
-  for (;;) {
+  for (bool first = true;; first = false) {
     int i = BIO_gets(bp, buf, 254);
     if (i <= 0) {
       OPENSSL_PUT_ERROR(PEM, PEM_R_NO_START_LINE);
       return 0;
+    }
+
+    // As in OpenSSL, skip a UTF-8 byte order mark.
+    if (first && i > 3 && strncmp(buf, "\xef\xbb\xbf", 3) == 0) {
+      i -= 3;
+      OPENSSL_memmove(buf, buf + 3, i + 1);
     }
 
     while ((i >= 0) && (buf[i] <= ' ')) {
@@ -617,12 +624,15 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
   bool failed = false;  // Set to true (and error put into queue) on failure.
   auto read_until_end = [&](BUF_MEM *out, size_t &out_len,
                             bool stop_at_newline) {
+    bool partial = false;  // Whether `buf` was too small for the line.
     // Invariant: buf[254] < ' '. It may get overwritten by '\n' or '\0' only.
     for (;;) {
       int i = BIO_gets(bp, buf, 254);
       if (i <= 0) {
         break;
       }
+      const bool was_partial =
+          std::exchange(partial, i == 253 && buf[252] != '\n');
       while ((i >= 0) && (buf[i] <= ' ')) {
         i--;
       }
@@ -630,6 +640,10 @@ int bssl::PEM_read_bio_inner(BIO *bp, UniquePtr<char> *name,
       buf[++i] = '\0';
 
       if (stop_at_newline && buf[0] == '\n') {
+        if (was_partial) {
+          // As in OpenSSL, this ends that line and is not an empty one.
+          continue;
+        }
         // End of header, start of body.
         return true;
       }

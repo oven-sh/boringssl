@@ -113,6 +113,7 @@ class ByDirEntry {
 
 struct ByDir {
   Vector<UniquePtr<ByDirEntry>> dirs;
+  X509_LOOKUP_load_cb load = nullptr;
 };
 
 int new_dir(X509_LOOKUP *lu) {
@@ -247,9 +248,11 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
           break;
         }
         // As in OpenSSL, a file that does not load does not hide the next ones.
-        if ((type == X509_LU_X509
-                 ? X509_load_cert_file(xl, path, ent->dir_type())
-                 : X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
+        if (ctx->load != nullptr) {
+          ctx->load(xl->store_ctx, path, type);
+        } else if ((type == X509_LU_X509
+                        ? X509_load_cert_file(xl, path, ent->dir_type())
+                        : X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
           // Don't expose the lower level error, All of these boil down to "we
           // could not find a CA or CRL".
           ERR_clear_error();
@@ -310,4 +313,10 @@ const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir() {
 
 int X509_LOOKUP_add_dir(X509_LOOKUP *lookup, const char *name, int type) {
   return X509_LOOKUP_ctrl(lookup, X509_L_ADD_DIR, name, type, nullptr);
+}
+
+void X509_LOOKUP_hash_dir_set_load_cb(X509_LOOKUP *lookup,
+                                      X509_LOOKUP_load_cb load) {
+  BSSL_CHECK(lookup->method == &bssl::x509_dir_lookup);
+  reinterpret_cast<bssl::ByDir *>(lookup->method_data)->load = load;
 }

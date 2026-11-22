@@ -19,6 +19,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -14493,6 +14494,39 @@ TEST_P(X509IssuerSelectionTest, NetscapeCertType) {
     EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
               Errors(cert("Root", "Leaf", "sslCA"), {root_}, {}, 0, purpose));
   }
+
+  // It is not held to DER.
+  const std::pair<int, int> kInvalid = {
+      X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+      X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE};
+  const struct {
+    const char *type;
+    std::pair<int, int> errors;
+  } kTests[] = {
+      {"DER:03020641", Both(X509_V_OK)},
+      {"DER:0381020640", Both(X509_V_OK)},
+      {"DER:0302064000", Both(X509_V_OK)},
+      {"DER:0303074000", Both(X509_V_OK)},
+      {"DER:030207c0", Both(X509_V_ERR_INVALID_PURPOSE)},
+      {"DER:030100", Both(X509_V_ERR_INVALID_PURPOSE)},
+      {"DER:030107", Both(X509_V_ERR_INVALID_PURPOSE)},
+      {"DER:0300", kInvalid},
+      {"DER:03020840", kInvalid},
+      {"DER:030306", kInvalid},
+      {"DER:04020640", kInvalid},
+      // OpenSSL misparses these. See
+      // https://github.com/openssl/openssl/issues/12810.
+      {"DER:230403020640", kInvalid},
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(t.type);
+    EXPECT_EQ(t.errors, Errors(cert("Root", "Leaf", t.type), {root_}, {}, 0,
+                               X509_PURPOSE_SSL_SERVER));
+  }
+  EXPECT_EQ(kInvalid, Errors(Custom("Root", "Leaf",
+                                    {{NID_netscape_cert_type, "server"},
+                                     {NID_netscape_cert_type, "server"}}),
+                             {root_}));
 }
 
 TEST_P(X509IssuerSelectionTest, Extensions) {
@@ -14716,6 +14750,51 @@ TEST_P(X509IssuerSelectionTest, DirHashSkipsWhatDoesNotLoad) {
   ASSERT_TRUE(
       X509_LOOKUP_add_dir(lookup, dir.path().c_str(), X509_FILETYPE_ASN1));
   EXPECT_EQ(X509_V_OK, VerifyWithStore(leaf_, store.get(), {}));
+}
+
+TEST_P(X509IssuerSelectionTest, DirHashLoadCallback) {
+  if (SkipTempFileTests()) {
+    GTEST_SKIP();
+  }
+  char hash[9];
+  snprintf(hash, sizeof(hash), "%08x",
+           X509_NAME_hash(X509_get_subject_name(root_)));
+  TemporaryDirectory dir;
+  ASSERT_TRUE(dir.Init());
+  for (const char *suffix : {".0", ".1", ".3", ".r0"}) {
+    ASSERT_TRUE(dir.AddFile(std::string(hash) + suffix, ""));
+  }
+
+  static X509 *cert;
+  static X509_CRL *crl;
+  static std::set<std::pair<std::string, int>> *loaded;
+  UniquePtr<X509_CRL> root_crl = MakeTestCRL("Root", -1, 1);
+  ASSERT_TRUE(root_crl);
+  ASSERT_TRUE(X509_CRL_sign(root_crl.get(), key_.get(), EVP_sha256()));
+  std::set<std::pair<std::string, int>> files;
+  cert = root_;
+  crl = root_crl.get();
+  loaded = &files;
+
+  UniquePtr<X509_STORE> store(X509_STORE_new());
+  X509_LOOKUP *lookup =
+      X509_STORE_add_lookup(store.get(), X509_LOOKUP_hash_dir());
+  ASSERT_TRUE(lookup);
+  ASSERT_TRUE(
+      X509_LOOKUP_add_dir(lookup, dir.path().c_str(), X509_FILETYPE_PEM));
+  X509_LOOKUP_hash_dir_set_load_cb(
+      lookup, [](X509_STORE *to, const char *path, int type) {
+        loaded->emplace(strrchr(path, '.'), type);
+        EXPECT_TRUE(type == X509_LU_X509 ? X509_STORE_add_cert(to, cert)
+                                         : X509_STORE_add_crl(to, crl));
+      });
+  ASSERT_TRUE(X509_STORE_set_flags(store.get(), X509_V_FLAG_CRL_CHECK));
+  EXPECT_EQ(X509_V_OK, VerifyWithStore(leaf_, store.get(), {}));
+  EXPECT_EQ(files, (std::set<std::pair<std::string, int>>{
+                       {".0", X509_LU_X509},
+                       {".1", X509_LU_X509},
+                       {".r0", X509_LU_CRL},
+                   }));
 }
 
 // Populating a store must not re-sort on every insertion, but duplicates must

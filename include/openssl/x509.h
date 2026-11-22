@@ -3735,6 +3735,18 @@ OPENSSL_EXPORT int X509_LOOKUP_load_file(X509_LOOKUP *lookup, const char *file,
 OPENSSL_EXPORT int X509_LOOKUP_add_dir(X509_LOOKUP *lookup, const char *path,
                                        int type);
 
+// An X509_LOOKUP_load_cb adds what it can read of the file at `path` to
+// `store`: certificates if `type` is `X509_LU_X509`, and CRLs if it is
+// `X509_LU_CRL`. It may be called on several threads at once.
+typedef void (*X509_LOOKUP_load_cb)(X509_STORE *store, const char *path,
+                                    int type);
+
+// X509_LOOKUP_hash_dir_set_load_cb configures `lookup`, which must have been
+// constructed with `X509_LOOKUP_hash_dir`, to call `load` for each file that it
+// finds, in place of `X509_load_cert_file` and `X509_load_crl_file`.
+OPENSSL_EXPORT void X509_LOOKUP_hash_dir_set_load_cb(X509_LOOKUP *lookup,
+                                                     X509_LOOKUP_load_cb load);
+
 // X509_L_* are commands for `X509_LOOKUP_ctrl`.
 #define X509_L_FILE_LOAD 1
 #define X509_L_ADD_DIR 2
