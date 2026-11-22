@@ -44,6 +44,7 @@ void EVP_CIPHER_do_all_sorted(void (*callback)(const EVP_CIPHER *cipher,
   callback(EVP_bf_cbc(), "bf-cbc", nullptr, arg);
   callback(EVP_bf_cfb(), "bf-cfb", nullptr, arg);
   callback(EVP_bf_ecb(), "bf-ecb", nullptr, arg);
+  callback(EVP_chacha20_poly1305(), "chacha20-poly1305", nullptr, arg);
   callback(EVP_des_cbc(), "des-cbc", nullptr, arg);
   callback(EVP_des_ecb(), "des-ecb", nullptr, arg);
   callback(EVP_des_ede(), "des-ede", nullptr, arg);
