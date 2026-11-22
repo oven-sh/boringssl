@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <utility>
 
 #include <limits.h>
 #include <string.h>
@@ -72,16 +73,9 @@ struct CRLInfo {
 
 int null_callback(int ok, X509_STORE_CTX *e) { return ok; }
 
-// cert_self_signed checks if `x` is self-signed. If `x` is valid, it returns
-// one and sets `*out_is_self_signed` to the result. If `x` is invalid, it
-// returns zero.
-int cert_self_signed(X509 *x, int *out_is_self_signed) {
-  if (!x509v3_cache_extensions(x)) {
-    return 0;
-  }
-  auto *impl = FromOpaque(x);
-  *out_is_self_signed = (impl->ex_flags & EXFLAG_SS) != 0;
-  return 1;
+// cert_self_signed returns whether `x` is valid and self-signed.
+bool cert_self_signed(const X509 *x) {
+  return x509v3_cache_extensions(x) && (FromOpaque(x)->ex_flags & EXFLAG_SS);
 }
 
 int call_verify_cb(int ok, X509_STORE_CTX *ctx) {
@@ -100,7 +94,31 @@ int call_verify_cb(int ok, X509_STORE_CTX *ctx) {
 int call_verify_cb_at_depth(int ok, X509_STORE_CTX *ctx, int depth) {
   ctx->current_cert = sk_X509_value(ctx->chain, depth);
   ctx->error_depth = depth;
+  if (!ok) {
+    if (ctx->is_detour) {
+      return 0;
+    }
+    ctx->no_detour = true;
+  }
   return call_verify_cb(ok, ctx);
+}
+
+// report_extra_error reports an error that OpenSSL does not look for. If the
+// callback goes on, it does not replace an error that OpenSSL reports.
+int report_extra_error(X509_STORE_CTX *ctx, int error, int depth) {
+  const int earlier = std::exchange(ctx->error, error);
+  if (!call_verify_cb_at_depth(0, ctx, depth)) {
+    return 0;
+  }
+  if (earlier != X509_V_OK) {
+    ctx->error = earlier;
+  }
+  return 1;
+}
+
+// may_sign_certs returns whether the key usage of `x` lets it be an issuer.
+bool may_sign_certs(const X509 *x) {
+  return X509_get_key_usage(x) & X509v3_KU_KEY_CERT_SIGN;
 }
 
 static bool sig_nid_allowed(const X509_STORE_CTX *ctx, int sig_nid) {
@@ -121,8 +139,7 @@ UniquePtr<X509> lookup_cert_match(X509_STORE_CTX *ctx, const X509 *x) {
   if (ctx->trusted_stack != nullptr) {
     // Ignore the store and use the configured stack instead.
     for (X509 *found : ctx->trusted_stack) {
-      if (X509_cmp(found, x) == 0 &&
-          x509_verify_trusted_cert_in_time(ctx, found)) {
+      if (X509_cmp(found, x) == 0) {
         return UpRef(found);
       }
     }
@@ -137,25 +154,33 @@ UniquePtr<X509> lookup_cert_match(X509_STORE_CTX *ctx, const X509 *x) {
   }
   // Look for exact match
   for (X509 *found : certs.get()) {
-    if (X509_cmp(found, x) == 0 &&
-        x509_verify_trusted_cert_in_time(ctx, found)) {
+    if (X509_cmp(found, x) == 0) {
       return UpRef(found);
     }
   }
   return nullptr;
 }
 
+bool chain_contains(const X509_STORE_CTX *ctx, const X509 *x) {
+  for (const X509 *in_chain : ctx->chain) {
+    if (X509_cmp(in_chain, x) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Given a STACK_OF(X509) find the issuer of cert (if any)
 X509 *find_issuer(X509_STORE_CTX *ctx, const STACK_OF(X509) *sk,
                   const X509 *x) {
+  const bool trusted = sk == ctx->trusted_stack;
+  X509 *best = nullptr;
   for (X509 *issuer : sk) {
-    if (x509_check_issued_with_callback(ctx, x, issuer) &&
-        (sk != ctx->trusted_stack ||
-         x509_verify_trusted_cert_in_time(ctx, issuer))) {
-      return issuer;
+    if (x509_consider_issuer(ctx, x, issuer, trusted, &best)) {
+      break;
     }
   }
-  return nullptr;
+  return best;
 }
 
 UniquePtr<X509> get_trusted_issuer(X509_STORE_CTX *ctx, const X509 *x) {
@@ -165,18 +190,11 @@ UniquePtr<X509> get_trusted_issuer(X509_STORE_CTX *ctx, const X509 *x) {
   }
 
   X509 *issuer = nullptr;
-  if (!X509_STORE_CTX_get1_issuer(&issuer, ctx, x)) {
+  if (!x509_get1_trusted_issuer(&issuer, ctx, x)) {
     return nullptr;
   }
-  // `X509_STORE_CTX_get1_issuer` passes ownership of `issuer`.
+  // `x509_get1_trusted_issuer` passes ownership of `issuer`.
   return UniquePtr<X509>(issuer);
-}
-
-// untrusted_chain_error picks the error for a chain that reached no usable
-// trust anchor: if one was passed over only because it is outside its validity
-// period, say that rather than that no issuer exists.
-int untrusted_chain_error(const X509_STORE_CTX *ctx, int err) {
-  return ctx->ignored_anchor_error != 0 ? ctx->ignored_anchor_error : err;
 }
 
 // check_lone_untrusted_leaf runs once the verify callback has suppressed the
@@ -186,19 +204,31 @@ int untrusted_chain_error(const X509_STORE_CTX *ctx, int err) {
 int check_lone_untrusted_leaf(X509_STORE_CTX *ctx) {
   if (sk_X509_num(ctx->chain) != 1 ||
       (ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN) ||
-      X509_check_issued(ctx->cert, ctx->cert) == X509_V_OK) {
+      x509_likely_issued(ctx->cert, ctx->cert) == X509_V_OK) {
     return 1;
   }
-  ctx->error =
-      untrusted_chain_error(ctx, X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE);
+  ctx->error = X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE;
   return call_verify_cb_at_depth(0, ctx, /*depth=*/0);
 }
 
+// purpose_ok returns whether `x` may be used for the purpose of `ctx`. As in
+// OpenSSL, the trust settings of a certificate from the store come first.
+bool purpose_ok(const X509_STORE_CTX *ctx, const X509 *x, int must_be_ca,
+                bool from_store) {
+  int trust = from_store ? X509_check_trust(x, ctx->param->trust,
+                                            X509_TRUST_NO_SS_COMPAT)
+                         : X509_TRUST_UNTRUSTED;
+  return trust == X509_TRUST_TRUSTED ||
+         (trust == X509_TRUST_UNTRUSTED &&
+          X509_check_purpose(x, ctx->param->purpose, must_be_ca) == 1);
+}
+
 // Check a certificate chains extensions for consistency with the supplied
-// purpose
-int check_chain_extensions(X509_STORE_CTX *ctx, bool trusted) {
+// purpose. The certificates from the store are those after the first
+// `num_untrusted`, and the first one if `target_from_store`.
+int check_chain_extensions(X509_STORE_CTX *ctx, int num_untrusted,
+                           bool target_from_store) {
   int plen = 0;
-  int purpose = ctx->param->purpose;
   int num = static_cast<int>(sk_X509_num(ctx->chain));
   for (int i = 0; i < num; i++) {
     X509Impl *x = FromOpaque(sk_X509_value(ctx->chain, i));
@@ -211,21 +241,19 @@ int check_chain_extensions(X509_STORE_CTX *ctx, bool trusted) {
     }
 
     int must_be_ca = i > 0;
-    // As in OpenSSL, keyCertSign alone makes a CA of a trust anchor that has no
-    // basicConstraints extension.
-    const bool is_key_usage_ca =
-        must_be_ca && trusted && i == num - 1 &&
-        (x->ex_flags & (EXFLAG_BCONS | EXFLAG_KUSAGE)) == EXFLAG_KUSAGE &&
-        (x->ex_kusage & X509v3_KU_KEY_CERT_SIGN);
-    if (must_be_ca && !is_key_usage_ca && !X509_check_ca(x)) {
+    // As in OpenSSL, the last certificate can be a CA without basicConstraints.
+    const int ca = X509_check_ca(x);
+    if (must_be_ca && (ca == 0 || (ca != 1 && i < num - 1))) {
       ctx->error = X509_V_ERR_INVALID_CA;
       if (!call_verify_cb_at_depth(0, ctx, i)) {
         return 0;
       }
     }
+    // `check_target` reports invalid extensions, which no issuer has.
     if (ctx->param->purpose > 0 &&
-        (is_key_usage_ca ? x509_check_purpose_of_ca(x, purpose)
-                         : X509_check_purpose(x, purpose, must_be_ca)) != 1) {
+        (must_be_ca || !(x->ex_flags & EXFLAG_INVALID)) &&
+        !purpose_ok(ctx, x, must_be_ca,
+                    i == 0 ? target_from_store : i >= num_untrusted)) {
       ctx->error = X509_V_ERR_INVALID_PURPOSE;
       if (!call_verify_cb_at_depth(0, ctx, i)) {
         return 0;
@@ -396,7 +424,7 @@ int check_id(X509_STORE_CTX *ctx) {
   return 1;
 }
 
-int check_trust(X509_STORE_CTX *ctx, bool allow_partial_chain) {
+int check_trust(X509_STORE_CTX *ctx, bool *out_rejected) {
   // If this function is called, `ctx->chain` must end with some certificate
   // from the store. Determine if we should treat it as a trust anchor in this
   // context.
@@ -408,14 +436,15 @@ int check_trust(X509_STORE_CTX *ctx, bool allow_partial_chain) {
   if (trust == X509_TRUST_REJECTED) {
     // Notify callback and reject if not overridden.
     ctx->error = X509_V_ERR_CERT_REJECTED;
-    if (!call_verify_cb_at_depth(0, ctx, sk_X509_num(ctx->chain) - 1)) {
-      return X509_TRUST_REJECTED;
-    }
+    *out_rejected = true;
+    return call_verify_cb_at_depth(0, ctx, sk_X509_num(ctx->chain) - 1)
+               ? X509_TRUST_UNTRUSTED
+               : X509_TRUST_REJECTED;
   }
 
   // If we accept partial chains, every certificate in the store is a trust
   // anchor.
-  if (allow_partial_chain && (ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN)) {
+  if (ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN) {
     return X509_TRUST_TRUSTED;
   }
 
@@ -537,13 +566,9 @@ int check_blocklist(X509_STORE_CTX *ctx) {
 int crl_akid_check(X509_STORE_CTX *ctx, const X509_CRL *crl, X509 **out_issuer,
                    int *out_crl_score, int depth) {
   const X509_NAME *crl_name = X509_CRL_get_issuer(crl);
-  // The last certificate has no issuer in the path, unless it is its own.
+  // The last certificate stands in for its issuer. See `check_crl`.
   if (depth + 1 < static_cast<int>(sk_X509_num(ctx->chain))) {
     depth++;
-  } else if (X509_NAME_cmp(
-                 X509_get_subject_name(sk_X509_value(ctx->chain, depth)),
-                 crl_name)) {
-    return 0;
   }
 
   X509 *crl_issuer = sk_X509_value(ctx->chain, depth);
@@ -689,6 +714,11 @@ int get_crl_score(X509_STORE_CTX *ctx, X509 **out_issuer, const X509_CRL *crl,
     }
   }
 
+  // Nor are delta CRLs, even if they forget to be critical.
+  if (X509_CRL_get_ext_by_NID(crl, NID_delta_crl, -1) >= 0) {
+    return 0;
+  }
+
   // We do not support indirect CRLs, so the issuer names must match.
   if (X509_NAME_cmp(X509_get_issuer_name(x), X509_CRL_get_issuer(crl))) {
     return 0;
@@ -806,8 +836,11 @@ int check_crl(X509_STORE_CTX *ctx, const CRLInfo &crl_info, int depth) {
       return 0;
     }
   } else {
-    // Verify CRL signature
-    if (!sig_nid_allowed(ctx, X509_CRL_get_signature_nid(crl)) ||
+    // Verify CRL signature. Unlike in OpenSSL, the last certificate cannot sign
+    // in the name of its issuer.
+    if (X509_NAME_cmp(X509_get_subject_name(issuer),
+                      X509_CRL_get_issuer(crl)) != 0 ||
+        !sig_nid_allowed(ctx, X509_CRL_get_signature_nid(crl)) ||
         X509_CRL_verify(crl, ikey) <= 0) {
       ctx->error = X509_V_ERR_CRL_SIGNATURE_FAILURE;
       if (!call_verify_cb_at_depth(0, ctx, depth)) {
@@ -857,6 +890,10 @@ int check_revocation_for_cert(X509_STORE_CTX *ctx, int depth) {
     return 0;
   }
 
+  if (!(crl_info.score & CRL_SCORE_SCOPE)) {
+    ctx->error = X509_V_ERR_UNABLE_TO_GET_CRL;
+    return call_verify_cb_at_depth(0, ctx, depth);
+  }
   return 1;
 }
 
@@ -878,10 +915,31 @@ int check_revocation(X509_STORE_CTX *ctx) {
 }
 
 int check_policy(X509_STORE_CTX *ctx) {
+  // OpenSSL only looks at policies on request, and so overlooks the constraints
+  // that a CA puts on the certificates it issues. Without those, no policy is
+  // required.
+  const bool requested =
+      ctx->param->policies != nullptr ||
+      (ctx->param->flags &
+       (X509_V_FLAG_POLICY_CHECK | X509_V_FLAG_EXPLICIT_POLICY |
+        X509_V_FLAG_INHIBIT_ANY | X509_V_FLAG_INHIBIT_MAP));
+  bool constrained = false;
+  for (size_t i = 0; i + 1 < sk_X509_num(ctx->chain); i++) {
+    constrained |= X509_get_ext_by_NID(sk_X509_value(ctx->chain, i),
+                                       NID_policy_constraints, -1) >= 0;
+  }
+  if (!requested && !constrained) {
+    return 1;
+  }
+
   int error_depth;
-  int ret = X509_policy_check(ctx->chain, ctx->param->policies,
-                              ctx->param->flags, &error_depth);
+  int ret =
+      X509_policy_check(ctx->chain, ctx->param->policies, ctx->param->flags,
+                        /*skip_trust_anchor=*/!requested, &error_depth);
   if (ret != X509_V_OK) {
+    if (!requested && ret != X509_V_ERR_OUT_OF_MEM) {
+      return report_extra_error(ctx, ret, error_depth);
+    }
     ctx->error = ret;
     if (ret == X509_V_ERR_OUT_OF_MEM) {
       return 0;
@@ -890,6 +948,20 @@ int check_policy(X509_STORE_CTX *ctx) {
   }
 
   return 1;
+}
+
+// check_target refuses a target certificate with invalid extensions, which
+// OpenSSL accepts if the store has it, or whose copy in the store, if any, is
+// rejected, which OpenSSL overlooks if the store has an issuer.
+int check_target(X509_STORE_CTX *ctx, const X509 *store_cert) {
+  if (!x509v3_cache_extensions(sk_X509_value(ctx->chain, 0))) {
+    return report_extra_error(ctx, X509_V_ERR_INVALID_EXTENSION, /*depth=*/0);
+  }
+  return store_cert == nullptr ||
+         X509_check_trust(store_cert, ctx->param->trust,
+                          X509_TRUST_NO_IMPLIED_REJECT) !=
+             X509_TRUST_REJECTED ||
+         report_extra_error(ctx, X509_V_ERR_CERT_REJECTED, /*depth=*/0);
 }
 
 int check_cert_time(X509_STORE_CTX *ctx, X509 *x, int depth) {
@@ -966,7 +1038,7 @@ int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
   const X509 *last = sk_X509_last(ctx->chain);
   const bool skip_last = !trusted && num > 1 &&
                          !(ctx->param->flags & X509_V_FLAG_PARTIAL_CHAIN) &&
-                         X509_check_issued(last, last) != X509_V_OK;
+                         x509_likely_issued(last, last) != X509_V_OK;
   for (size_t i = num - 1; i < num; i--) {
     if (skip_last && i == num - 1) {
       continue;
@@ -974,6 +1046,12 @@ int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
     X509 *x509 = sk_X509_value(ctx->chain, i);
     if (i < num - 1) {
       X509 *issuer = sk_X509_value(ctx->chain, i + 1);
+      if (!may_sign_certs(issuer)) {
+        ctx->error = X509_V_ERR_KEYUSAGE_NO_CERTSIGN;
+        if (!call_verify_cb_at_depth(0, ctx, static_cast<int>(i + 1))) {
+          return 0;
+        }
+      }
       if (int err = verify_signature(ctx, x509, issuer); err != X509_V_OK) {
         ctx->error = err;
         if (!call_verify_cb_at_depth(0, ctx, static_cast<int>(i))) {
@@ -997,11 +1075,9 @@ int check_chain_signatures_and_time(X509_STORE_CTX *ctx, bool trusted) {
 
 }  // namespace
 
-int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
-                                           const X509 *x509) {
-  if (!(ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS) ||
-      (ctx->param->flags & X509_V_FLAG_NO_CHECK_TIME)) {
-    return 1;
+static bool cert_in_time(const X509_STORE_CTX *ctx, const X509 *x509) {
+  if (ctx->param->flags & X509_V_FLAG_NO_CHECK_TIME) {
+    return true;
   }
   int64_t ptime = (ctx->param->flags & X509_V_FLAG_USE_CHECK_TIME)
                       ? ctx->param->check_time
@@ -1012,14 +1088,54 @@ int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
                : X509_cmp_time_posix(t, ptime);
   };
   // As `check_cert_time`: notBefore must compare earlier, notAfter later.
-  if (cmp(X509_get0_notBefore(x509)) >= 0) {
-    ctx->ignored_anchor_error = X509_V_ERR_CERT_NOT_YET_VALID;
+  return cmp(X509_get0_notBefore(x509)) < 0 &&
+         cmp(X509_get0_notAfter(x509)) > 0;
+}
+
+bool bssl::x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x,
+                                X509 *candidate, bool trusted, X509 **best) {
+  if (!x509_check_issued_with_callback(ctx, x, candidate) ||
+      (!trusted && chain_contains(ctx, candidate))) {
+    return false;
+  }
+  const bool in_time = cert_in_time(ctx, candidate);
+  if (!ctx->no_detour &&
+      ((!may_sign_certs(candidate) && X509_cmp(candidate, x) != 0) ||
+       (trusted && !in_time &&
+        (ctx->param->flags & X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS))) &&
+      // There is no way around distrust.
+      !(trusted && X509_check_trust(candidate, ctx->param->trust,
+                                    /*flags=*/0) == X509_TRUST_REJECTED)) {
+    ctx->is_detour = true;
+    return false;
+  }
+  int64_t best_not_after;
+  if (in_time || *best == nullptr ||
+      (ASN1_TIME_to_posix_nonstandard(X509_get0_notAfter(*best),
+                                      &best_not_after) &&
+       X509_cmp_time_posix_nonstandard(X509_get0_notAfter(candidate),
+                                       best_not_after) > 0)) {
+    *best = candidate;
+  }
+  return in_time;
+}
+
+int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
+                               const X509 *x) {
+  const bool is_detour = ctx->is_detour, no_detour = ctx->no_detour;
+  X509 *issuer = nullptr;
+  x509_get1_trusted_issuer(&issuer, ctx, x);
+  if (ctx->is_detour && (issuer == nullptr || !cert_in_time(ctx, issuer))) {
+    X509_free(std::exchange(issuer, nullptr));
+    ctx->no_detour = true;
+    x509_get1_trusted_issuer(&issuer, ctx, x);
+  }
+  ctx->is_detour = is_detour;
+  ctx->no_detour = no_detour;
+  if (issuer == nullptr) {
     return 0;
   }
-  if (cmp(X509_get0_notAfter(x509)) <= 0) {
-    ctx->ignored_anchor_error = X509_V_ERR_CERT_HAS_EXPIRED;
-    return 0;
-  }
+  *out_issuer = issuer;
   return 1;
 }
 
@@ -1027,7 +1143,7 @@ int bssl::x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
 int bssl::x509_check_issued_with_callback(X509_STORE_CTX *ctx, const X509 *x,
                                           const X509 *issuer) {
   int ret;
-  ret = X509_check_issued(issuer, x);
+  ret = x509_likely_issued(issuer, x);
   if (ret == X509_V_OK) {
     return 1;
   }
@@ -1041,7 +1157,7 @@ int bssl::x509_check_issued_with_callback(X509_STORE_CTX *ctx, const X509 *x,
   return call_verify_cb(0, ctx);
 }
 
-int X509_verify_cert(X509_STORE_CTX *ctx) {
+static int verify_cert(X509_STORE_CTX *ctx) {
   int ok = 0;
   Cleanup set_ctx_error = [&] {
     // Safety net, error returns must set ctx->error
@@ -1091,37 +1207,41 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
   int max_chain = param->depth >= INT_MAX - 2 ? INT_MAX : param->depth + 2;
   int trust = X509_TRUST_UNTRUSTED;
 
+  ctx->chain = sk_X509_new_null();
+  if (ctx->chain == nullptr || !PushToStack(ctx->chain, UpRef(ctx->cert))) {
+    ctx->error = X509_V_ERR_OUT_OF_MEM;
+    return 0;
+  }
+  int num_untrusted = 1;
+
   // First, check if the target certificate already exists in the trust store as
-  // a trust "anchor". As in OpenSSL, `X509_V_FLAG_PARTIAL_CHAIN` only makes it
-  // one when no issuer can be, so that the issuer's CRLs and name constraints
-  // still apply.
+  // a self-signed trust "anchor", which OpenSSL misses behind another
+  // certificate of that name. As in OpenSSL, any other is only an anchor with
+  // `X509_V_FLAG_PARTIAL_CHAIN` and when no issuer can be, so that the issuer's
+  // CRLs and name constraints still apply.
   UniquePtr<X509> store_cert = lookup_cert_match(ctx, ctx->cert);
-  if (store_cert != nullptr) {
-    ctx->chain = sk_X509_new_null();
-    if (ctx->chain == nullptr || !PushToStack(ctx->chain, UpRef(store_cert))) {
-      ctx->error = X509_V_ERR_OUT_OF_MEM;
-      return 0;
-    }
-    trust = check_trust(ctx, /*allow_partial_chain=*/false);
-    if (trust == X509_TRUST_REJECTED) {
-      return 0;
-    }
+  const int target_trust =
+      store_cert != nullptr
+          ? X509_check_trust(store_cert.get(), param->trust, /*flags=*/0)
+          : X509_TRUST_UNTRUSTED;
+  bool target_from_store = false;
+  auto use_store_cert = [&] {
+    X509_free(sk_X509_value(ctx->chain, 0));
+    sk_X509_set(ctx->chain, 0, UpRef(store_cert).release());
+    target_from_store = true;
+  };
+  if (target_trust == X509_TRUST_TRUSTED && !ctx->no_detour &&
+      cert_self_signed(ctx->cert)) {
+    use_store_cert();
+    ctx->is_detour = true;
+    trust = X509_TRUST_TRUSTED;
   }
 
-  // If it was not a directly trusted (or distrusted) leaf, build a chain the
-  // usual way. (This is the common case.)
+  // If it was not a directly trusted leaf, build a chain the usual way. (This
+  // is the common case.)
   if (trust == X509_TRUST_UNTRUSTED) {
-    // Start with the target certificate. Clear `ctx->chain` in case there is
-    // any remnant of a failed trusted leaf above.
-    sk_X509_pop_free(ctx->chain, X509_free);
-    ctx->chain = sk_X509_new_null();
-    if (ctx->chain == nullptr || !PushToStack(ctx->chain, UpRef(ctx->cert))) {
-      ctx->error = X509_V_ERR_OUT_OF_MEM;
-      return 0;
-    }
-
     // Add certificates to the path until we reach a trust anchor, or fail.
-    bool have_store_cert = false;
+    bool have_store_cert = false, is_loop = false, rejected = false;
     for (;;) {
       if (static_cast<int>(sk_X509_num(ctx->chain)) >= max_chain) {
         break;
@@ -1130,25 +1250,43 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
       // If the last certificate is already self-signed, we won't get anywhere
       // by looking further.
       X509 *last = sk_X509_last(ctx->chain);
-      int is_self_signed;
-      if (!cert_self_signed(last, &is_self_signed)) {
-        ctx->error = X509_V_ERR_INVALID_EXTENSION;
-        return 0;
-      }
-      if (is_self_signed) {
-        break;
+      const bool is_target = sk_X509_num(ctx->chain) == 1;
+      if (cert_self_signed(last)) {
+        if (is_target && store_cert != nullptr) {
+          UniquePtr<X509> first = get_trusted_issuer(ctx, last);
+          if (first != nullptr && X509_cmp(first.get(), last) == 0) {
+            use_store_cert();
+            have_store_cert = true;
+            trust = check_trust(ctx, &rejected);
+            if (trust == X509_TRUST_REJECTED) {
+              return 0;
+            }
+          }
+        }
+        // The target may only look self-signed for being named like its CA.
+        if (!is_target || ctx->no_detour || may_sign_certs(last) ||
+            verify_signature(ctx, last, last) == X509_V_OK) {
+          break;
+        }
+        ERR_clear_error();
+        ctx->is_detour = true;
       }
 
       // Prioritize looking for issuers in the store.
       if (UniquePtr<X509> issuer = get_trusted_issuer(ctx, last);
           issuer != nullptr) {
+        is_loop = have_store_cert && chain_contains(ctx, issuer.get());
         if (!PushToStack(ctx->chain, std::move(issuer))) {
           ctx->error = X509_V_ERR_OUT_OF_MEM;
           return 0;
         }
+        if (is_loop) {
+          // The same issuers would follow again until the chain is too long.
+          break;
+        }
         have_store_cert = true;
         // Certificates from the store are candidates to be trust anchors.
-        trust = check_trust(ctx, /*allow_partial_chain=*/true);
+        trust = check_trust(ctx, &rejected);
         if (trust == X509_TRUST_REJECTED) {
           return 0;
         }
@@ -1170,6 +1308,7 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
             return 0;
           }
           (void)sk_X509_delete_ptr(untrusted, issuer);
+          num_untrusted++;
           // We must not call `check_trust` here because the last certificate in
           // the chain is not from the store. Otherwise, `check_trust` might
           // mistake it for a trust anchor.
@@ -1181,42 +1320,41 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
       break;
     }
 
-    if (trust == X509_TRUST_UNTRUSTED && store_cert != nullptr &&
+    const int num = static_cast<int>(sk_X509_num(ctx->chain));
+    if (!have_store_cert && num < max_chain && store_cert != nullptr &&
         (param->flags & X509_V_FLAG_PARTIAL_CHAIN)) {
-      sk_X509_pop_free(ctx->chain, X509_free);
-      ctx->chain = sk_X509_new_null();
-      if (ctx->chain == nullptr ||
-          !PushToStack(ctx->chain, std::move(store_cert))) {
-        ctx->error = X509_V_ERR_OUT_OF_MEM;
-        return 0;
+      if (target_trust != X509_TRUST_REJECTED) {
+        use_store_cert();
+        trust = X509_TRUST_TRUSTED;
+      } else {
+        ctx->error = X509_V_ERR_CERT_REJECTED;
+        rejected = true;
+        if (!call_verify_cb_at_depth(0, ctx, /*depth=*/0)) {
+          return 0;
+        }
       }
-      trust = X509_TRUST_TRUSTED;
     }
 
     // `X509_TRUST_REJECTED` should have returned early.
     assert(trust == X509_TRUST_UNTRUSTED || X509_TRUST_TRUSTED);
     if (trust == X509_TRUST_UNTRUSTED) {
-      if (static_cast<int>(sk_X509_num(ctx->chain)) >= max_chain) {
+      if (!rejected && (is_loop || num >= max_chain)) {
         ctx->error = X509_V_ERR_CERT_CHAIN_TOO_LONG;
-      } else if (have_store_cert) {
-        ctx->error =
-            untrusted_chain_error(ctx, X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT);
-      } else {
-        int is_self_signed;
-        if (!cert_self_signed(sk_X509_last(ctx->chain), &is_self_signed)) {
-          ctx->error = X509_V_ERR_INVALID_EXTENSION;
-        } else if (!is_self_signed) {
-          ctx->error = untrusted_chain_error(
-              ctx, X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
-        } else if (sk_X509_num(ctx->chain) == 1) {
-          ctx->error = untrusted_chain_error(
-              ctx, X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT);
-        } else {
-          ctx->error =
-              untrusted_chain_error(ctx, X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN);
+        if (!call_verify_cb_at_depth(0, ctx, num - 1)) {
+          return 0;
         }
       }
-      if (!call_verify_cb_at_depth(0, ctx, sk_X509_num(ctx->chain) - 1)) {
+      if (rejected) {
+        ctx->error = X509_V_ERR_CERT_REJECTED;
+      } else if (cert_self_signed(sk_X509_last(ctx->chain))) {
+        ctx->error = num == 1 ? X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT
+                              : X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN;
+      } else {
+        ctx->error = have_store_cert
+                         ? X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT
+                         : X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY;
+      }
+      if (!call_verify_cb_at_depth(0, ctx, num - 1)) {
         return 0;
       }
     }
@@ -1227,19 +1365,35 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
   // some trust anchor or a directly trusted leaf.
   assert(sk_X509_num(ctx->chain) >= 1);
   const bool trusted = trust == X509_TRUST_TRUSTED;
-  if (!check_chain_extensions(ctx, trusted) ||            //
+  if (!check_chain_extensions(ctx, num_untrusted, target_from_store) ||
       !check_id(ctx) ||                                   //
       !check_revocation(ctx) ||                           //
       (!trusted && !check_lone_untrusted_leaf(ctx)) ||    //
       !check_blocklist(ctx) ||                            //
       !check_chain_signatures_and_time(ctx, trusted) ||   //
       !check_name_constraints(ctx) ||                     //
-      (trusted && !check_policy(ctx))) {
+      (trusted && !check_policy(ctx)) ||                  //
+      !check_target(ctx, store_cert.get())) {
     return 0;
   }
 
   ok = 1;
   return 1;
+}
+
+int X509_verify_cert(X509_STORE_CTX *ctx) {
+  int ok = verify_cert(ctx);
+  if (!ok && ctx->is_detour && ctx->error != X509_V_ERR_OUT_OF_MEM) {
+    // The detour led nowhere, so report on the path of OpenSSL.
+    sk_X509_pop_free(ctx->chain, X509_free);
+    ctx->chain = nullptr;
+    ctx->error = X509_V_OK;
+    ctx->is_detour = false;
+    ctx->no_detour = true;
+    ERR_clear_error();
+    ok = verify_cert(ctx);
+  }
+  return ok;
 }
 
 int X509_cmp_current_time(const ASN1_TIME *ctm) {

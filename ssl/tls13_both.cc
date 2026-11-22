@@ -226,14 +226,6 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
         OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
         return false;
       }
-      // TLS 1.3 always uses certificate keys for signing thus the correct
-      // keyUsage is enforced. (RPKs have no keyUsage to enforce.)
-      if (hs->peer_cert_type == TLSEXT_cert_type_x509 &&
-          !ssl_cert_check_key_usage(&certificate,
-                                    key_usage_digital_signature)) {
-        ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
-        return false;
-      }
 
       if (retain_sha256) {
         // Retain the hash of the leaf certificate or RPK if requested.

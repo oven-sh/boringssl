@@ -298,14 +298,6 @@ bool SSLCredential::SetLeafCert(UniquePtr<CRYPTO_BUFFER> leaf,
     return false;
   }
 
-  // An ECC certificate may be usable for ECDH or ECDSA. We only support ECDSA
-  // certificates, so sanity-check the key usage extension.
-  if (EVP_PKEY_id(new_pubkey.get()) == EVP_PKEY_EC &&
-      !ssl_cert_check_key_usage(&cbs, key_usage_digital_signature)) {
-    OPENSSL_PUT_ERROR(SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
-    return false;
-  }
-
   if (private_key_matches_leaf && privkey != nullptr &&
       !ssl_compare_public_and_private_key(new_pubkey.get(), privkey.get())) {
     if (!discard_key_on_mismatch) {

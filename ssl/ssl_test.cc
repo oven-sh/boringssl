@@ -9899,12 +9899,22 @@ RHrQbWsFUakETXL9QMlegh5t
   bssl::UniquePtr<X509> bad = CertFromPEM(kBadKeyUsage);
   ASSERT_TRUE(bad);
 
-  // We check key usage when configuring EC certificates to distinguish ECDSA
-  // and ECDH.
-  bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
-  ASSERT_TRUE(ctx);
-  EXPECT_TRUE(SSL_CTX_use_certificate(ctx.get(), good.get()));
-  EXPECT_FALSE(SSL_CTX_use_certificate(ctx.get(), bad.get()));
+  // We check key usage when negotiating ECDSA cipher suites.
+  bssl::UniquePtr<EVP_PKEY> key = GetECDSATestKey();
+  ASSERT_TRUE(key);
+  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
+  ASSERT_TRUE(client_ctx);
+  ASSERT_TRUE(SSL_CTX_set_max_proto_version(client_ctx.get(), TLS1_2_VERSION));
+  for (X509 *cert : {good.get(), bad.get()}) {
+    bssl::UniquePtr<SSL_CTX> server_ctx(SSL_CTX_new(TLS_method()));
+    ASSERT_TRUE(server_ctx);
+    ASSERT_TRUE(SSL_CTX_use_certificate(server_ctx.get(), cert));
+    ASSERT_TRUE(SSL_CTX_use_PrivateKey(server_ctx.get(), key.get()));
+    bssl::UniquePtr<SSL> client, server;
+    EXPECT_EQ(cert == good.get(),
+              ConnectClientAndServer(&client, &server, client_ctx.get(),
+                                     server_ctx.get()));
+  }
 }
 
 // Test that `SSL_can_release_private_key` reports true as early as expected.

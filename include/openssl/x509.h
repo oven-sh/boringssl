@@ -197,6 +197,9 @@ OPENSSL_EXPORT void X509_get0_uids(const X509 *x509,
 #define EXFLAG_KUSAGE 0x2
 // EXFLAG_XKUSAGE indicates the certificate has an extended key usage extension.
 #define EXFLAG_XKUSAGE 0x4
+// EXFLAG_NSCERT indicates the certificate has a Netscape certificate type
+// extension.
+#define EXFLAG_NSCERT 0x8
 // EXFLAG_CA indicates the certificate has a basic constraints extension with
 // the CA bit set.
 #define EXFLAG_CA 0x10
@@ -215,9 +218,9 @@ OPENSSL_EXPORT void X509_get0_uids(const X509 *x509,
 // should not be accepted.
 #define EXFLAG_CRITICAL 0x200
 // EXFLAG_SS indicates the certificate is likely self-signed. That is, if it is
-// self-issued, its authority key identifier (if any) matches itself, and its
-// key usage extension (if any) allows certificate signatures. The signature
-// itself is not checked in computing this bit.
+// self-issued, and its authority key identifier (if any) and signature
+// algorithm match itself. The signature itself is not checked in computing this
+// bit.
 #define EXFLAG_SS 0x2000
 
 // X509_get_extension_flags decodes a set of extensions from `x509` and returns
@@ -2848,7 +2851,8 @@ OPENSSL_EXPORT int X509_STORE_add_cert(X509_STORE *store, const X509 *x509);
 // to each buffer. The certificates are not parsed until they are needed for an
 // issuer lookup or requested with `X509_LAZY_CERT_SET_get0`, so a large set of
 // trust anchors costs almost nothing until a verification actually names one
-// of them.
+// of them. Anything after a certificate is read as its trust settings, as by
+// `d2i_X509_AUX`.
 OPENSSL_EXPORT X509_LAZY_CERT_SET *X509_LAZY_CERT_SET_new(
     CRYPTO_BUFFER *const *certs, size_t num_certs);
 
@@ -2861,11 +2865,11 @@ OPENSSL_EXPORT X509_LAZY_CERT_SET *X509_LAZY_CERT_SET_new_static(
 
 // X509_LAZY_CERT_SET_can_index returns one if `der` is shaped enough like a
 // Certificate for `X509_LAZY_CERT_SET_new` to index it (which otherwise fails
-// the whole set), and zero otherwise. It does not check that the certificate
-// fully parses.
+// the whole set) and has nothing after it, and zero otherwise. It does not
+// check that the certificate fully parses.
 OPENSSL_EXPORT int X509_LAZY_CERT_SET_can_index(const uint8_t *der, size_t len);
 
-// X509_LAZY_CERT_SET_get0_der returns the DER of the `idx`th certificate in
+// X509_LAZY_CERT_SET_get0_der returns the buffer of the `idx`th certificate in
 // `set` without parsing it, or NULL if `idx` is out of range.
 OPENSSL_EXPORT const CRYPTO_BUFFER *X509_LAZY_CERT_SET_get0_der(
     const X509_LAZY_CERT_SET *set, size_t idx);
@@ -3337,7 +3341,9 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1(X509_VERIFY_PARAM *to,
 // X509_V_FLAG_ALLOW_PROXY_CERTS does nothing. Proxy certificate support has
 // been removed.
 #define X509_V_FLAG_ALLOW_PROXY_CERTS 0x40
-// X509_V_FLAG_POLICY_CHECK does nothing. Policy checking is always enabled.
+// X509_V_FLAG_POLICY_CHECK enables policy checking, as do configuring policies
+// and the three flags below. Otherwise, policies are only checked if some
+// certificate below the trust anchor has a policy constraints extension.
 #define X509_V_FLAG_POLICY_CHECK 0x80
 // X509_V_FLAG_EXPLICIT_POLICY requires some policy OID to be asserted by the
 // final certificate chain. See initial-explicit-policy from RFC 5280,
@@ -3379,11 +3385,9 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1(X509_VERIFY_PARAM *to,
 // whose validity period does not cover the verification time as if it were
 // not there, so it can neither anchor a chain nor shadow a currently-valid
 // certificate for the same issuer supplied by the peer or elsewhere in the
-// store. A chain that reaches no usable anchor after such a certificate was
-// passed over still reports `X509_V_ERR_CERT_HAS_EXPIRED` (or
-// `X509_V_ERR_CERT_NOT_YET_VALID`) rather than an unknown-issuer error.
-// Untrusted (peer) certificates are unaffected. Has no effect with
-// `X509_V_FLAG_NO_CHECK_TIME`.
+// store. If that leaves no valid path, the chain is built again without this
+// flag, and its errors are reported. Untrusted (peer) certificates are
+// unaffected. Has no effect with `X509_V_FLAG_NO_CHECK_TIME`.
 //
 // The value is kept away from the bits upstream allocates next.
 #define X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS 0x40000000
@@ -3519,7 +3523,7 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1_ip_asc(X509_VERIFY_PARAM *param,
 // negotiated TLS parameters.
 #define X509_PURPOSE_SSL_CLIENT 1
 // X509_PURPOSE_SSL_SERVER validates TLS server certificates. It checks for the
-// id-kp-clientAuth EKU and one of digitalSignature, keyAgreement, or
+// id-kp-serverAuth or an SGC EKU and one of digitalSignature, keyAgreement, or
 // keyEncipherment key usages. The TLS library is expected to check for the key
 // usage specific to the negotiated TLS parameters.
 #define X509_PURPOSE_SSL_SERVER 2
@@ -3565,7 +3569,8 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set1_ip_asc(X509_VERIFY_PARAM *param,
 //
 // This library applies the EKU checks to all untrusted intermediates. Although
 // not defined in RFC 5280, this matches widely-deployed practice. It also does
-// not accept anyExtendedKeyUsage.
+// not accept anyExtendedKeyUsage. The trust settings of a trusted certificate
+// replace these checks.
 //
 // Many purpose values have a corresponding trust value, which is not configured
 // by this function.  See `X509_VERIFY_PARAM_set_trust` for details. Callers
@@ -3616,17 +3621,13 @@ OPENSSL_EXPORT int X509_VERIFY_PARAM_set_purpose(X509_VERIFY_PARAM *param,
 //   includes `EXFLAG_SS`. The signature itself is not checked.
 //
 // When this function is called, `trust` determines the OID to check in the
-// first case. If the certificate is not explicitly trusted or distrusted for
-// any OID, it is trusted if self-signed instead.
-//
-// If unset, the default behavior is to check for the `NID_anyExtendedKeyUsage`
-// OID. If the certificate is not explicitly trusted or distrusted for this OID,
-// it is trusted if self-signed instead. Note this slightly differs from the
-// above.
+// first case, along with `NID_anyExtendedKeyUsage`. If unset, only the latter
+// is checked. A certificate that is only trusted for other OIDs is distrusted.
+// If the certificate is neither trusted nor distrusted, it is trusted if
+// self-signed instead.
 //
 // If the `X509_V_FLAG_PARTIAL_CHAIN` is set, every certificate from
-// `X509_STORE` is a trust anchor, unless it was explicitly distrusted for the
-// OID.
+// `X509_STORE` is a trust anchor, unless it is distrusted.
 //
 // It is currently not possible to configure custom trust OIDs. Contact the
 // BoringSSL maintainers if your application needs to do so. OpenSSL had an
@@ -4663,18 +4664,20 @@ OPENSSL_EXPORT int ASN1_item_sign_ctx(const ASN1_ITEM *it, X509_ALGOR *algor1,
 // internally, so most callers will not need to call this function separately.
 OPENSSL_EXPORT int X509_supported_extension(const X509_EXTENSION *ex);
 
-// X509_check_ca returns one if `x509` may be considered a CA certificate,
-// according to basic constraints and key usage extensions. Otherwise, it
-// returns zero. If `x509` is an X509v1 certificate, and thus has no extensions,
-// it is considered eligible.
+// X509_check_ca returns one if `x509` is a CA certificate, according to basic
+// constraints and key usage extensions. Without basic constraints, it may still
+// be a trust anchor. The result is then three for a self-signed X509v1
+// certificate, four for the keyCertSign key usage, and five for a Netscape
+// certificate type. Otherwise, it returns zero.
 //
-// This function returning one does not indicate that `x509` is trusted, only
-// that it is eligible to be a CA.
+// This function returning non-zero does not indicate that `x509` is trusted,
+// only that it is eligible to be a CA.
 OPENSSL_EXPORT int X509_check_ca(const X509 *x509);
 
 // X509_check_issued checks if `issuer` and `subject`'s name, authority key
-// identifier, and key usage fields allow `issuer` to have issued `subject`. It
-// returns `X509_V_OK` on success and an `X509_V_ERR_*` value otherwise.
+// identifier, algorithm, and key usage fields allow `issuer` to have issued
+// `subject`. It returns `X509_V_OK` on success and an `X509_V_ERR_*` value
+// otherwise.
 //
 // This function does not check the signature on `subject`. Rather, it is
 // intended to prune the set of possible issuer certificates during
@@ -4760,6 +4763,10 @@ OPENSSL_EXPORT int X509_check_ip_asc(const X509 *x509, const char *ipasc,
 // must release `*out_issuer` with `X509_free` when done. If none was found, it
 // returns zero and leaves `*out_issuer` unchanged.
 //
+// Of several candidates, it returns the first added to the store that is in its
+// validity period, or else the one that expires last. Those in their validity
+// period whose key usage allows them to be an issuer come first.
+//
 // This function only searches for trusted issuers. It does not consider
 // untrusted intermediates passed in to `X509_STORE_CTX_init`.
 OPENSSL_EXPORT int X509_STORE_CTX_get1_issuer(X509 **out_issuer,
@@ -4788,7 +4795,7 @@ OPENSSL_EXPORT int X509_check_purpose(const X509 *x509, int purpose, int ca);
 // `X509_TRUST_TRUSTED` if `x509` is a trust anchor, `X509_TRUST_REJECTED` if it
 // was distrusted, and `X509_TRUST_UNTRUSTED` otherwise. `id` should be one of
 // the `X509_TRUST_*` constants, or zero to indicate the default behavior.
-// `flags` should be zero and is ignored.
+// `flags` should be zero.
 //
 // WARNING: This function assumes `x509` is a trusted certificate, installed in
 // an `X509_STORE`. If passed an arbitrary certificate from an untrusted source,

@@ -16,7 +16,11 @@ package runner
 
 import (
 	"crypto/x509"
+	"strconv"
 )
+
+// As in OpenSSL, the handshake only matches ECDSA cipher suites to the key usage
+// of the server's certificate. The rest is up to certificate verification.
 
 func addECDSAKeyUsageTests() {
 	cert := rootCA.Issue(X509Info{
@@ -26,23 +30,42 @@ func addECDSAKeyUsageTests() {
 		// be used with ECDH, but not ECDSA.
 		KeyUsage: x509.KeyUsageKeyAgreement,
 	}).ToCredential()
+	ed25519Cert := rootCA.Issue(X509Info{
+		PrivateKey: ed25519Key,
+		DNSNames:   []string{"test"},
+		KeyUsage:   x509.KeyUsageKeyAgreement,
+	}).ToCredential()
 
 	for _, ver := range tlsVersions {
 		if ver.version < VersionTLS12 {
 			continue
 		}
 
-		testCases = append(testCases, testCase{
-			testType: clientTest,
-			name:     "ECDSAKeyUsage-Client-" + ver.name,
-			config: Config{
-				MinVersion: ver.version,
-				MaxVersion: ver.version,
-				Credential: &cert,
-			},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
-		})
+		for _, kind := range []struct {
+			name string
+			cert *Credential
+		}{{"ECDSA", &cert}, {"Ed25519", &ed25519Cert}} {
+			test := testCase{
+				testType: clientTest,
+				name:     kind.name + "KeyUsage-Client-" + ver.name,
+				config: Config{
+					MinVersion: ver.version,
+					MaxVersion: ver.version,
+					Credential: kind.cert,
+				},
+				flags: []string{
+					"-verify-peer",
+					"-verify-prefs", strconv.Itoa(int(signatureEd25519)),
+					"-verify-prefs", strconv.Itoa(int(signatureECDSAWithP256AndSHA256)),
+				},
+			}
+			if ver.version < VersionTLS13 {
+				test.shouldFail = true
+				test.expectedError = ":ECC_CERT_NOT_FOR_SIGNING:"
+				test.expectedLocalError = "remote error: handshake failure"
+			}
+			testCases = append(testCases, test)
+		}
 
 		testCases = append(testCases, testCase{
 			testType: serverTest,
@@ -52,11 +75,75 @@ func addECDSAKeyUsageTests() {
 				MaxVersion: ver.version,
 				Credential: &cert,
 			},
-			flags:         []string{"-require-any-client-certificate"},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
+			flags: []string{"-require-any-client-certificate"},
+		})
+
+		only := testCase{
+			testType: serverTest,
+			name:     "ECDSAKeyUsage-Server-OnlyCredential-" + ver.name,
+			config: Config{
+				MinVersion: ver.version,
+				MaxVersion: ver.version,
+			},
+			shimCertificate: &cert,
+		}
+		selected := &cert
+		if ver.version < VersionTLS13 {
+			only.shouldFail = true
+			only.expectedError = ":NO_SHARED_CIPHER:"
+			selected = &rsaCertificate
+		}
+		testCases = append(testCases, only)
+
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			name:     "ECDSAKeyUsage-Server-FirstCredential-" + ver.name,
+			config: Config{
+				MinVersion: ver.version,
+				MaxVersion: ver.version,
+			},
+			shimCredentials: []*Credential{&cert, &rsaCertificate},
+			expectations:    connectionExpectations{peerCertificate: selected},
+		})
+
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			name:     "Ed25519KeyUsage-Server-OnlyCredential-" + ver.name,
+			config: Config{
+				MinVersion: ver.version,
+				MaxVersion: ver.version,
+			},
+			shimCertificate: &ed25519Cert,
+		})
+
+		testCases = append(testCases, testCase{
+			testType: clientTest,
+			name:     "ECDSAKeyUsage-Client-OnlyCredential-" + ver.name,
+			config: Config{
+				MinVersion: ver.version,
+				MaxVersion: ver.version,
+				ClientAuth: RequireAnyClientCert,
+			},
+			shimCertificate: &cert,
+			expectations:    connectionExpectations{peerCertificate: &cert},
 		})
 	}
+
+	testCases = append(testCases, testCase{
+		testType: serverTest,
+		name:     "ECDSAKeyUsage-Server-PSK",
+		config: Config{
+			MaxVersion: VersionTLS12,
+			CipherSuites: []uint16{
+				TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA,
+			},
+			PreSharedKey: []byte("secret"),
+		},
+		shimCertificate: &cert,
+		flags:           []string{"-psk", "secret", "-async"},
+		expectations:    connectionExpectations{cipher: TLS_ECDHE_PSK_WITH_AES_128_CBC_SHA},
+	})
 }
 
 func addRSAKeyUsageTests() {
@@ -91,8 +178,7 @@ func addRSAKeyUsageTests() {
 				Credential:   &encCert,
 				CipherSuites: dsSuites,
 			},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
+			flags: []string{"-verify-peer"},
 		})
 
 		testCases = append(testCases, testCase{
@@ -128,12 +214,21 @@ func addRSAKeyUsageTests() {
 					Credential:   &dsCert,
 					CipherSuites: encSuites,
 				},
-				shouldFail:    true,
-				expectedError: ":KEY_USAGE_BIT_INCORRECT:",
+				flags: []string{"-verify-peer"},
 			})
 		}
 
-		// The server expects signatures from the client and always enforces it.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			name:     "RSAKeyUsage-Server-OnlyCredential-" + ver.name,
+			config: Config{
+				MinVersion:   ver.version,
+				MaxVersion:   ver.version,
+				CipherSuites: dsSuites,
+			},
+			shimCertificate: &encCert,
+		})
+
 		testCases = append(testCases, testCase{
 			testType: serverTest,
 			name:     "RSAKeyUsage-Server-WantSignature-GotEncipherment-" + ver.name,
@@ -142,9 +237,7 @@ func addRSAKeyUsageTests() {
 				MaxVersion: ver.version,
 				Credential: &encCert,
 			},
-			shouldFail:    true,
-			expectedError: ":KEY_USAGE_BIT_INCORRECT:",
-			flags:         []string{"-require-any-client-certificate"},
+			flags: []string{"-require-any-client-certificate"},
 		})
 
 		testCases = append(testCases, testCase{
