@@ -208,6 +208,17 @@ static TLS12ServerParams choose_params(SSL_HANDSHAKE *hs,
           return TLS12ServerParams();
         }
       }
+
+      // Clients match ECDSA cipher suites to the key usage.
+      if (cred->type == SSLCredentialType::kX509) {
+        CBS leaf;
+        CRYPTO_BUFFER_init_CBS(sk_CRYPTO_BUFFER_value(cred->chain.get(), 0),
+                               &leaf);
+        if (!ssl_cert_check_key_usage(&leaf, key_usage_digital_signature)) {
+          sign_ok = false;
+          ERR_clear_error();
+        }
+      }
     }
 
     mask_a |= ssl_cipher_auth_mask_for_key(cred->pubkey.get(), sign_ok);

@@ -1153,10 +1153,6 @@ enum ssl_key_usage_t {
 // includes `bit`. Otherwise it pushes to the error queue and returns false.
 bool ssl_cert_check_key_usage(const CBS *in, enum ssl_key_usage_t bit);
 
-// ssl_check_peer_key_usage calls `ssl_cert_check_key_usage` for the use that
-// `hs` makes of the peer's key.
-bool ssl_check_peer_key_usage(const SSL_HANDSHAKE *hs);
-
 // ssl_cert_extract_issuer parses the DER-encoded, X.509 certificate in `in`
 // and extracts the issuer. On success it returns true and the DER encoded
 // issuer is in `out_dn`, otherwise it returns false.
@@ -1198,10 +1194,10 @@ bool ssl_has_CA_names(const SSL_CONFIG *cfg);
 bool ssl_add_CA_names(const SSL_HANDSHAKE *hs, CBB *cbb);
 
 // ssl_check_leaf_certificate returns one if `pkey` and `leaf` are suitable as
-// a server's leaf certificate for `hs`. Otherwise, it returns zero and pushes
-// an error on the error queue.
-bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, EVP_PKEY *pkey,
-                                const CRYPTO_BUFFER *leaf);
+// a server's leaf certificate for `hs`. Otherwise, it returns zero, pushes an
+// error on the error queue and sets `*out_alert` to an alert to send.
+bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, uint8_t *out_alert,
+                                EVP_PKEY *pkey, const CRYPTO_BUFFER *leaf);
 
 
 // TLS 1.3 key derivation.

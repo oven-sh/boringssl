@@ -853,9 +853,9 @@ static enum ssl_hs_wait_t do_read_server_certificate(SSL_HANDSHAKE *hs) {
   }
 
   if (!ssl_check_leaf_certificate(
-          hs, hs->peer_pubkey.get(),
+          hs, &alert, hs->peer_pubkey.get(),
           sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), 0))) {
-    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
     return ssl_hs_error;
   }
 
