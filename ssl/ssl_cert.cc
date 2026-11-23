@@ -523,30 +523,18 @@ bool ssl_add_CA_names(const SSL_HANDSHAKE *hs, CBB *cbb) {
                           hs->ssl->ctx->CA_names.get(), cbb);
 }
 
-bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, uint8_t *out_alert,
-                                EVP_PKEY *pkey, const CRYPTO_BUFFER *leaf) {
+bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, EVP_PKEY *pkey,
+                                const CRYPTO_BUFFER *leaf) {
   assert(ssl_protocol_version(hs->ssl) < TLS1_3_VERSION);
-  *out_alert = SSL_AD_ILLEGAL_PARAMETER;
 
-  // Check the certificate's type matches the cipher.
+  // Check the certificate's type matches the cipher. This does not check key
+  // usage restrictions, which are handled separately.
+  //
+  // TODO(davidben): Put the key type and key usage checks in one place.
   if (!(hs->new_cipher->algorithm_auth &
         ssl_cipher_auth_mask_for_key(pkey, /*sign_ok=*/true))) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_CERTIFICATE_TYPE);
     return false;
-  }
-
-  // As in OpenSSL, only ECDSA cipher suites are matched to the key usage. (RPKs
-  // have no keyUsage to enforce.)
-  if ((hs->new_cipher->algorithm_auth & SSL_aECDSA) &&
-      hs->new_session->peer_cert_type == TLSEXT_cert_type_x509) {
-    CBS leaf_cbs;
-    CRYPTO_BUFFER_init_CBS(leaf, &leaf_cbs);
-    if (!ssl_cert_check_key_usage(&leaf_cbs, key_usage_digital_signature)) {
-      ERR_clear_error();
-      OPENSSL_PUT_ERROR(SSL, SSL_R_ECC_CERT_NOT_FOR_SIGNING);
-      *out_alert = SSL_AD_HANDSHAKE_FAILURE;
-      return false;
-    }
   }
 
   if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {

@@ -29,59 +29,51 @@ typedef struct x509_trust_st X509_TRUST;
 
 struct x509_trust_st {
   int trust;
-  int (*check_trust)(const X509_TRUST *, const X509 *, int);
+  int (*check_trust)(const X509_TRUST *, const X509 *);
   int nid;
 } /* X509_TRUST */;
 
-// obj_trust checks the trust settings of `x` for `id` or, if it is not
-// `NID_undef`, `other_id`.
-int obj_trust(int id, int other_id, const X509 *x, int flags) {
+int obj_trust(int id, const X509 *x) {
   auto *impl = FromOpaque(x);
   X509_CERT_AUX *ax = impl->aux;
   if (!ax) {
     return X509_TRUST_UNTRUSTED;
   }
-  auto contains = [&](const STACK_OF(ASN1_OBJECT) *objs) {
-    for (const ASN1_OBJECT *obj : objs) {
-      int nid = OBJ_obj2nid(obj);
-      if (nid != NID_undef && (nid == id || nid == other_id)) {
-        return true;
-      }
+  for (size_t i = 0; i < sk_ASN1_OBJECT_num(ax->reject); i++) {
+    const ASN1_OBJECT *obj = sk_ASN1_OBJECT_value(ax->reject, i);
+    if (OBJ_obj2nid(obj) == id) {
+      return X509_TRUST_REJECTED;
     }
-    return false;
-  };
-  if (contains(ax->reject)) {
-    return X509_TRUST_REJECTED;
   }
-  if (contains(ax->trust)) {
-    return X509_TRUST_TRUSTED;
+  for (size_t i = 0; i < sk_ASN1_OBJECT_num(ax->trust); i++) {
+    const ASN1_OBJECT *obj = sk_ASN1_OBJECT_value(ax->trust, i);
+    if (OBJ_obj2nid(obj) == id) {
+      return X509_TRUST_TRUSTED;
+    }
   }
-  // As in OpenSSL, a list of trusted uses rejects the others.
-  return ax->trust != nullptr && !(flags & X509_TRUST_NO_IMPLIED_REJECT)
-             ? X509_TRUST_REJECTED
-             : X509_TRUST_UNTRUSTED;
+  return X509_TRUST_UNTRUSTED;
 }
 
-int trust_compat(const X509_TRUST *trust, const X509 *x, int flags) {
+int trust_compat(const X509_TRUST *trust, const X509 *x) {
   auto *impl = FromOpaque(x);
   if (!x509v3_cache_extensions(x)) {
     return X509_TRUST_UNTRUSTED;
   }
-  if (!(flags & X509_TRUST_NO_SS_COMPAT) && (impl->ex_flags & EXFLAG_SS)) {
+  if (impl->ex_flags & EXFLAG_SS) {
     return X509_TRUST_TRUSTED;
   } else {
     return X509_TRUST_UNTRUSTED;
   }
 }
 
-int trust_1oidany(const X509_TRUST *trust, const X509 *x, int flags) {
-  int rv = obj_trust(trust->nid, NID_anyExtendedKeyUsage, x, flags);
-  if (rv != X509_TRUST_UNTRUSTED) {
-    return rv;
+int trust_1oidany(const X509_TRUST *trust, const X509 *x) {
+  auto *impl = FromOpaque(x);
+  if (impl->aux && (impl->aux->trust || impl->aux->reject)) {
+    return obj_trust(trust->nid, impl);
   }
-  // No trust setting applies: for compatibility we return trusted if it is
-  // self signed
-  return trust_compat(trust, x, flags);
+  // we don't have any trust settings: for compatibility we return trusted
+  // if it is self signed
+  return trust_compat(trust, impl);
 }
 
 const X509_TRUST trstandard[] = {
@@ -109,20 +101,20 @@ int X509_check_trust(const X509 *x, int id, int flags) {
   }
   // We get this as a default value
   if (id == 0) {
-    int rv = obj_trust(NID_anyExtendedKeyUsage, NID_undef, x, flags);
+    int rv = obj_trust(NID_anyExtendedKeyUsage, x);
     if (rv != X509_TRUST_UNTRUSTED) {
       return rv;
     }
-    return trust_compat(nullptr, x, flags);
+    return trust_compat(nullptr, x);
   }
   const X509_TRUST *pt = X509_TRUST_get0(id);
   if (pt == nullptr) {
     // Unknown trust IDs are silently reintrepreted as NIDs. This is unreachable
     // from the certificate verifier itself, but wpa_supplicant relies on it.
     // Note this relies on commonly-used NIDs and trust IDs not colliding.
-    return obj_trust(id, NID_undef, x, flags);
+    return obj_trust(id, x);
   }
-  return pt->check_trust(pt, x, flags);
+  return pt->check_trust(pt, x);
 }
 
 int bssl::X509_is_valid_trust_id(int trust) {

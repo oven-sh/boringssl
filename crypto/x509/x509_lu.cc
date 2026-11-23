@@ -96,12 +96,7 @@ int x509_object_cmp(const X509_OBJECT *a, const X509_OBJECT *b) {
 
 int x509_object_cmp_sk(const X509_OBJECT *const *a,
                        const X509_OBJECT *const *b) {
-  // Path building takes the first match, and sorting is not stable.
-  int ret = x509_object_cmp(*a, *b);
-  if (ret != 0 || (*a)->order == 0 || (*b)->order == 0) {
-    return ret;
-  }
-  return ((*a)->order > (*b)->order) - ((*a)->order < (*b)->order);
+  return x509_object_cmp(*a, *b);
 }
 
 int X509_OBJECT_up_ref_count(X509_OBJECT *a) {
@@ -248,7 +243,6 @@ int x509_store_add(X509Store *ctx, const void *x, int is_crl) {
   int added = 0;
   // Duplicates are silently ignored
   if (!X509_OBJECT_retrieve_match(ctx->objs.get(), obj)) {
-    obj->order = sk_X509_OBJECT_num(ctx->objs.get()) + 1;
     ret = added = (sk_X509_OBJECT_push(ctx->objs.get(), obj) != 0);
   }
 
@@ -367,10 +361,6 @@ int X509_STORE_CTX_get_by_subject(X509_STORE_CTX *vs, int type,
 }
 
 int X509_STORE_add_cert(X509_STORE *ctx, const X509 *x) {
-  if (x != nullptr) {
-    // The lazy certificates were added first.
-    FromOpaque(ctx)->MaterializeLazy(X509_LU_X509, X509_get_subject_name(x), x);
-  }
   return x509_store_add(FromOpaque(ctx), x, /*is_crl=*/0);
 }
 
@@ -514,11 +504,12 @@ X509LazyCertSet::~X509LazyCertSet() {
   }
 }
 
-// x509_cert_subject reads a DER Certificate from `cbs` and sets `out` to its
-// subject Name TLV, without parsing anything else.
-static bool x509_cert_subject(CBS *cbs, CBS *out) {
+// x509_cert_subject sets `out` to the subject Name TLV of the DER Certificate
+// in `cbs`, without parsing anything else.
+static bool x509_cert_subject(CBS cbs, CBS *out) {
   CBS cert, tbs;
-  if (!CBS_get_asn1(cbs, &cert, CBS_ASN1_SEQUENCE) ||  //
+  if (!CBS_get_asn1(&cbs, &cert, CBS_ASN1_SEQUENCE) ||  //
+      CBS_len(&cbs) != 0 ||                             //
       !CBS_get_asn1(&cert, &tbs, CBS_ASN1_SEQUENCE) ||
       // version
       !CBS_get_optional_asn1(
@@ -554,11 +545,10 @@ bool X509LazyCertSet::Init(CRYPTO_BUFFER *const *certs, size_t num) {
     certs_[i].der = UpRef(certs[i]);
     CBS cbs, subject;
     CRYPTO_BUFFER_init_CBS(certs[i], &cbs);
-    if (!x509_cert_subject(&cbs, &subject)) {
+    if (!x509_cert_subject(cbs, &subject)) {
       OPENSSL_PUT_ERROR(X509, X509_R_INVALID_PARAMETER);
       return false;
     }
-    certs_[i].has_aux = CBS_len(&cbs) != 0;
     certs_[i].subject = subject;
     if (!x509_name_canon_from_der(&subject, &certs_[i].canon)) {
       OPENSSL_PUT_ERROR(X509, X509_R_INVALID_PARAMETER);
@@ -567,8 +557,7 @@ bool X509LazyCertSet::Init(CRYPTO_BUFFER *const *certs, size_t num) {
     by_subject_[i] = i;
   }
   std::sort(by_subject_.begin(), by_subject_.end(), [&](size_t a, size_t b) {
-    int ret = x509_canon_cmp(certs_[a].canon, certs_[b].canon);
-    return ret != 0 ? ret < 0 : a < b;
+    return x509_canon_cmp(certs_[a].canon, certs_[b].canon) < 0;
   });
   return true;
 }
@@ -582,11 +571,7 @@ X509 *X509LazyCertSet::Get(size_t idx) {
   if (x509 != nullptr) {
     return x509;
   }
-  const uint8_t *der = CRYPTO_BUFFER_data(cert.der.get());
-  UniquePtr<X509> parsed(
-      cert.has_aux
-          ? d2i_X509_AUX(nullptr, &der, CRYPTO_BUFFER_len(cert.der.get()))
-          : X509_parse_from_buffer(cert.der.get()));
+  UniquePtr<X509> parsed(X509_parse_from_buffer(cert.der.get()));
   if (parsed == nullptr) {
     return nullptr;
   }
@@ -598,8 +583,8 @@ X509 *X509LazyCertSet::Get(size_t idx) {
   return expected;
 }
 
-bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
-                                        const X509 *parsed) {
+bool X509LazyCertSet::AddMatchesToStore(X509Store *store,
+                                        const X509_NAME *name) {
   const X509NameCache *cache = x509_name_get_cache(name);
   if (cache == nullptr) {
     return false;
@@ -620,32 +605,16 @@ bool X509LazyCertSet::AddMatchesToStore(X509Store *store, const X509_NAME *name,
     if (x509_canon_cmp(certs_[idx].canon, canon) != 0) {
       break;
     }
-    const CRYPTO_BUFFER *a = GetDER(idx);
-    const CRYPTO_BUFFER *b = parsed && !FromOpaque(parsed)->aux
-                                 ? FromOpaque(parsed)->buf.get()
-                                 : nullptr;
-    const bool is_parsed =
-        b != nullptr && Span(CRYPTO_BUFFER_data(a), CRYPTO_BUFFER_len(a)) ==
-                            Span(CRYPTO_BUFFER_data(b), CRYPTO_BUFFER_len(b));
-    const X509 *x509 = is_parsed ? parsed : Get(idx);
-    if (x509 == nullptr) {
-      // Only skip a certificate for what is wrong with it.
-      while (uint32_t err = ERR_get_error()) {
-        if (ERR_GET_REASON(err) == ERR_R_MALLOC_FAILURE) {
-          return false;
-        }
-      }
-      continue;
-    }
-    if (!x509_store_add(store, x509, /*is_crl=*/0)) {
+    X509 *x509 = Get(idx);
+    if (x509 == nullptr ||
+        !x509_store_add(store, x509, /*is_crl=*/0)) {
       return false;
     }
   }
   return true;
 }
 
-void X509Store::MaterializeLazy(int type, const X509_NAME *name,
-                                const X509 *parsed) {
+void X509Store::MaterializeLazy(int type, const X509_NAME *name) {
   if (type != X509_LU_X509) {
     return;
   }
@@ -672,8 +641,9 @@ void X509Store::MaterializeLazy(int type, const X509_NAME *name,
   for (size_t i = 0; i < num; i++) {
     X509LazyCertSet *set =
         i < kInline ? inline_sets[i].get() : more_sets[i - kInline].get();
-    if (!set->AddMatchesToStore(this, name, parsed)) {
-      // The anchors are treated as absent, as when a lookup method fails.
+    if (!set->AddMatchesToStore(this, name)) {
+      // An anchor that fails to parse is treated as absent, as a lookup method
+      // that fails is.
       ERR_clear_error();
     }
   }
@@ -726,7 +696,7 @@ int X509_LAZY_CERT_SET_can_index(const uint8_t *der, size_t len) {
   CBS cbs, subject;
   CBS_init(&cbs, der, len);
   Array<uint8_t> canon;
-  return x509_cert_subject(&cbs, &subject) && CBS_len(&cbs) == 0 &&
+  return x509_cert_subject(cbs, &subject) &&
          x509_name_canon_from_der(&subject, &canon);
 }
 
@@ -765,21 +735,20 @@ int X509_STORE_add_lazy_cert_set(X509_STORE *store, X509_LAZY_CERT_SET *set) {
   return impl->lazy_cert_sets.Push(UpRef(FromOpaque(set))) ? 1 : 0;
 }
 
-int bssl::x509_get1_trusted_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
-                                   const X509 *x) {
+int X509_STORE_CTX_get1_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
+                               const X509 *x) {
   X509_OBJECT obj;
   X509_NAME *xn = X509_get_issuer_name(x);
   if (!X509_STORE_CTX_get_by_subject(ctx, X509_LU_X509, xn, &obj)) {
     return 0;
   }
   // If certificate matches all OK
-  X509 *best = nullptr;
-  if (x509_consider_issuer(ctx, x, obj.data.x509, /*trusted=*/true, &best)) {
+  if (x509_check_issued_with_callback(ctx, x, obj.data.x509) &&
+      x509_verify_trusted_cert_in_time(ctx, obj.data.x509)) {
     *out_issuer = obj.data.x509;
     return 1;
   }
   X509_OBJECT_free_contents(&obj);
-  best = nullptr;
 
   // Else find index of first cert accepted by
   // `x509_check_issued_with_callback`.
@@ -795,22 +764,20 @@ int bssl::x509_get1_trusted_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
       // This works because the objects are sorted by type, then subject
       // name, using `x509_object_cmp`.
       if (pobj->type != X509_LU_X509) {
-        break;
+        return 0;
       }
       if (X509_NAME_cmp(xn, X509_get_subject_name(pobj->data.x509))) {
-        break;
+        return 0;
       }
-      if (x509_consider_issuer(ctx, x, pobj->data.x509, /*trusted=*/true,
-                               &best)) {
-        break;
+      if (x509_check_issued_with_callback(ctx, x, pobj->data.x509) &&
+          x509_verify_trusted_cert_in_time(ctx, pobj->data.x509)) {
+        *out_issuer = pobj->data.x509;
+        X509_OBJECT_up_ref_count(pobj);
+        return 1;
       }
     }
   }
-  if (best == nullptr) {
-    return 0;
-  }
-  *out_issuer = X509_dup_ref(best);
-  return 1;
+  return 0;
 }
 
 int X509_STORE_set_flags(X509_STORE *ctx, unsigned long flags) {

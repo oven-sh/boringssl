@@ -84,17 +84,11 @@ class X509NameEntry : public X509_name_entry_st {
 // (RFC 5280) and C type is `X509_NAME_ENTRY*`.
 DECLARE_ASN1_ITEM(X509_NAME_ENTRY)
 
-// x509_consider_issuer chooses an issuer for `x` as OpenSSL does, except for
-// detours. It returns true, with `candidate` in `*best`, if `candidate` matches
-// and is in its validity period. Otherwise it returns false and keeps the match
-// that expires last. `trusted` is whether `candidate` is from the trust store.
-bool x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x, X509 *candidate,
-                          bool trusted, X509 **best);
-
-// x509_get1_trusted_issuer behaves like `X509_STORE_CTX_get1_issuer`, but may
-// find nothing on a detour.
-int x509_get1_trusted_issuer(X509 **out_issuer, X509_STORE_CTX *ctx,
-                             const X509 *x);
+// x509_verify_trusted_cert_in_time returns zero if `ctx` has
+// `X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS` set and `x509`'s validity period
+// does not cover `ctx`'s verification time, and one otherwise.
+int x509_verify_trusted_cert_in_time(X509_STORE_CTX *ctx,
+                                     const X509 *x509);
 
 // x509_name_canon_from_der parses a DER-encoded Name from `cbs` and sets `out`
 // to its canonical form, as `X509_NAME_cmp` would compare it, without
@@ -192,7 +186,6 @@ class X509Impl : public x509_st, public RefCounted<X509Impl> {
   mutable uint32_t ex_flags = 0;
   mutable uint32_t ex_kusage = 0;
   mutable uint32_t ex_xkusage = 0;
-  mutable uint8_t ex_nscert = 0;
   mutable UniquePtr<ASN1_OCTET_STRING> skid;
   mutable UniquePtr<AUTHORITY_KEYID> akid;
   mutable UniquePtr<STACK_OF(DIST_POINT)> crldp;
@@ -337,9 +330,6 @@ struct x509_object_st {
     X509_CRL *crl;
     EVP_PKEY *pkey;
   } data;
-  // order counts the objects of a store from one, as they were added. It is
-  // zero in an object that is only searched for.
-  size_t order = 0;
 } /* X509_OBJECT */;
 
 BSSL_NAMESPACE_BEGIN
@@ -372,8 +362,6 @@ struct X509LazyCert {
   Span<const uint8_t> subject;
   // canon is the subject in the form `X509_NAME_cmp` compares.
   Array<uint8_t> canon;
-  // has_aux is whether trust settings follow the certificate in `der`.
-  bool has_aux = false;
   Atomic<X509 *> x509 = nullptr;
 };
 
@@ -399,18 +387,15 @@ class X509LazyCertSet : public x509_lazy_cert_set_st,
   }
 
   // AddMatchesToStore parses every certificate whose subject is `name` and adds
-  // it to `store`. It returns false on error; no match, or one that does not
-  // parse, is not an error. `parsed`, if not null, saves parsing a certificate
-  // with the same encoding.
-  bool AddMatchesToStore(X509Store *store, const X509_NAME *name,
-                         const X509 *parsed);
+  // it to `store`. It returns false on error; no match is not an error.
+  bool AddMatchesToStore(X509Store *store, const X509_NAME *name);
 
  private:
   friend RefCounted;
   ~X509LazyCertSet();
 
   Array<X509LazyCert> certs_;
-  // by_subject_ holds indices into `certs_` sorted by `canon`, then by value.
+  // by_subject_ holds indices into `certs_` sorted by `canon`.
   Array<size_t> by_subject_;
 };
 
@@ -423,8 +408,7 @@ class X509Store : public x509_store_st, public RefCounted<X509Store> {
 
   // MaterializeLazy adds any not-yet-parsed lazily trusted certificates with
   // subject `name` to `objs`. It must be called without `objs_lock` held.
-  void MaterializeLazy(int type, const X509_NAME *name,
-                       const X509 *parsed = nullptr);
+  void MaterializeLazy(int type, const X509_NAME *name);
 
   // The following is a cache of trusted certs
   UniquePtr<STACK_OF(X509_OBJECT)> objs;  // Cache of all objects
@@ -482,11 +466,10 @@ struct x509_store_ctx_st {
   int error_depth;
   int error;
   X509 *current_cert;
-  // Whether the path was built around a choice of OpenSSL that cannot lead to a
-  // valid path. No error is reported on such a path.
-  bool is_detour;
-  // Whether detours are ruled out.
-  bool no_detour;
+  // With X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS: the time error of the last
+  // trust anchor a lookup skipped, so a chain that then fails as untrusted can
+  // be reported as that instead. Zero if none was skipped.
+  int ignored_anchor_error;
 
   CRYPTO_EX_DATA ex_data;
 } /* X509_STORE_CTX */;
@@ -559,18 +542,12 @@ int x509_sign_to_bit_string(EVP_MD_CTX *ctx, ASN1_BIT_STRING *out,
 // interpreted as anyPolicy. `flags` is a set of `X509_V_FLAG_*` values to
 // apply. It returns `X509_V_OK` on success and `X509_V_ERR_*` on error. It
 // additionally sets `*out_error_depth` to the index of certificate where the
-// error occurred. If `skip_trust_anchor`, the extensions of the last
-// certificate are ignored.
+// error occurred.
 int X509_policy_check(const STACK_OF(X509) *certs,
                       const STACK_OF(ASN1_OBJECT) *user_policies,
-                      unsigned long flags, bool skip_trust_anchor,
-                      int *out_error_depth);
+                      unsigned long flags, int *out_error_depth);
 
-// x509_likely_issued behaves like `X509_check_issued`, but does not check the
-// key usage of `issuer`.
-int x509_likely_issued(const X509 *issuer, const X509 *subject);
-
-// x509_check_issued_with_callback calls `x509_likely_issued`, but allows the
+// x509_check_issued_with_callback calls `X509_check_issued`, but allows the
 // verify callback to override the result. It returns one on success and zero on
 // error.
 //
@@ -606,13 +583,9 @@ int x509v3_conf_name_matches(const char *name, const char *cmp);
 OPENSSL_EXPORT int x509v3_looks_like_dns_name(const unsigned char *in,
                                               size_t len);
 
-// X509_TRUST_NO_SS_COMPAT is a flag for `X509_check_trust` to not trust a
-// certificate for being self-signed.
-#define X509_TRUST_NO_SS_COMPAT (1 << 2)
-
-// X509_TRUST_NO_IMPLIED_REJECT is a flag for `X509_check_trust` to not reject a
-// certificate for being trusted for other uses only.
-#define X509_TRUST_NO_IMPLIED_REJECT (1 << 5)
+// x509_check_purpose_of_ca behaves like `X509_check_purpose` for a certificate
+// the caller has already determined to be a CA.
+int x509_check_purpose_of_ca(const X509 *x, int id);
 
 // x509v3_cache_extensions fills in a number of fields relating to X.509
 // extensions in `x`. It returns one on success and zero if some extensions were

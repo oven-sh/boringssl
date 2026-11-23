@@ -57,10 +57,6 @@
 #include <thread>
 #endif
 
-#if !defined(OPENSSL_WINDOWS)
-#include <unistd.h>
-#endif
-
 
 BSSL_NAMESPACE_BEGIN
 namespace {
@@ -3908,11 +3904,8 @@ TEST_P(X509VerifyTest, NoBasicConstraintsCertSign) {
   EXPECT_TRUE(X509_check_purpose(intermediate.get(), -1, /*ca=*/1));
   EXPECT_TRUE(
       X509_check_purpose(intermediate.get(), X509_PURPOSE_ANY, /*ca=*/1));
-  // As in OpenSSL, it could be a trust anchor.
-  EXPECT_TRUE(X509_check_purpose(intermediate.get(), X509_PURPOSE_SSL_SERVER,
-                                 /*ca=*/1));
-  EXPECT_FALSE(
-      X509_check_purpose(leaf.get(), X509_PURPOSE_SSL_SERVER, /*ca=*/1));
+  EXPECT_FALSE(X509_check_purpose(intermediate.get(), X509_PURPOSE_SSL_SERVER,
+                                  /*ca=*/1));
 }
 
 TEST_P(X509VerifyTest, NoBasicConstraintsNetscapeCA) {
@@ -4424,16 +4417,18 @@ TEST_P(X509VerifyTest, ServerGatedCryptoEKUs) {
                   });
   };
 
-  // The "any" EKU probably, technically, should be sufficient for
-  // `X509_PURPOSE_SSL_SERVER`. However, we've never accepted it and it's not
-  // acceptable in leaf certificates by the Baseline, so perhaps we don't need
-  // this complexity.
-  EXPECT_EQ(X509_V_ERR_INVALID_PURPOSE, verify_cert(any_eku.get()));
+  // Neither the Microsoft nor Netscape SGC EKU should be sufficient for
+  // `X509_PURPOSE_SSL_SERVER`. The "any" EKU probably, technically, should be.
+  // However, we've never accepted it and it's not acceptable in leaf
+  // certificates by the Baseline, so perhaps we don't need this complexity.
+  for (X509 *leaf : {ms_sgc.get(), ns_sgc.get(), any_eku.get()}) {
+    EXPECT_EQ(X509_V_ERR_INVALID_PURPOSE, verify_cert(leaf));
+  }
 
-  // The server-auth EKU is sufficient and, as in OpenSSL, so is an SGC EKU.
-  // Lastly, not specifying an EKU is also valid.
-  for (X509 *leaf : {server_eku.get(), server_eku_plus_ms_sgc.get(),
-                     ms_sgc.get(), ns_sgc.get(), no_eku.get()}) {
+  // The server-auth EKU is sufficient, and it doesn't matter if an SGC EKU is
+  // also included. Lastly, not specifying an EKU is also valid.
+  for (X509 *leaf :
+       {server_eku.get(), server_eku_plus_ms_sgc.get(), no_eku.get()}) {
     EXPECT_EQ(X509_V_OK, verify_cert(leaf));
   }
 }
@@ -4487,13 +4482,13 @@ TEST_P(X509VerifyTest, InvalidExtensions) {
             .c_str()));
     ASSERT_TRUE(trailing_leaf);
 
-    // As in OpenSSL, nothing is the issuer of an invalid certificate.
-    for (X509 *bad : {invalid_leaf.get(), trailing_leaf.get()}) {
-      EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
-                Verify(bad, {root.get()}, {intermediate.get()}, {}));
-      EXPECT_EQ(X509_V_ERR_INVALID_EXTENSION,
-                Verify(bad, {bad}, {}, {}, X509_V_FLAG_PARTIAL_CHAIN));
-    }
+    EXPECT_EQ(
+        X509_V_ERR_INVALID_EXTENSION,
+        Verify(invalid_leaf.get(), {root.get()}, {intermediate.get()}, {}));
+
+    EXPECT_EQ(
+        X509_V_ERR_INVALID_EXTENSION,
+        Verify(trailing_leaf.get(), {root.get()}, {intermediate.get()}, {}));
 
     // If the invalid extension is on an intermediate or root,
     // `X509_verify_cert` notices by way of being unable to build a path to
@@ -4539,16 +4534,16 @@ TEST_P(X509VerifyTest, KeyUsageCertSign) {
 
   EXPECT_EQ(X509_V_OK, Verify(cert.get(), {root.get()}, {ca.get()}, {}));
 
-  EXPECT_EQ(X509_V_ERR_INVALID_CA,
+  // This is currently implemented as part of finding issuers, so this currently
+  // manifests as `X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY` instead of
+  // `X509_V_ERR_KEYUSAGE_NO_CERTSIGN`.
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
             Verify(cert.get(), {root.get()}, {ca_wrong.get()}, {}));
-  EXPECT_EQ(X509_V_ERR_KEYUSAGE_NO_CERTSIGN,
-            Verify(cert.get(), {root.get()}, {ca_wrong.get()}, {}, /*flags=*/0,
-                   [](X509_STORE_CTX *ctx) {
-                     SuppressErrorsWithVerifyCallback(ctx,
-                                                      {X509_V_ERR_INVALID_CA});
-                   }));
 
-  // It is possible for the callback to suppress this check.
+  // It is possible, but difficult, for the callback to suppress this check. It
+  // is actually impossible in OpenSSL, but some of our callers currently rely
+  // on `X509_V_FLAG_CB_ISSUER_CHECK`. Until we rewrite those callers, add tests
+  // for this behavior.
   EXPECT_EQ(X509_V_OK,
             Verify(cert.get(), {root.get()}, {ca_wrong.get()}, {},
                    X509_V_FLAG_CB_ISSUER_CHECK, [](X509_STORE_CTX *ctx) {
@@ -5991,13 +5986,13 @@ TEST_P(X509VerifyTest, SignatureVerification) {
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.bad_key.get()},
                    {intermediate.valid.get()}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.bad_key_type.get()},
                    {intermediate.valid.get()}, {}));
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.valid.get()},
                    {intermediate.bad_key.get()}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY,
             Verify(leaf.valid.get(), {root.valid.get()},
                    {intermediate.bad_key_type.get()}, {}));
 
@@ -6460,9 +6455,8 @@ TEST_P(X509VerifyTest, Names) {
       SCOPED_TRACE(dns);
       EXPECT_EQ(1, X509_check_host(cert.get(), dns.data(), dns.size(), t.flags,
                                    /*peername=*/nullptr));
-      EXPECT_EQ(t.cert_invalid_subject_alt_name
-                    ? X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
-                    : X509_V_OK,
+      EXPECT_EQ(t.cert_invalid_subject_alt_name ? X509_V_ERR_INVALID_EXTENSION
+                                                : X509_V_OK,
                 Verify(cert.get(), {root.get()}, /*intermediates=*/{},
                        /*crls=*/{}, /*flags=*/0, [&](X509_STORE_CTX *ctx) {
                          X509_VERIFY_PARAM *param =
@@ -6480,9 +6474,8 @@ TEST_P(X509VerifyTest, Names) {
       if (t.cert_invalid_subject_alt_name) {
         EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ASN1_R_DECODE_ERROR}}));
       }
-      EXPECT_EQ(t.cert_invalid_subject_alt_name
-                    ? X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
-                    : X509_V_ERR_HOSTNAME_MISMATCH,
+      EXPECT_EQ(t.cert_invalid_subject_alt_name ? X509_V_ERR_INVALID_EXTENSION
+                                                : X509_V_ERR_HOSTNAME_MISMATCH,
                 Verify(cert.get(), {root.get()}, /*intermediates=*/{},
                        /*crls=*/{}, /*flags=*/0, [&](X509_STORE_CTX *ctx) {
                          X509_VERIFY_PARAM *param =
@@ -6500,9 +6493,8 @@ TEST_P(X509VerifyTest, Names) {
       if (t.cert_invalid_subject_alt_name) {
         EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ASN1_R_DECODE_ERROR}}));
       }
-      EXPECT_EQ(t.cert_invalid_subject_alt_name
-                    ? X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
-                    : X509_V_OK,
+      EXPECT_EQ(t.cert_invalid_subject_alt_name ? X509_V_ERR_INVALID_EXTENSION
+                                                : X509_V_OK,
                 Verify(cert.get(), {root.get()}, /*intermediates=*/{},
                        /*crls=*/{}, /*flags=*/0, [&](X509_STORE_CTX *ctx) {
                          X509_VERIFY_PARAM *param =
@@ -6520,9 +6512,8 @@ TEST_P(X509VerifyTest, Names) {
       if (t.cert_invalid_subject_alt_name) {
         EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_ASN1, ASN1_R_DECODE_ERROR}}));
       }
-      EXPECT_EQ(t.cert_invalid_subject_alt_name
-                    ? X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
-                    : X509_V_ERR_EMAIL_MISMATCH,
+      EXPECT_EQ(t.cert_invalid_subject_alt_name ? X509_V_ERR_INVALID_EXTENSION
+                                                : X509_V_ERR_EMAIL_MISMATCH,
                 Verify(cert.get(), {root.get()}, /*intermediates=*/{},
                        /*crls=*/{}, /*flags=*/0, [&](X509_STORE_CTX *ctx) {
                          X509_VERIFY_PARAM *param =
@@ -7417,13 +7408,7 @@ TEST_P(X509VerifyTest, Policy) {
              [&](X509_STORE_CTX *ctx) { set_policies(ctx, {oid1.get()}); }));
   EXPECT_EQ(X509_V_ERR_INVALID_POLICY_EXTENSION,
             Verify(leaf_invalid.get(), {root.get()}, {intermediate.get()},
-                   /*crls=*/{}, X509_V_FLAG_POLICY_CHECK));
-  EXPECT_EQ(X509_V_ERR_INVALID_POLICY_EXTENSION,
-            Verify(leaf_require.get(), {root.get()},
-                   {intermediate_invalid.get()}, /*crls=*/{}));
-  // It goes unnoticed if nothing asks for a policy.
-  EXPECT_EQ(X509_V_OK, Verify(leaf_invalid.get(), {root.get()},
-                              {intermediate.get()}, /*crls=*/{}));
+                   /*crls=*/{}));
 
   // There is a duplicate policy in the policy extension.
   EXPECT_EQ(
@@ -7492,17 +7477,10 @@ TEST_P(X509VerifyTest, Policy) {
   EXPECT_EQ(X509_V_ERR_NO_EXPLICIT_POLICY,
             Verify(leaf_none.get(), {root.get()}, {intermediate_require.get()},
                    /*crls=*/{}));
-  // The trust anchor only counts on request.
-  EXPECT_EQ(X509_V_ERR_NO_EXPLICIT_POLICY,
-            Verify(leaf_none.get(), {intermediate_require.get()},
-                   /*intermediates=*/{}, /*crls=*/{},
-                   X509_V_FLAG_PARTIAL_CHAIN | X509_V_FLAG_POLICY_CHECK));
-  EXPECT_EQ(X509_V_OK, Verify(leaf_none.get(), {intermediate_require.get()},
-                              /*intermediates=*/{}, /*crls=*/{},
-                              X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_OK, Verify(leaf_require.get(), {intermediate_invalid.get()},
-                              /*intermediates=*/{}, /*crls=*/{},
-                              X509_V_FLAG_PARTIAL_CHAIN));
+  EXPECT_EQ(
+      X509_V_ERR_NO_EXPLICIT_POLICY,
+      Verify(leaf_none.get(), {intermediate_require.get()},
+             /*intermediates=*/{}, /*crls=*/{}, X509_V_FLAG_PARTIAL_CHAIN));
 
   // A leaf can also set requireExplicitPolicy.
   EXPECT_EQ(X509_V_OK,
@@ -9715,7 +9693,7 @@ TEST_P(X509VerifyTest, Purpose) {
       ASSERT_TRUE(AddExtendedKeyUsage(intermediate_bad_ku.get(), {t.eku_nid}));
     }
     ASSERT_TRUE(X509_sign(intermediate_bad_ku.get(), key.get(), EVP_sha256()));
-    EXPECT_EQ(X509_V_ERR_INVALID_CA,
+    EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
               Verify(leaf.get(), {root.get()}, {intermediate_bad_ku.get()}, {},
                      0, configure_callback));
 
@@ -9834,15 +9812,10 @@ TEST_P(X509VerifyTest, Trust) {
             Verify(root.normal.get(), {root.distrusted_any.get()}, {}, {}));
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
             Verify(leaf.normal.get(), {leaf.normal.get()}, {}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
+  EXPECT_EQ(X509_V_OK,
             Verify(leaf.normal.get(), {leaf.trusted_any.get()}, {}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
-            Verify(leaf.normal.get(), {leaf.distrusted_any.get()}, {}, {}));
-  // Unlike in OpenSSL, a trusted issuer does not make up for distrust.
   EXPECT_EQ(X509_V_ERR_CERT_REJECTED,
-            Verify(leaf.normal.get(),
-                   {leaf.distrusted_any.get(), root.normal.get()},
-                   {intermediate.normal.get()}, {}));
+            Verify(leaf.normal.get(), {leaf.distrusted_any.get()}, {}, {}));
 
   // If `X509_V_FLAG_PARTIAL_CHAIN`, its looser interpretation of trust anchors
   // also applies when the target certificate is in the store.
@@ -9861,19 +9834,15 @@ TEST_P(X509VerifyTest, Trust) {
             Verify(leaf.normal.get(), {leaf.distrusted_any.get()}, {}, {},
                    X509_V_FLAG_PARTIAL_CHAIN));
 
-  // If a certificate is distrusted, but only for a different OID, the
-  // self-signed rule still takes effect. If it is trusted, but only for a
-  // different OID, it is rejected.
-  EXPECT_EQ(X509_V_ERR_CERT_REJECTED,
-            Verify(leaf.normal.get(), {root.trusted_server.get()},
-                   {intermediate.normal.get()}, {}));
+  // If a certificate has trust settings, but only for a different OID, the
+  // self-signed rule still takes effect.
+  EXPECT_EQ(X509_V_OK, Verify(leaf.normal.get(), {root.trusted_server.get()},
+                              {intermediate.normal.get()}, {}));
   EXPECT_EQ(X509_V_OK, Verify(leaf.normal.get(), {root.distrusted_server.get()},
                               {intermediate.normal.get()}, {}));
-  for (unsigned long flags : {0, X509_V_FLAG_PARTIAL_CHAIN}) {
-    EXPECT_EQ(X509_V_ERR_CERT_REJECTED,
-              Verify(leaf.normal.get(), {intermediate.trusted_server.get()}, {},
-                     {}, flags));
-  }
+  EXPECT_EQ(
+      X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
+      Verify(leaf.normal.get(), {intermediate.trusted_server.get()}, {}, {}));
 
   // `X509_TRUST_SSL_SERVER` should instead look at self-signedness and
   // `NID_server_auth`.
@@ -9901,19 +9870,13 @@ TEST_P(X509VerifyTest, Trust) {
             Verify(leaf.normal.get(), {intermediate.distrusted_server.get()},
                    {}, {}, /*flags=*/0, set_server_trust));
 
-  // NID_anyExtendedKeyUsage includes it.
-  EXPECT_EQ(X509_V_OK,
-            Verify(leaf.normal.get(), {intermediate.trusted_any.get()}, {}, {},
-                   /*flags=*/0, set_server_trust));
+  // NID_anyExtendedKeyUsage is just an unrelated OID to X509_TRUST_SSL_SERVER.
+  // Unlike the default behavior, once a certificate has explicit trust settings
+  // for any OID, the self-signed check is disabled.
   EXPECT_EQ(
-      X509_V_ERR_CERT_REJECTED,
-      Verify(leaf.normal.get(), {root.distrusted_any.get()},
+      X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
+      Verify(leaf.normal.get(), {root.trusted_any.get()},
              {intermediate.normal.get()}, {}, /*flags=*/0, set_server_trust));
-  EXPECT_EQ(X509_V_OK, Verify(leaf.normal.get(), {root.distrusted_server.get()},
-                              {intermediate.normal.get()}, {}, /*flags=*/0,
-                              [](X509_STORE_CTX *ctx) {
-                                X509_STORE_CTX_set_trust(ctx, X509_TRUST_EMAIL);
-                              }));
 
   // Trust settings on a certificate are ignored if the leaf did not come from
   // `X509_STORE`. This is important because trust settings may be serialized
@@ -9984,30 +9947,32 @@ TEST_P(X509VerifyTest, CriticalExtension) {
   ASSERT_TRUE(leaf);
   ASSERT_TRUE(X509_sign(leaf.get(), key.get(), EVP_sha256()));
 
-  // Issue certificates with a critical Netscape comment extension. We do not
-  // recognize this extension, so these certificates should be rejected.
-  UniquePtr<ASN1_IA5STRING> comment(ASN1_IA5STRING_new());
-  ASSERT_TRUE(comment);
+  // Issue certificates with a critical Netscape certificate type extension. We
+  // do not recognize this extension, so these certificates should be rejected.
+  UniquePtr<ASN1_BIT_STRING> cert_type(ASN1_BIT_STRING_new());
+  ASSERT_TRUE(cert_type);
+  ASSERT_TRUE(ASN1_BIT_STRING_set_bit(cert_type.get(), /*n=*/0, /*value=*/1));
 
   UniquePtr<X509> root_crit =
       MakeTestCert("Root", "Root", key.get(), /*is_ca=*/true);
   ASSERT_TRUE(root_crit);
-  ASSERT_TRUE(X509_add1_ext_i2d(root_crit.get(), NID_netscape_comment,
-                                comment.get(), /*crit=*/1, /*flags=*/0));
+  ASSERT_TRUE(X509_add1_ext_i2d(root_crit.get(), NID_netscape_cert_type,
+                                cert_type.get(), /*crit=*/1, /*flags=*/0));
   ASSERT_TRUE(X509_sign(root_crit.get(), key.get(), EVP_sha256()));
 
   UniquePtr<X509> intermediate_crit =
       MakeTestCert("Root", "Intermediate", key.get(), /*is_ca=*/true);
   ASSERT_TRUE(intermediate_crit);
-  ASSERT_TRUE(X509_add1_ext_i2d(intermediate_crit.get(), NID_netscape_comment,
-                                comment.get(), /*crit=*/1, /*flags=*/0));
+  ASSERT_TRUE(X509_add1_ext_i2d(intermediate_crit.get(), NID_netscape_cert_type,
+                                cert_type.get(), /*crit=*/1, /*flags=*/0));
   ASSERT_TRUE(X509_sign(intermediate_crit.get(), key.get(), EVP_sha256()));
 
   UniquePtr<X509> leaf_crit =
       MakeTestCert("Intermediate", "Leaf", key.get(), /*is_ca=*/false);
   ASSERT_TRUE(leaf_crit);
-  ASSERT_TRUE(X509_add1_ext_i2d(leaf_crit.get(), NID_netscape_comment,
-                                comment.get(), /*crit=*/1, /*flags=*/0));
+  ASSERT_TRUE(X509_add1_ext_i2d(leaf_crit.get(), NID_netscape_cert_type,
+                                cert_type.get(),
+                                /*crit=*/1, /*flags=*/0));
   ASSERT_TRUE(X509_sign(leaf_crit.get(), key.get(), EVP_sha256()));
 
   EXPECT_EQ(X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION,
@@ -11232,7 +11197,7 @@ TEST_P(X509VerifyTest, CRLCheckAll) {
             Verify(leaf.get(), {ca.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_ERR_CRL_SIGNATURE_FAILURE,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {ca.get()}, {},
                    {ca_crl_empty.get(), root_crl_revoke_ca.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
@@ -11243,14 +11208,14 @@ TEST_P(X509VerifyTest, CRLCheckAll) {
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_ERR_CRL_SIGNATURE_FAILURE,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
   EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
-  EXPECT_EQ(X509_V_ERR_CRL_SIGNATURE_FAILURE,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {ca_crl_empty.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL |
                        X509_V_FLAG_PARTIAL_CHAIN));
@@ -11258,7 +11223,7 @@ TEST_P(X509VerifyTest, CRLCheckAll) {
   // It cannot vouch for itself by signing a CRL in the name of its issuer.
   UniquePtr<X509_CRL> forged_crl = make_crl("CA", leaf_key.get(), {});
   ASSERT_TRUE(forged_crl);
-  EXPECT_EQ(X509_V_ERR_CRL_SIGNATURE_FAILURE,
+  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_CRL,
             Verify(leaf.get(), {leaf.get()}, {}, {forged_crl.get()},
                    X509_V_FLAG_CRL_CHECK | X509_V_FLAG_PARTIAL_CHAIN));
 
@@ -13815,14 +13780,14 @@ TEST_P(X509VerifyTest, IgnoreExpiredTrustAnchors) {
       // Expired intermediate trusted, peer sends the valid one: it no longer shadows it.
       {{root.get(), int_old.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
       // Both trusted, either order: the valid one is found.
-      {{root.get(), int_old.get(), int_new.get()}, {}, X509_V_OK, X509_V_OK},
+      {{root.get(), int_old.get(), int_new.get()}, {}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
       {{root.get(), int_new.get(), int_old.get()}, {}, X509_V_OK, X509_V_OK},
       // Only the expired intermediate trusted, nothing valid anywhere: absent, and the failure still says why.
       {{root.get(), int_old.get()}, {}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_ERR_CERT_HAS_EXPIRED},
       // Expired root: likewise.
       {{root_old.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_ERR_CERT_HAS_EXPIRED},
       // Expired and valid root both trusted: valid one anchors.
-      {{root_old.get(), root.get()}, {int_new.get()}, X509_V_OK, X509_V_OK},
+      {{root_old.get(), root.get()}, {int_new.get()}, X509_V_ERR_CERT_HAS_EXPIRED, X509_V_OK},
   };
   int i = 0;
   for (const auto &t : kCases) {
@@ -13970,13 +13935,12 @@ TEST_P(X509VerifyTest, PartialChainPrefersIssuerOverTarget) {
                    {crl.get()},
                    X509_V_FLAG_PARTIAL_CHAIN | X509_V_FLAG_CRL_CHECK));
 
-  // The target is still an anchor when no issuer is trusted. As in OpenSSL,
-  // the chain is not cut short.
+  // The target is still an anchor when no issuer is trusted.
   VerifyResult result =
       VerifyAndReturnChain(leaf.get(), {leaf.get()}, {intermediate.get()}, {},
                            X509_V_FLAG_PARTIAL_CHAIN);
   EXPECT_EQ(X509_V_OK, result.err);
-  EXPECT_EQ(2u, sk_X509_num(result.chain.get()));
+  EXPECT_EQ(1u, sk_X509_num(result.chain.get()));
 }
 
 TEST_P(X509VerifyTest, NoBasicConstraintsCertSignTrustAnchor) {
@@ -13995,727 +13959,6 @@ TEST_P(X509VerifyTest, NoBasicConstraintsCertSignTrustAnchor) {
   EXPECT_EQ(X509_V_ERR_INVALID_CA,
             Verify(leaf.get(), {root.get(), intermediate.get()}, {}, {}, 0,
                    set_purpose));
-}
-
-// Several certificates match one issuer.
-class X509IssuerSelectionTest : public X509VerifyTest {
- protected:
-  void SetUp() override {
-    key_.reset(EVP_PKEY_generate_from_alg(EVP_pkey_ec_p256()));
-    ed25519_.reset(EVP_PKEY_generate_from_alg(EVP_pkey_ed25519()));
-    ASSERT_TRUE(key_ && ed25519_);
-    root_ = Cert("Root", "Root");
-    not_ca_ = Cert("Root", "Root", /*is_ca=*/false);
-    leaf_ = Cert("Root", "Leaf", /*is_ca=*/false);
-  }
-
-  // Cert returns a certificate with a new serial number, signed by `key_`.
-  X509 *Cert(std::string_view issuer, std::string_view subject,
-             bool is_ca = true, int not_after_days = 1,
-             EVP_PKEY *key = nullptr, int not_before_days = -100) {
-    UniquePtr<X509> cert =
-        MakeTestCert(issuer, subject, key ? key : key_.get(), is_ca);
-    BSSL_CHECK(cert);
-    BSSL_CHECK(ASN1_INTEGER_set_uint64(X509_get_serialNumber(cert.get()),
-                                       certs_.size() + 1));
-    BSSL_CHECK(ASN1_TIME_adj(X509_getm_notBefore(cert.get()), kReferenceTime,
-                             not_before_days, 0));
-    BSSL_CHECK(ASN1_TIME_adj(X509_getm_notAfter(cert.get()), kReferenceTime,
-                             not_after_days, 0));
-    BSSL_CHECK(X509_sign(cert.get(), key_.get(), EVP_sha256()));
-    certs_.push_back(ReencodeCertificate(cert.get()));
-    BSSL_CHECK(certs_.back());
-    return certs_.back().get();
-  }
-
-  // Custom returns a certificate with a new serial number and only the
-  // extensions in `exts`, as pairs of NID and `X509V3_EXT_nconf_nid` value.
-  X509 *Custom(std::string_view issuer, std::string_view subject,
-               const std::vector<std::pair<int, const char *>> &exts,
-               EVP_PKEY *key = nullptr, int not_after_days = 1) {
-    UniquePtr<X509> cert(X509_dup(
-        Cert(issuer, subject, /*is_ca=*/false, not_after_days, key)));
-    BSSL_CHECK(cert);
-    X509_EXTENSION_free(X509_delete_ext(cert.get(), 0));
-    for (const auto &[nid, value] : exts) {
-      UniquePtr<X509_EXTENSION> ext(
-          X509V3_EXT_nconf_nid(nullptr, nullptr, nid, value));
-      BSSL_CHECK(ext && X509_add_ext(cert.get(), ext.get(), -1));
-    }
-    BSSL_CHECK(X509_sign(cert.get(), key_.get(), EVP_sha256()));
-    certs_.back() = ReencodeCertificate(cert.get());
-    BSSL_CHECK(certs_.back());
-    return certs_.back().get();
-  }
-
-  // WithSettings returns a copy of `cert` with trust settings.
-  X509 *WithSettings(X509 *cert, int trust, int reject) {
-    certs_.push_back(ReencodeCertificate(cert));
-    X509 *copy = certs_.back().get();
-    BSSL_CHECK(copy);
-    BSSL_CHECK(trust == NID_undef ||
-               X509_add1_trust_object(copy, OBJ_nid2obj(trust)));
-    BSSL_CHECK(reject == NID_undef ||
-               X509_add1_reject_object(copy, OBJ_nid2obj(reject)));
-    return copy;
-  }
-
-  // Errors returns the first error, and what a verify callback that always goes
-  // on is left with.
-  std::pair<int, int> Errors(X509 *leaf, const std::vector<X509 *> &roots,
-                             const std::vector<X509 *> &untrusted = {},
-                             unsigned long flags = 0,
-                             int purpose = X509_PURPOSE_SSL_SERVER,
-                             const std::vector<X509_CRL *> &crls = {}) {
-    flags |= X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS;
-    UniquePtr<STACK_OF(X509)> roots_stack(CertsToStack(roots)),
-        untrusted_stack(CertsToStack(untrusted));
-    UniquePtr<STACK_OF(X509_CRL)> crls_stack(CRLsToStack(crls));
-    UniquePtr<X509_STORE> store(X509_STORE_new());
-    for (X509 *root : use_store() ? roots : std::vector<X509 *>{}) {
-      BSSL_CHECK(X509_STORE_add_cert(store.get(), root));
-    }
-    int errors[2];
-    for (bool go_on : {false, true}) {
-      UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
-      BSSL_CHECK(X509_STORE_CTX_init(ctx.get(), store.get(), leaf,
-                                     untrusted_stack.get()));
-      if (!use_store()) {
-        X509_STORE_CTX_set0_trusted_stack(ctx.get(), roots_stack.get());
-      }
-      X509_STORE_CTX_set0_crls(ctx.get(), crls_stack.get());
-      X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
-      X509_STORE_CTX_set_flags(ctx.get(), flags);
-      BSSL_CHECK(X509_STORE_CTX_set_purpose(ctx.get(), purpose));
-      if (go_on) {
-        X509_STORE_CTX_set_verify_cb(ctx.get(),
-                                     [](int, X509_STORE_CTX *) { return 1; });
-      }
-      int ok = X509_verify_cert(ctx.get());
-      errors[go_on] = X509_STORE_CTX_get_error(ctx.get());
-      EXPECT_EQ(go_on || errors[go_on] == X509_V_OK, ok == 1);
-    }
-    return {errors[0], errors[1]};
-  }
-
-  static std::pair<int, int> Both(int error) { return {error, error}; }
-
-  // AllErrors returns what a verify callback that always goes on is told.
-  std::vector<int> AllErrors(X509 *leaf, const std::vector<X509 *> &roots,
-                             const std::vector<X509 *> &untrusted = {},
-                             unsigned long flags = 0, int depth = 100) {
-    static thread_local std::vector<int> errors;
-    errors.clear();
-    Verify(leaf, roots, untrusted, {}, flags, [&](X509_STORE_CTX *ctx) {
-      X509_STORE_CTX_set_depth(ctx, depth);
-      X509_STORE_CTX_set_verify_cb(ctx, [](int ok, X509_STORE_CTX *c) {
-        if (!ok) {
-          errors.push_back(X509_STORE_CTX_get_error(c));
-        }
-        return 1;
-      });
-    });
-    return errors;
-  }
-
-  UniquePtr<X509_LAZY_CERT_SET> LazySet(
-      const std::vector<std::vector<uint8_t>> &ders) {
-    std::vector<UniquePtr<CRYPTO_BUFFER>> owned;
-    std::vector<CRYPTO_BUFFER *> bufs;
-    for (const auto &der : ders) {
-      owned.emplace_back(CRYPTO_BUFFER_new(der.data(), der.size(), nullptr));
-      bufs.push_back(owned.back().get());
-    }
-    return UniquePtr<X509_LAZY_CERT_SET>(
-        X509_LAZY_CERT_SET_new(bufs.data(), bufs.size()));
-  }
-
-  UniquePtr<EVP_PKEY> key_, ed25519_;
-  std::vector<UniquePtr<X509>> certs_;
-  X509 *root_, *not_ca_, *leaf_;
-};
-
-INSTANTIATE_TEST_SUITE_P(/* no prefix */, X509IssuerSelectionTest,
-                         testing::Bool());
-
-TEST_P(X509IssuerSelectionTest, FirstAddedWins) {
-  std::vector<X509 *> others;
-  for (int i = 0; i < 40; i++) {
-    std::string name = (i % 2 ? "Roo" : "Rop") + std::to_string(i % 10);
-    others.push_back(Cert(name, name));
-  }
-  for (size_t at = 0; at <= others.size(); at++) {
-    for (bool root_first : {true, false}) {
-      SCOPED_TRACE(at);
-      std::vector<X509 *> roots = others;
-      roots.insert(roots.begin() + at, root_first ? root_ : not_ca_);
-      roots.push_back(root_first ? not_ca_ : root_);
-      const int expected = root_first ? X509_V_OK : X509_V_ERR_INVALID_CA;
-      EXPECT_EQ(expected, Verify(leaf_, roots, {}, {}));
-
-      std::vector<std::vector<uint8_t>> ders;
-      for (X509 *root : roots) {
-        ders.push_back(CertToDER(root));
-      }
-      UniquePtr<X509_STORE> store(X509_STORE_new());
-      ASSERT_TRUE(
-          X509_STORE_add_lazy_cert_set(store.get(), LazySet(ders).get()));
-      EXPECT_EQ(expected, VerifyWithStore(leaf_, store.get(), {}));
-    }
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, LazyCertsKeepTheirPlace) {
-  for (bool lazy_first : {true, false}) {
-    UniquePtr<X509_STORE> store(X509_STORE_new());
-    UniquePtr<X509_LAZY_CERT_SET> set = LazySet({CertToDER(root_)});
-    ASSERT_TRUE(!lazy_first ||
-                X509_STORE_add_lazy_cert_set(store.get(), set.get()));
-    ASSERT_TRUE(X509_STORE_add_cert(store.get(), not_ca_));
-    ASSERT_TRUE(X509_STORE_add_lazy_cert_set(store.get(), set.get()));
-    EXPECT_EQ(lazy_first ? X509_V_OK : X509_V_ERR_INVALID_CA,
-              VerifyWithStore(leaf_, store.get(), {}));
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, LazyCertAddedAgain) {
-  for (bool root_first : {true, false}) {
-    X509 *first = root_first ? root_ : not_ca_;
-    X509 *last = root_first ? not_ca_ : root_;
-    for (X509 *again : {first, last}) {
-      UniquePtr<X509_STORE> store(X509_STORE_new());
-      ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
-          store.get(), LazySet({CertToDER(first), CertToDER(last)}).get()));
-      ASSERT_TRUE(X509_STORE_add_cert(store.get(), again));
-      EXPECT_EQ(2u, sk_X509_OBJECT_num(X509_STORE_get0_objects(store.get())));
-      EXPECT_EQ(root_first ? X509_V_OK : X509_V_ERR_INVALID_CA,
-                VerifyWithStore(leaf_, store.get(), {}));
-    }
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, LazyCertThatDoesNotParse) {
-  std::vector<uint8_t> bad = CertToDER(root_);
-  // Corrupt notBefore.
-  const uint8_t kUTCTime[] = {CBS_ASN1_UTCTIME, 13};
-  auto it = std::search(bad.begin(), bad.end(), std::begin(kUTCTime),
-                        std::end(kUTCTime));
-  ASSERT_NE(it, bad.end());
-  it[2] = 'X';
-  UniquePtr<X509_STORE> store(X509_STORE_new());
-  ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
-      store.get(), LazySet({bad, CertToDER(root_)}).get()));
-  EXPECT_EQ(X509_V_OK, VerifyWithStore(leaf_, store.get(), {}));
-  EXPECT_EQ(0u, ERR_peek_error());
-}
-
-TEST_P(X509IssuerSelectionTest, Validity) {
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
-  X509 *valid = Cert("Root", "CA");
-  X509 *older = Cert("Root", "CA", true, -3);
-  X509 *newer = Cert("Root", "CA", true, -2);
-  EXPECT_EQ(X509_V_OK, Verify(leaf, {root_, older, valid}, {}, {}));
-  EXPECT_EQ(X509_V_OK, Verify(leaf, {root_}, {older, valid}, {}));
-  for (const std::vector<X509 *> &expired :
-       {std::vector{older, newer}, std::vector{newer, older}}) {
-    UniquePtr<X509_STORE> store(X509_STORE_new());
-    for (X509 *cert : expired) {
-      ASSERT_TRUE(X509_STORE_add_cert(store.get(), cert));
-    }
-    UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
-    ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), nullptr, nullptr));
-    X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
-    X509 *issuer = nullptr;
-    ASSERT_TRUE(X509_STORE_CTX_get1_issuer(&issuer, ctx.get(), leaf));
-    EXPECT_EQ(issuer, newer);
-    X509_free(issuer);
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, NoPathAroundIgnoredAnchors) {
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
-  X509 *ca = Cert("Root", "CA");
-  X509 *ca_expired = Cert("Root", "CA", true, -1);
-  X509 *ca_future = Cert("Root", "CA", true, 3, nullptr, 2);
-  X509 *root_expired = Cert("Root", "Root", true, -1);
-  X509 *root_future = Cert("Root", "Root", true, 3, nullptr, 2);
-  X509 *cross = Cert("Unknown", "Root");
-  const struct {
-    std::vector<X509 *> roots, untrusted;
-    int first, last;
-  } kTests[] = {
-      {{root_expired, root_future},
-       {ca},
-       X509_V_ERR_CERT_NOT_YET_VALID,
-       X509_V_ERR_CERT_NOT_YET_VALID},
-      {{ca_future, ca, root_expired},
-       {},
-       X509_V_ERR_CERT_HAS_EXPIRED,
-       X509_V_ERR_CERT_HAS_EXPIRED},
-      {{ca_expired, root_future},
-       {ca},
-       X509_V_ERR_CERT_NOT_YET_VALID,
-       X509_V_ERR_CERT_HAS_EXPIRED},
-      {{root_expired},
-       {ca, cross},
-       X509_V_ERR_CERT_HAS_EXPIRED,
-       X509_V_ERR_CERT_HAS_EXPIRED},
-      {{ca_expired, ca},
-       {},
-       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
-       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT},
-      {{ca_expired},
-       {ca},
-       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
-       X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT},
-  };
-  const unsigned long kFlag = X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS;
-  for (const auto &t : kTests) {
-    SCOPED_TRACE(&t - kTests);
-    EXPECT_EQ(t.first, Verify(leaf, t.roots, t.untrusted, {}, kFlag));
-
-    static thread_local int last;
-    Verify(leaf, t.roots, t.untrusted, {}, kFlag, [](X509_STORE_CTX *ctx) {
-      X509_STORE_CTX_set_verify_cb(ctx, [](int, X509_STORE_CTX *c) {
-        last = X509_STORE_CTX_get_error(c);
-        return 1;
-      });
-    });
-    EXPECT_EQ(t.last, last);
-  }
-
-  UniquePtr<X509_STORE> store(X509_STORE_new());
-  ASSERT_TRUE(X509_STORE_add_cert(store.get(), root_expired));
-  UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
-  ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), leaf_, nullptr));
-  X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
-  X509_STORE_CTX_set_flags(ctx.get(), kFlag);
-  EXPECT_FALSE(X509_verify_cert(ctx.get()));
-  EXPECT_TRUE(
-      X509_VERIFY_PARAM_get_flags(X509_STORE_CTX_get0_param(ctx.get())) &
-      kFlag);
-}
-
-TEST_P(X509IssuerSelectionTest, Loop) {
-  for (int not_after_days : {1, -1}) {
-    SCOPED_TRACE(not_after_days);
-    static thread_local size_t length;
-    EXPECT_EQ(
-        X509_V_ERR_CERT_CHAIN_TOO_LONG,
-        Verify(leaf_,
-               {Cert("Other", "Root", true, not_after_days),
-                Cert("Root", "Other")},
-               {}, {}, X509_V_FLAG_IGNORE_EXPIRED_TRUST_ANCHORS,
-               [](X509_STORE_CTX *ctx) {
-                 X509_STORE_CTX_set_verify_cb(
-                     ctx, [](int ok, X509_STORE_CTX *c) {
-                       length = sk_X509_num(X509_STORE_CTX_get0_chain(c));
-                       return ok;
-                     });
-               }));
-    EXPECT_EQ(4u, length);
-  }
-
-  // The store alone has no loop.
-  X509 *target = Cert("Other", "Root");
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT,
-            Verify(target, {target}, {Cert("Root", "Other")}, {}));
-}
-
-TEST_P(X509IssuerSelectionTest, KeyType) {
-  X509 *link = Cert("Root", "Root", true, 1, ed25519_.get());
-  EXPECT_NE(X509_V_OK, X509_check_issued(link, leaf_));
-  EXPECT_EQ(uint32_t{EXFLAG_SI},
-            X509_get_extension_flags(link) & (EXFLAG_SI | EXFLAG_SS));
-  EXPECT_EQ(X509_V_OK, Verify(leaf_, {link, root_}, {}, {}));
-  EXPECT_EQ(X509_V_OK, Verify(link, {root_}, {}, {}));
-  EXPECT_EQ(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
-            Verify(leaf_, {link}, {}, {}));
-}
-
-TEST_P(X509IssuerSelectionTest, IssuerThatMayNotSign) {
-  X509 *no_sign = Custom("Root", "Root",
-                         {{NID_basic_constraints, "CA:TRUE"},
-                          {NID_key_usage, "digitalSignature"}});
-  const std::pair<int, int> kRefused = {X509_V_ERR_INVALID_CA,
-                                        X509_V_ERR_KEYUSAGE_NO_CERTSIGN};
-  EXPECT_EQ(kRefused, Errors(leaf_, {no_sign}));
-  // Unlike in OpenSSL, it does not hide one that may.
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {no_sign, root_}));
-  // Unless that one is of no use either.
-  EXPECT_EQ(kRefused, Errors(leaf_, {no_sign, not_ca_}));
-  EXPECT_EQ(kRefused, Errors(leaf_, {no_sign, Cert("Unknown", "Root")}));
-
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
-  X509 *ca_no_sign = Custom("Root", "CA",
-                            {{NID_basic_constraints, "CA:TRUE"},
-                             {NID_key_usage, "digitalSignature"}});
-  EXPECT_EQ(kRefused, Errors(leaf, {root_}, {ca_no_sign}));
-  EXPECT_EQ(Both(X509_V_OK),
-            Errors(leaf, {root_}, {ca_no_sign, Cert("Root", "CA")}));
-
-  X509 *expired = Cert("Root", "Root", true, -1);
-  const struct {
-    X509 *cert;
-    std::vector<X509 *> roots;
-    X509 *expected;
-  } kLookups[] = {
-      {leaf_, {no_sign}, no_sign},
-      {leaf_, {no_sign, root_}, root_},
-      {leaf_, {no_sign, expired}, no_sign},
-      {leaf_, {expired, no_sign}, no_sign},
-      {no_sign, {no_sign, root_}, no_sign},
-      {no_sign, {root_, no_sign}, root_},
-  };
-  for (const auto &t : kLookups) {
-    UniquePtr<X509_STORE> store(X509_STORE_new());
-    ASSERT_TRUE(X509_STORE_add_cert(store.get(), ca_no_sign));
-    for (X509 *cert : t.roots) {
-      ASSERT_TRUE(X509_STORE_add_cert(store.get(), cert));
-    }
-    UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
-    ASSERT_TRUE(X509_STORE_CTX_init(ctx.get(), store.get(), nullptr, nullptr));
-    X509_STORE_CTX_set_time_posix(ctx.get(), 0, kReferenceTime);
-    // One lookup does not change the next.
-    for (const auto &[cert, expected] :
-         {std::pair(leaf, ca_no_sign), std::pair(t.cert, t.expected)}) {
-      X509 *issuer = nullptr;
-      ASSERT_TRUE(X509_STORE_CTX_get1_issuer(&issuer, ctx.get(), cert));
-      EXPECT_EQ(issuer, expected);
-      X509_free(issuer);
-    }
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, NoWayAroundDistrust) {
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
-  X509 *ca = Cert("Root", "CA");
-  X509 *expired = Cert("Root", "CA", true, -1);
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf, {root_, expired}, {ca}));
-  EXPECT_EQ(
-      std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_CERT_HAS_EXPIRED),
-      Errors(leaf, {root_, WithSettings(expired, NID_undef, NID_server_auth)},
-             {ca}));
-  // Nor is there after it.
-  X509 *no_sign = Custom("Root", "Root", {{NID_key_usage, "digitalSignature"}});
-  EXPECT_EQ(
-      std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_KEYUSAGE_NO_CERTSIGN),
-      Errors(leaf, {WithSettings(ca, NID_undef, NID_server_auth), no_sign,
-                    root_}));
-  EXPECT_EQ(
-      (std::vector{X509_V_ERR_CERT_REJECTED, X509_V_ERR_INVALID_CA,
-                   X509_V_ERR_KEYUSAGE_NO_CERTSIGN}),
-      AllErrors(leaf, {WithSettings(ca, NID_undef, NID_anyExtendedKeyUsage),
-                       no_sign, root_}));
-
-  // What the peer sends counts even if it is out of date.
-  EXPECT_EQ(Both(X509_V_ERR_CERT_HAS_EXPIRED),
-            Errors(leaf, {root_, leaf}, {expired}, X509_V_FLAG_PARTIAL_CHAIN));
-}
-
-TEST_P(X509IssuerSelectionTest, SelfSignedTarget) {
-  const std::vector<std::pair<int, const char *>> kNoSign = {
-      {NID_key_usage, "digitalSignature"}};
-  X509 *self_signed = Custom("Root", "Root", kNoSign);
-  EXPECT_EQ(Both(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT),
-            Errors(self_signed, {}, {self_signed}));
-  EXPECT_EQ(Both(X509_V_OK), Errors(self_signed, {self_signed}));
-  // Only an exact match will do, even if the key is the same.
-  EXPECT_EQ(Both(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT),
-            Errors(self_signed, {root_}));
-  // Unlike in OpenSSL, it need not be the first of its name.
-  EXPECT_EQ(Both(X509_V_OK), Errors(self_signed, {root_, self_signed}));
-
-  X509 *expired = Custom("Root", "Root", kNoSign, nullptr, -1);
-  EXPECT_EQ(Both(X509_V_ERR_CERT_HAS_EXPIRED), Errors(expired, {expired}));
-  EXPECT_EQ(std::pair(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT,
-                      X509_V_ERR_CERT_HAS_EXPIRED),
-            Errors(expired, {expired, root_}));
-  EXPECT_EQ(
-      std::pair(X509_V_ERR_CERT_REJECTED, X509_V_ERR_INVALID_PURPOSE),
-      Errors(self_signed,
-             {WithSettings(self_signed, NID_undef, NID_server_auth)}));
-
-  // Unlike in OpenSSL, being named like the issuer is not being self-signed.
-  UniquePtr<EVP_PKEY> other(EVP_PKEY_generate_from_alg(EVP_pkey_ec_p256()));
-  X509 *namesake = Custom("Root", "Root", kNoSign, other.get());
-  EXPECT_EQ(Both(X509_V_OK), Errors(namesake, {root_}, {namesake}));
-  EXPECT_EQ(0u, ERR_peek_error());
-  EXPECT_EQ(Both(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT),
-            Errors(namesake, {not_ca_}, {namesake}));
-  // Unless nothing but the signature tells them apart.
-  EXPECT_EQ(Both(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT),
-            Errors(Custom("Root", "Root", {}, other.get()), {root_}));
-
-  // The same goes for the last certificate of a chain.
-  EXPECT_EQ((std::vector{
-                X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN, X509_V_ERR_INVALID_CA,
-                X509_V_ERR_CERT_HAS_EXPIRED, X509_V_ERR_KEYUSAGE_NO_CERTSIGN}),
-            AllErrors(leaf_, {}, {expired}));
-}
-
-TEST_P(X509IssuerSelectionTest, NetscapeCertType) {
-  const std::pair<int, int> kNotCA = {X509_V_ERR_INVALID_CA,
-                                      X509_V_ERR_INVALID_PURPOSE};
-  auto cert = [&](std::string_view issuer, std::string_view subject,
-                  const char *type) {
-    return Custom(issuer, subject, {{NID_netscape_cert_type, type}});
-  };
-  EXPECT_EQ(5, X509_check_ca(cert("Root", "Root", "emailCA")));
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {cert("Root", "Root", "sslCA")}));
-  EXPECT_EQ(Both(X509_V_OK),
-            Errors(leaf_, {cert("Root", "Root", "critical,sslCA")}));
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
-            Errors(leaf_, {cert("Root", "Root", "emailCA")}));
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {cert("Root", "Root", "emailCA")},
-                                    {}, 0, X509_PURPOSE_SMIME_SIGN));
-  EXPECT_EQ(kNotCA, Errors(leaf_, {cert("Root", "Root", "server")}));
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_CA),
-            Errors(Cert("CA", "Leaf", /*is_ca=*/false), {root_},
-                   {cert("Root", "CA", "sslCA")}));
-  // It is ignored if there is a better reason to be a CA.
-  for (auto ext : {std::pair(NID_basic_constraints, "CA:TRUE"),
-                   std::pair(NID_key_usage, "keyCertSign")}) {
-    EXPECT_EQ(
-        Both(X509_V_OK),
-        Errors(leaf_, {Custom("Root", "Root",
-                              {ext, {NID_netscape_cert_type, "emailCA"}})}));
-  }
-
-  for (int purpose : {X509_PURPOSE_SSL_SERVER, X509_PURPOSE_SSL_CLIENT}) {
-    const bool server = purpose == X509_PURPOSE_SSL_SERVER;
-    EXPECT_EQ(Both(X509_V_OK),
-              Errors(cert("Root", "Leaf", server ? "server" : "client"),
-                     {root_}, {}, 0, purpose));
-    EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
-              Errors(cert("Root", "Leaf", server ? "client" : "server"),
-                     {root_}, {}, 0, purpose));
-    EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
-              Errors(cert("Root", "Leaf", "sslCA"), {root_}, {}, 0, purpose));
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, Extensions) {
-  const std::pair<int, int> kInvalid = {
-      X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY,
-      X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE};
-  const char kProxy[] = "DER:300c300a06082b06010505071501";
-  const struct {
-    std::vector<std::pair<int, const char *>> exts;
-    std::pair<int, int> errors;
-  } kTests[] = {
-      {{{NID_crl_distribution_points, "critical,URI:http://example.com/crl"}},
-       Both(X509_V_OK)},
-      {{{NID_id_pkix_OCSP_noCheck, "critical,ignored"}}, Both(X509_V_OK)},
-      {{{NID_basic_constraints, "CA:FALSE,pathlen:0"}}, Both(X509_V_OK)},
-      {{{NID_certificate_policies, "critical,DER:0500"}}, Both(X509_V_OK)},
-      {{{NID_basic_constraints, "DER:30030201ff"}}, kInvalid},
-      {{{NID_key_usage, "DER:030100"}}, kInvalid},
-      {{{NID_netscape_cert_type, "DER:0500"}}, kInvalid},
-      {{{NID_proxyCertInfo, kProxy}},
-       Both(X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION)},
-      {{{NID_proxyCertInfo, kProxy}, {NID_basic_constraints, "CA:TRUE"}},
-       kInvalid},
-      {{{NID_proxyCertInfo, kProxy}, {NID_subject_alt_name, "DNS:example.com"}},
-       kInvalid},
-      // Unlike in OpenSSL.
-      {{{NID_policy_constraints, "critical,requireExplicitPolicy:0"}},
-       Both(X509_V_ERR_NO_EXPLICIT_POLICY)},
-  };
-  for (const auto &t : kTests) {
-    SCOPED_TRACE(&t - kTests);
-    EXPECT_EQ(t.errors, Errors(Custom("Root", "Leaf", t.exts), {root_}));
-  }
-
-  // What OpenSSL does not look for does not replace what it finds.
-  EXPECT_EQ(Both(X509_V_ERR_CERT_HAS_EXPIRED),
-            Errors(Custom("Root", "Leaf",
-                          {{NID_policy_constraints, "requireExplicitPolicy:0"}},
-                          nullptr, -1),
-                   {root_}));
-  EXPECT_EQ(Both(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY),
-            Errors(Custom("Root", "Leaf", {{NID_key_usage, "DER:030100"}}),
-                   {root_}, {}, X509_V_FLAG_PARTIAL_CHAIN));
-
-  // The policy constraints of a trust anchor are not a request.
-  EXPECT_EQ(
-      Both(X509_V_OK),
-      Errors(Custom("Root", "Leaf", {{NID_certificate_policies, "DER:0500"}}),
-             {Custom("Root", "Root",
-                     {{NID_basic_constraints, "CA:TRUE"},
-                      {NID_policy_constraints, "requireExplicitPolicy:0"}})}));
-
-  UniquePtr<X509> v1(X509_dup(Custom("Root", "Root", {})));
-  ASSERT_TRUE(X509_set_version(v1.get(), X509_VERSION_1));
-  ASSERT_TRUE(X509_sign(v1.get(), key_.get(), EVP_sha256()));
-  EXPECT_EQ(3, X509_check_ca(ReencodeCertificate(v1.get()).get()));
-
-  // SGC only stands in for serverAuth.
-  X509 *sgc = Custom(
-      "Root", "Root",
-      {{NID_basic_constraints, "CA:TRUE"}, {NID_ext_key_usage, "nsSGC"}});
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {sgc}));
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
-            Errors(leaf_, {sgc}, {}, 0, X509_PURPOSE_SSL_CLIENT));
-}
-
-TEST_P(X509IssuerSelectionTest, TrustSettings) {
-  const std::pair<int, int> kRejected = {X509_V_ERR_CERT_REJECTED,
-                                         X509_V_ERR_INVALID_PURPOSE};
-  EXPECT_EQ(kRejected,
-            Errors(leaf_, {WithSettings(root_, NID_client_auth, NID_undef)}));
-  EXPECT_EQ(kRejected, Errors(leaf_, {WithSettings(root_, NID_server_auth,
-                                                   NID_anyExtendedKeyUsage)}));
-
-  // They come before extendedKeyUsage, but only from the store.
-  const std::vector<std::pair<int, const char *>> kClientCA = {
-      {NID_basic_constraints, "CA:TRUE"}, {NID_ext_key_usage, "clientAuth"}};
-  EXPECT_EQ(Both(X509_V_OK),
-            Errors(leaf_, {WithSettings(Custom("Root", "Root", kClientCA),
-                                        NID_server_auth, NID_undef)}));
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false);
-  X509 *ca = WithSettings(Custom("Root", "CA", kClientCA), NID_server_auth,
-                          NID_undef);
-  EXPECT_EQ(Both(X509_V_OK), Errors(leaf, {ca}));
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE), Errors(leaf, {root_}, {ca}));
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE),
-            Errors(leaf, {leaf}, {ca}, X509_V_FLAG_PARTIAL_CHAIN));
-  X509 *client = Custom("Root", "Leaf", {{NID_ext_key_usage, "clientAuth"}});
-  X509 *client_trusted = WithSettings(client, NID_server_auth, NID_undef);
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_PURPOSE), Errors(client_trusted, {root_}));
-  EXPECT_EQ(Both(X509_V_OK),
-            Errors(client, {client_trusted}, {}, X509_V_FLAG_PARTIAL_CHAIN));
-  // They do not make a CA.
-  EXPECT_EQ(Both(X509_V_ERR_INVALID_CA),
-            Errors(leaf_, {WithSettings(not_ca_, NID_server_auth, NID_undef)}));
-
-  // Going on after a rejection neither trusts the chain nor misses an issuer.
-  for (unsigned long flags : {0, X509_V_FLAG_PARTIAL_CHAIN}) {
-    EXPECT_EQ(
-        std::vector<int>(2, X509_V_ERR_CERT_REJECTED),
-        AllErrors(leaf, {WithSettings(ca, NID_undef, NID_anyExtendedKeyUsage)},
-                  {}, flags));
-  }
-  EXPECT_EQ(Both(X509_V_ERR_CERT_REJECTED),
-            Errors(leaf, {WithSettings(leaf, NID_undef, NID_server_auth)}, {},
-                   X509_V_FLAG_PARTIAL_CHAIN));
-
-  // A target that is trusted for another use is no anchor, but may have one.
-  X509 *for_clients = WithSettings(leaf_, NID_client_auth, NID_undef);
-  EXPECT_EQ(Both(X509_V_ERR_CERT_REJECTED),
-            Errors(leaf_, {for_clients}, {}, X509_V_FLAG_PARTIAL_CHAIN));
-  for (unsigned long flags : {0, X509_V_FLAG_PARTIAL_CHAIN}) {
-    EXPECT_EQ(Both(X509_V_OK), Errors(leaf_, {for_clients, root_}, {}, flags));
-    for (int nid : {NID_server_auth, NID_anyExtendedKeyUsage}) {
-      X509 *rejected = WithSettings(leaf_, NID_client_auth, nid);
-      EXPECT_EQ(Both(X509_V_ERR_CERT_REJECTED),
-                Errors(leaf_, {rejected, root_}, {}, flags));
-    }
-  }
-  EXPECT_EQ(X509_V_OK, Verify(leaf_, {for_clients, root_}, {}, {}));
-
-  UniquePtr<ASN1_OBJECT> unknown(OBJ_txt2obj("1.2.3.4", /*dont_search=*/1));
-  X509 *for_unknown = WithSettings(root_, NID_undef, NID_undef);
-  ASSERT_TRUE(X509_add1_trust_object(for_unknown, unknown.get()));
-  EXPECT_EQ(X509_V_ERR_CERT_REJECTED, Verify(leaf_, {for_unknown}, {}, {}));
-}
-
-TEST_P(X509IssuerSelectionTest, LazyTrustSettings) {
-  X509 *rejected = WithSettings(root_, NID_undef, NID_anyExtendedKeyUsage);
-  uint8_t *der = nullptr;
-  int len = i2d_X509_AUX(rejected, &der);
-  ASSERT_GT(len, 0);
-  UniquePtr<uint8_t> free_der(der);
-  EXPECT_FALSE(X509_LAZY_CERT_SET_can_index(der, len));
-  const std::vector<uint8_t> with(der, der + len), without = CertToDER(root_);
-
-  // The first copy of a certificate counts.
-  for (bool with_first : {true, false}) {
-    const int expected = with_first ? X509_V_ERR_CERT_REJECTED : X509_V_OK;
-    UniquePtr<X509_STORE> store(X509_STORE_new());
-    ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
-        store.get(),
-        LazySet({with_first ? with : without, with_first ? without : with})
-            .get()));
-    EXPECT_EQ(expected, VerifyWithStore(leaf_, store.get(), {}));
-
-    store.reset(X509_STORE_new());
-    ASSERT_TRUE(X509_STORE_add_lazy_cert_set(
-        store.get(), LazySet({with_first ? with : without}).get()));
-    ASSERT_TRUE(
-        X509_STORE_add_cert(store.get(), with_first ? root_ : rejected));
-    EXPECT_EQ(expected, VerifyWithStore(leaf_, store.get(), {}));
-  }
-}
-
-TEST_P(X509IssuerSelectionTest, UntrustedDuplicates) {
-  X509 *cross = Cert("Other", "Root");
-  UniquePtr<X509> again(X509_dup(cross));
-  EXPECT_EQ(Both(X509_V_OK),
-            Errors(leaf_, {Cert("Top", "Top")},
-                   {cross, Cert("Root", "Other"), again.get(),
-                    Cert("Top", "Root")}));
-}
-
-TEST_P(X509IssuerSelectionTest, ChainTooLong) {
-  X509 *leaf = Cert("CA", "Leaf", /*is_ca=*/false), *ca = Cert("Root", "CA");
-  const std::vector kErrors = {X509_V_ERR_CERT_CHAIN_TOO_LONG,
-                               X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY};
-  EXPECT_EQ(kErrors, AllErrors(leaf, {root_}, {ca}, 0, /*depth=*/0));
-  EXPECT_EQ(kErrors, AllErrors(leaf, {root_, leaf}, {ca},
-                               X509_V_FLAG_PARTIAL_CHAIN, /*depth=*/0));
-}
-
-TEST_P(X509IssuerSelectionTest, CRLs) {
-  auto errors = [&](int nid, const char *value) {
-    UniquePtr<X509_CRL> crl = MakeTestCRL("Root", -1, 1);
-    UniquePtr<X509_EXTENSION> ext(
-        X509V3_EXT_nconf_nid(nullptr, nullptr, nid, value));
-    BSSL_CHECK(crl && ext && X509_CRL_add_ext(crl.get(), ext.get(), -1));
-    crl = SignAndReencodeCRL(crl.get(), key_.get(), EVP_sha256());
-    BSSL_CHECK(crl);
-    return Errors(leaf_, {root_}, {}, X509_V_FLAG_CRL_CHECK,
-                  X509_PURPOSE_SSL_SERVER, {crl.get()});
-  };
-  EXPECT_EQ(Both(X509_V_OK), errors(NID_crl_number, "DER:020101"));
-  EXPECT_EQ(Both(X509_V_ERR_UNABLE_TO_GET_CRL),
-            errors(NID_delta_crl, "DER:020101"));
-  EXPECT_EQ(Both(X509_V_ERR_UNABLE_TO_GET_CRL),
-            errors(NID_delta_crl, "critical,DER:020101"));
-  // onlyContainsCACerts
-  EXPECT_EQ(
-      std::pair(X509_V_ERR_DIFFERENT_CRL_SCOPE, X509_V_ERR_UNABLE_TO_GET_CRL),
-      errors(NID_issuing_distribution_point, "critical,DER:30038201ff"));
-}
-
-TEST_P(X509IssuerSelectionTest, DirHashSkipsWhatDoesNotLoad) {
-  if (SkipTempFileTests()) {
-    GTEST_SKIP();
-  }
-  TemporaryDirectory dir;
-  ASSERT_TRUE(dir.Init());
-  char name[16];
-  int suffix = 0;
-  auto next = [&] {
-    snprintf(name, sizeof(name), "%08x.%d",
-             X509_NAME_hash(X509_get_subject_name(root_)), suffix++);
-    return std::string(name);
-  };
-  ASSERT_TRUE(dir.AddFile(next(), "not a certificate"));
-#if !defined(OPENSSL_WINDOWS)
-  const std::string link = dir.GetFilePath(next());
-  ASSERT_EQ(0, symlink("missing", link.c_str()));
-  Cleanup remove_link = [&] { unlink(link.c_str()); };
-#endif
-  ASSERT_TRUE(dir.AddFile(next(), CertToDER(root_)));
-
-  UniquePtr<X509_STORE> store(X509_STORE_new());
-  X509_LOOKUP *lookup =
-      X509_STORE_add_lookup(store.get(), X509_LOOKUP_hash_dir());
-  ASSERT_TRUE(lookup);
-  ASSERT_TRUE(
-      X509_LOOKUP_add_dir(lookup, dir.path().c_str(), X509_FILETYPE_ASN1));
-  EXPECT_EQ(X509_V_OK, VerifyWithStore(leaf_, store.get(), {}));
 }
 
 // Populating a store must not re-sort on every insertion, but duplicates must

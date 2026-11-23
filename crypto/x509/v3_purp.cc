@@ -43,9 +43,6 @@ struct x509_purpose_st {
 #define xku_reject(x, usage)                     \
   ((FromOpaque(x)->ex_flags & EXFLAG_XKUSAGE) && \
    !(FromOpaque(x)->ex_xkusage & (usage)))
-#define ns_reject(x, usage)                     \
-  ((FromOpaque(x)->ex_flags & EXFLAG_NSCERT) && \
-   !(FromOpaque(x)->ex_nscert & (usage)))
 
 namespace {
 
@@ -60,44 +57,33 @@ int setup_crldp(const X509 *x) {
   return 1;
 }
 
-// check_ca implements `X509_check_ca`.
+// check_ca returns one if `x` should be considered a CA certificate and zero
+// otherwise.
 int check_ca(const X509 *x) {
   // keyUsage if present should allow cert signing
   if (ku_reject(x, X509v3_KU_KEY_CERT_SIGN)) {
     return 0;
   }
-  const auto *impl = FromOpaque(x);
-  if (impl->ex_flags & EXFLAG_BCONS) {
-    return (impl->ex_flags & EXFLAG_CA) != 0;
-  }
   // Version 1 certificates are considered CAs and don't have extensions.
+  const auto *impl = FromOpaque(x);
   if ((impl->ex_flags & V1_ROOT) == V1_ROOT) {
-    return 3;
+    return 1;
   }
-  if (impl->ex_flags & EXFLAG_KUSAGE) {
-    return 4;
-  }
-  return (impl->ex_nscert & NS_ANY_CA) ? 5 : 0;
+  // Otherwise, it's only a CA if basicConstraints says so.
+  return ((impl->ex_flags & EXFLAG_BCONS) && (impl->ex_flags & EXFLAG_CA));
 }
 
 // check_purpose returns one if `x` is a valid part of a certificate path for
-// one of the extended key usages in `required_xku`, key usages in
-// `required_kus` and Netscape certificate types in `required_ns`. `ca`
-// indicates whether `x` is a CA or end-entity certificate.
-int check_purpose(const X509 *x, int ca, int required_xku, int required_kus,
-                  int required_ns) {
+// extended key usage `required_xku` and at least one of key usages in
+// `required_kus`. `ca` indicates whether `x` is a CA or end-entity certificate.
+int check_purpose(const X509 *x, int ca, int required_xku, int required_kus) {
   // Check extended key usage on the entire chain.
   if (required_xku != 0 && xku_reject(x, required_xku)) {
     return 0;
   }
-  if (ca) {
-    // The type only counts if it is what makes `x` a CA.
-    return check_ca(x) != 5 || !ns_reject(x, required_ns & NS_ANY_CA);
-  }
 
   // Check key usages only on the end-entity certificate.
-  return !ku_reject(x, required_kus) &&
-         !ns_reject(x, required_ns & ~NS_ANY_CA);
+  return ca || !ku_reject(x, required_kus);
 }
 
 int check_purpose_ssl_client(const X509_PURPOSE *xp, const X509 *x, int ca) {
@@ -106,8 +92,7 @@ int check_purpose_ssl_client(const X509_PURPOSE *xp, const X509 *x, int ca) {
   // TODO(davidben): We do not implement any TLS client certificate modes based
   // on key agreement.
   return check_purpose(x, ca, XKU_SSL_CLIENT,
-                       X509v3_KU_DIGITAL_SIGNATURE | X509v3_KU_KEY_AGREEMENT,
-                       NS_SSL_CLIENT | NS_SSL_CA);
+                       X509v3_KU_DIGITAL_SIGNATURE | X509v3_KU_KEY_AGREEMENT);
 }
 
 // Key usage needed for TLS/SSL server: digital signature, encipherment or
@@ -118,32 +103,25 @@ int check_purpose_ssl_client(const X509_PURPOSE *xp, const X509 *x, int ca) {
    X509v3_KU_KEY_AGREEMENT)
 
 int check_purpose_ssl_server(const X509_PURPOSE *xp, const X509 *x, int ca) {
-  return check_purpose(x, ca, XKU_SSL_SERVER | XKU_SGC, X509v3_KU_TLS,
-                       NS_SSL_SERVER | NS_SSL_CA);
+  return check_purpose(x, ca, XKU_SSL_SERVER, X509v3_KU_TLS);
 }
 
 int check_purpose_ns_ssl_server(const X509_PURPOSE *xp, const X509 *x, int ca) {
   // We need to encipher or Netscape complains.
-  return check_purpose(x, ca, XKU_SSL_SERVER | XKU_SGC,
-                       X509v3_KU_KEY_ENCIPHERMENT, NS_SSL_SERVER | NS_SSL_CA);
+  return check_purpose(x, ca, XKU_SSL_SERVER, X509v3_KU_KEY_ENCIPHERMENT);
 }
-
-// As in OpenSSL, SSL client certificates also do for S/MIME.
-#define NS_SMIME_TYPES (NS_SMIME | NS_SSL_CLIENT | NS_SMIME_CA)
 
 int check_purpose_smime_sign(const X509_PURPOSE *xp, const X509 *x, int ca) {
   return check_purpose(x, ca, XKU_SMIME,
-                       X509v3_KU_DIGITAL_SIGNATURE | X509v3_KU_NON_REPUDIATION,
-                       NS_SMIME_TYPES);
+                       X509v3_KU_DIGITAL_SIGNATURE | X509v3_KU_NON_REPUDIATION);
 }
 
 int check_purpose_smime_encrypt(const X509_PURPOSE *xp, const X509 *x, int ca) {
-  return check_purpose(x, ca, XKU_SMIME, X509v3_KU_KEY_ENCIPHERMENT,
-                       NS_SMIME_TYPES);
+  return check_purpose(x, ca, XKU_SMIME, X509v3_KU_KEY_ENCIPHERMENT);
 }
 
 int check_purpose_crl_sign(const X509_PURPOSE *xp, const X509 *x, int ca) {
-  return ca || !ku_reject(x, X509v3_KU_CRL_SIGN);
+  return check_purpose(x, ca, /*required_xku=*/0, X509v3_KU_CRL_SIGN);
 }
 
 int check_purpose_timestamp_sign(const X509_PURPOSE *xp, const X509 *x,
@@ -238,6 +216,12 @@ int X509_check_purpose(const X509 *x, int id, int ca) {
   return pt->check_purpose(pt, x, ca);
 }
 
+int bssl::x509_check_purpose_of_ca(const X509 *x, int id) {
+  const X509_PURPOSE *pt = X509_PURPOSE_get0(id);
+  return pt != nullptr && x509v3_cache_extensions(x) &&
+         pt->check_purpose(pt, x, /*ca=*/1);
+}
+
 const X509_PURPOSE *X509_PURPOSE_get0(int id) {
   for (const auto &p : xstandard) {
     if (p.purpose == id) {
@@ -271,21 +255,7 @@ int X509_supported_extension(const X509_EXTENSION *ex) {
          nid == NID_name_constraints ||      //
          nid == NID_policy_mappings ||       //
          nid == NID_inhibit_any_policy ||    //
-         nid == NID_pe_mtcCertificationAuthority_SHA256 ||
-         // As in OpenSSL:
-         nid == NID_netscape_cert_type ||       //
-         nid == NID_crl_distribution_points ||  //
-         nid == NID_id_pkix_OCSP_noCheck;
-}
-
-// sig_alg_reject returns whether `subject` was signed with another type of key
-// than that of `issuer`. See `check_sig_alg_match` in OpenSSL.
-static bool sig_alg_reject(const X509 *issuer, const X509 *subject) {
-  int sig_nid = X509_get_signature_nid(subject), pkey_nid;
-  int issuer_nid = OBJ_obj2nid(FromOpaque(issuer)->key.algor->algorithm);
-  return OBJ_find_sigid_algs(sig_nid, nullptr, &pkey_nid) &&
-         issuer_nid != pkey_nid &&
-         !(sig_nid == NID_rsassaPss && issuer_nid == NID_rsassaPss);
+         nid == NID_pe_mtcCertificationAuthority_SHA256;
 }
 
 int bssl::x509v3_cache_extensions(const X509 *x) {
@@ -323,7 +293,7 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
       impl->ex_flags |= EXFLAG_CA;
     }
     if (bs->pathlen) {
-      if (bs->pathlen->type == V_ASN1_NEG_INTEGER) {
+      if ((bs->pathlen->type == V_ASN1_NEG_INTEGER) || !bs->ca) {
         impl->ex_flags |= EXFLAG_INVALID;
         impl->ex_pathlen = 0;
       } else {
@@ -354,9 +324,6 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
       impl->ex_kusage = 0;
     }
     impl->ex_flags |= EXFLAG_KUSAGE;
-    if (impl->ex_kusage == 0) {
-      impl->ex_flags |= EXFLAG_INVALID;
-    }
     ASN1_BIT_STRING_free(usage);
   } else if (j != -1) {
     impl->ex_flags |= EXFLAG_INVALID;
@@ -409,14 +376,6 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
   } else if (j != -1) {
     impl->ex_flags |= EXFLAG_INVALID;
   }
-  if ((usage = reinterpret_cast<ASN1_BIT_STRING *>(
-           X509_get_ext_d2i(x, NID_netscape_cert_type, &j, nullptr)))) {
-    impl->ex_nscert = usage->length > 0 ? usage->data[0] : 0;
-    impl->ex_flags |= EXFLAG_NSCERT;
-    ASN1_BIT_STRING_free(usage);
-  } else if (j != -1) {
-    impl->ex_flags |= EXFLAG_INVALID;
-  }
 
   impl->skid.reset(reinterpret_cast<ASN1_OCTET_STRING *>(
       X509_get_ext_d2i(x, NID_subject_key_identifier, &j, nullptr)));
@@ -433,7 +392,7 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
     impl->ex_flags |= EXFLAG_SI;
     // If SKID matches AKID also indicate self signed
     if (X509_check_akid(x, impl->akid.get()) == X509_V_OK &&
-        !sig_alg_reject(x, x)) {
+        !ku_reject(x, X509v3_KU_KEY_CERT_SIGN)) {
       impl->ex_flags |= EXFLAG_SS;
     }
   }
@@ -449,13 +408,6 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
   }
   if (!setup_crldp(x)) {
     impl->ex_flags |= EXFLAG_INVALID;
-  }
-  // OpenSSL refuses proxy certificates even if they forget to be critical.
-  if (X509_get_ext_by_NID(x, NID_proxyCertInfo, -1) >= 0) {
-    impl->ex_flags |= EXFLAG_CRITICAL;
-    if ((impl->ex_flags & EXFLAG_CA) || impl->altname != nullptr) {
-      impl->ex_flags |= EXFLAG_INVALID;
-    }
   }
 
   for (j = 0; j < X509_get_ext_count(x); j++) {
@@ -480,7 +432,7 @@ int X509_check_ca(const X509 *x) {
   return check_ca(x);
 }
 
-int bssl::x509_likely_issued(const X509 *issuer, const X509 *subject) {
+int X509_check_issued(const X509 *issuer, const X509 *subject) {
   if (X509_NAME_cmp(X509_get_subject_name(issuer),
                     X509_get_issuer_name(subject))) {
     return X509_V_ERR_SUBJECT_ISSUER_MISMATCH;
@@ -498,16 +450,6 @@ int bssl::x509_likely_issued(const X509 *issuer, const X509 *subject) {
     }
   }
 
-  if (sig_alg_reject(issuer, subject)) {
-    return X509_V_ERR_CERT_SIGNATURE_FAILURE;
-  }
-  return X509_V_OK;
-}
-
-int X509_check_issued(const X509 *issuer, const X509 *subject) {
-  if (int ret = x509_likely_issued(issuer, subject); ret != X509_V_OK) {
-    return ret;
-  }
   if (ku_reject(issuer, X509v3_KU_KEY_CERT_SIGN)) {
     return X509_V_ERR_KEYUSAGE_NO_CERTSIGN;
   }
