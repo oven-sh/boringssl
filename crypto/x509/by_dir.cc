@@ -113,7 +113,6 @@ class ByDirEntry {
 
 struct ByDir {
   Vector<UniquePtr<ByDirEntry>> dirs;
-  X509_LOOKUP_load_cb load = nullptr;
 };
 
 int new_dir(X509_LOOKUP *lu) {
@@ -205,7 +204,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
     lookup_cert.reset(X509_new());
     if (lookup_cert == nullptr ||
         !X509_set_subject_name(lookup_cert.get(), name)) {
-      return -1;
+      return 0;
     }
     stmp.data.x509 = lookup_cert.get();
     postfix = "";
@@ -213,7 +212,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
     lookup_crl.reset(X509_CRL_new());
     if (lookup_crl == nullptr ||
         !X509_CRL_set_issuer_name(lookup_crl.get(), name)) {
-      return -1;
+      return 0;
     }
     stmp.data.crl = lookup_crl.get();
     postfix = "r";
@@ -241,18 +240,16 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
         if (OPENSSL_asprintf(&path, "%s/%08" PRIx32 ".%s%d", ent->dir(), hash,
                              postfix, suffix) == -1) {
           OPENSSL_PUT_ERROR(X509, ERR_R_BUF_LIB);
-          return -1;
+          return 0;
         }
         UniquePtr<char> free_path(path);
         if (!path_exists(path)) {
           break;
         }
         // As in OpenSSL, a file that does not load does not hide the next ones.
-        if (ctx->load != nullptr) {
-          ctx->load(xl->store_ctx, path, type);
-        } else if ((type == X509_LU_X509
-                        ? X509_load_cert_file(xl, path, ent->dir_type())
-                        : X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
+        if ((type == X509_LU_X509
+                 ? X509_load_cert_file(xl, path, ent->dir_type())
+                 : X509_load_crl_file(xl, path, ent->dir_type())) == 0) {
           // Don't expose the lower level error, All of these boil down to "we
           // could not find a CA or CRL".
           ERR_clear_error();
@@ -276,7 +273,7 @@ int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       // next time.
       // TODO(crbug.com/42290566): Is this what we want?
       if (type == X509_LU_CRL && !ent->UpdateCRLSuffix(hash, suffix)) {
-        return -1;
+        return 0;
       }
 
       if (found != nullptr) {
@@ -313,10 +310,4 @@ const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir() {
 
 int X509_LOOKUP_add_dir(X509_LOOKUP *lookup, const char *name, int type) {
   return X509_LOOKUP_ctrl(lookup, X509_L_ADD_DIR, name, type, nullptr);
-}
-
-void X509_LOOKUP_hash_dir_set_load_cb(X509_LOOKUP *lookup,
-                                      X509_LOOKUP_load_cb load) {
-  BSSL_CHECK(lookup->method == &bssl::x509_dir_lookup);
-  reinterpret_cast<bssl::ByDir *>(lookup->method_data)->load = load;
 }

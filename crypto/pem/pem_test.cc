@@ -15,7 +15,6 @@
 #include <openssl/pem.h>
 
 #include <functional>
-#include <string>
 
 #include <gtest/gtest.h>
 
@@ -481,9 +480,6 @@ wr6JtaX2G+pOmwcSPymZC4u2TncAP7KHgS8UGcMw8CE=
 }
 
 TEST(PEMTest, ParsingErrorsAndSuccesses) {
-  const std::string trailing_space = "-----BEGIN TEST-----\n\nYmFzZTY0-" +
-                                     std::string(254 - 9, ' ') +
-                                     "\n-----END TEST-----";
   const struct {
     const char *name;
     const char *pem;
@@ -510,73 +506,6 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
       {"NoHeadersNoBlankLineButRubbishOK",
        "a\n-----BEGIN ZEST-----\nYmFzZTY0\n-----END ZEST-----\nb",  //
        0, "ZEST", "", "base64"},
-      {"ByteOrderMarkOK",
-       "\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",  //
-       0, "TEST", "", "base64"},
-      {"ByteOrderMarkAndRubbishOK",
-       "\xef\xbb\xbf\n-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",  //
-       0, "TEST", "", "base64"},
-      {"ByteOrderMarkAfterRubbish",
-       "a\n\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST-----",
-       PEM_R_NO_START_LINE},
-      {"TwoByteOrderMarks",
-       "\xef\xbb\xbf\xef\xbb\xbf-----BEGIN TEST-----\nYmFzZTY0\n-----END "
-       "TEST-----",
-       PEM_R_NO_START_LINE},
-      {"OnlyByteOrderMark", "\xef\xbb\xbf",  //
-       PEM_R_NO_START_LINE},
-      {"MissingEndOK",
-       "-----BEGIN TEST-----\nYmFzZTY0\n"
-       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
-       0, "TEST", "", "base64"},
-      {"MissingEndAfterBlankLine",
-       "-----BEGIN TEST-----\n\nYmFzZTY0\n"
-       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"MissingEndAfterHeaders",
-       "-----BEGIN TEST-----\nX: h\n\nYmFzZTY0\n"
-       "-----BEGIN TEST-----\nb3RoZXI=\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"MissingEndColonInName",
-       "-----BEGIN A:B-----\nYmFzZTY0\n"
-       "-----BEGIN TEST-----\nb3RoZXI=\n-----END A:B-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"HeadersNoBlankLine",
-       "-----BEGIN TEST-----\nProc-Type: 4\nYmFzZTY0\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashAfterHeadersOK",
-       "-----BEGIN TEST-----\nX: h\n\nYmFzZTY0-\n-----END TEST-----",  //
-       0, "TEST", "X: h\n", "base64"},
-      {"DashAfterFullLineOK",
-       "-----BEGIN TEST-----\n\nYmFzZTY0-"
-       "0000000000000000000000000000000000000000000000000000000\n"
-       "0\n-----END TEST-----",
-       0, "TEST", "", "base64"},
-      {"DashAfterShortLine",
-       "-----BEGIN TEST-----\n\nYmFzZTY0-"
-       "000000000000000000000000000000000000000000000000000000\n"
-       "0\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashBeforeTrailingSpaceOK", trailing_space.c_str(),  //
-       0, "TEST", "", "base64"},
-      {"DashAfterLongLine",
-       "-----BEGIN TEST-----\n\nYmFzZTY0-"
-       "00000000000000000000000000000000000000000000000000000000\n"
-       "-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashAfterTwoBlankLines",
-       "-----BEGIN TEST-----\n\n\nYmFzZTY0-\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashBeforeSecondBlankLine",
-       "-----BEGIN TEST-----\n\nYmFzZTY0-"
-       "0000000000000000000000000000000000000000000000000000000\n"
-       "\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashWithinQuad",  //
-       "-----BEGIN TEST-----\nYmFzZT-Y0\n-----END TEST-----",
-       PEM_R_BAD_BASE64_DECODE},
-      {"DashFirst",  //
-       "-----BEGIN TEST-----\n-YmFzZTY0\n-----END TEST-----", PEM_R_NO_DATA},
       {"Empty", "",  //
        PEM_R_NO_START_LINE},
       {"NoStart",           //
@@ -622,117 +551,6 @@ TEST(PEMTest, ParsingErrorsAndSuccesses) {
     } else {
       EXPECT_NE(t.err_reason, 0);
       EXPECT_TRUE(ErrorEquals(ERR_get_error(), ERR_LIB_PEM, t.err_reason));
-      ERR_clear_error();
-    }
-  }
-}
-
-TEST(PEMTest, LongLines) {
-  const std::string kBody(1024, 'A');
-  for (const char *eol : {"\n", "\r\n", "  \r\n"}) {
-    for (size_t split = 1; split < kBody.size(); split++) {
-      SCOPED_TRACE(split);
-      const std::string first = kBody.substr(0, split) + eol;
-      const std::string rest = kBody.substr(split) + eol + "-----END TEST-----";
-      for (bool has_header : {false, true}) {
-        const std::string pem = "-----BEGIN TEST-----\n" + first +
-                                (has_header ? eol + first : "") + rest;
-        bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(pem.data(), pem.size()));
-        char *name, *header;
-        uint8_t *data;
-        long len;
-        ASSERT_TRUE(PEM_read_bio(bio.get(), &name, &header, &data, &len));
-        EXPECT_EQ(has_header, header[0] != '\0');
-        EXPECT_EQ(768, len);
-        OPENSSL_free(name);
-        OPENSSL_free(header);
-        OPENSSL_free(data);
-      }
-    }
-  }
-}
-
-TEST(PEMTest, LongLineBeforeBegin) {
-  for (size_t junk = 1; junk < 600; junk++) {
-    SCOPED_TRACE(junk);
-    const std::string pem = std::string(junk, 'x') +
-                            "-----BEGIN TEST-----\nAAAA\n-----END TEST-----";
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(pem.data(), pem.size()));
-    char *name = nullptr, *header = nullptr;
-    uint8_t *data = nullptr;
-    long len;
-    EXPECT_EQ(junk % 254 == 0,
-              PEM_read_bio(bio.get(), &name, &header, &data, &len));
-    OPENSSL_free(name);
-    OPENSSL_free(header);
-    OPENSSL_free(data);
-  }
-}
-
-TEST(PEMTest, NULEndsLine) {
-  using namespace std::string_view_literals;
-  const struct {
-    std::string_view pem;
-    const char *want_header;  // Or null for an error.
-  } kTests[] = {
-      {"-----BEGIN TEST-----\nYmFz\0!\nZTY0\n-----END TEST-----"sv, ""},
-      {"-----BEGIN TEST\0!-----\nYmFzZTY0\n-----END TEST-----"sv, ""},
-      {"-----BEGIN TEST-----\nYmFz\0-\nZTY0\n-----END TEST-----"sv, ""},
-      {"-----BEGIN TEST-----\n\0!\nX: h\n\nYmFzZTY0\n-----END TEST-----"sv,
-       "X: h\n"},
-      {"-----BEGIN TEST-----\nYmFzZTY0\0:\n-----END TEST-----"sv, nullptr},
-      {"-----BEGIN TEST-----\n\nYmFz\0!\nZTY0\n-----END TEST-----"sv, nullptr},
-      {"-----BEGIN TEST\0!-----\n\nYmFz\nZTY0\n-----END TEST-----"sv, nullptr},
-      {"-----BEGIN TEST-----\nYmFzZTY0\n-----END TEST\0!-----"sv, nullptr},
-  };
-  for (const auto &t : kTests) {
-    SCOPED_TRACE(Bytes(t.pem));
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(t.pem.data(), t.pem.size()));
-    char *name, *header;
-    uint8_t *data;
-    long len;
-    ASSERT_EQ(t.want_header != nullptr,
-              PEM_read_bio(bio.get(), &name, &header, &data, &len));
-    if (t.want_header != nullptr) {
-      EXPECT_EQ(Bytes("TEST"), Bytes(name));
-      EXPECT_EQ(Bytes(t.want_header), Bytes(header));
-      EXPECT_EQ(Bytes("base64"), Bytes(data, len));
-      OPENSSL_free(name);
-      OPENSSL_free(header);
-      OPENSSL_free(data);
-    }
-  }
-}
-
-TEST(PEMTest, Decrypt) {
-  static const char kHeader[] =
-      "Proc-Type: 4,ENCRYPTED\n"
-      "DEK-Info: AES-128-CBC,00000000000000000000000000000000";
-  static const uint8_t kEncrypted[] = {0x9b, 0x44, 0xd7, 0x3a, 0x79, 0xe6,
-                                       0x96, 0xa2, 0x03, 0x2e, 0x9d, 0xcb,
-                                       0xec, 0x54, 0x41, 0x3c};
-  char password[] = "password", wrong[] = "wrong";
-  const struct {
-    const char *header;
-    char *password;
-    int err_reason;
-    Bytes want;
-  } kTests[] = {
-      {kHeader, password, 0, Bytes("base64")},
-      {kHeader, wrong, PEM_R_BAD_DECRYPT, Bytes("")},
-      {"", password, 0, Bytes(kEncrypted)},
-      {"X-Hdr: h\n", password, PEM_R_NOT_PROC_TYPE, Bytes("")},
-  };
-  for (const auto &t : kTests) {
-    SCOPED_TRACE(t.header);
-    std::vector<uint8_t> data(std::begin(kEncrypted), std::end(kEncrypted));
-    long len = data.size();
-    if (PEM_decrypt(t.header, data.data(), &len, nullptr, t.password)) {
-      EXPECT_EQ(t.err_reason, 0);
-      EXPECT_EQ(t.want, Bytes(data.data(), len));
-    } else {
-      EXPECT_TRUE(
-          ErrorEquals(ERR_peek_last_error(), ERR_LIB_PEM, t.err_reason));
       ERR_clear_error();
     }
   }

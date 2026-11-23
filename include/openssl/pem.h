@@ -612,13 +612,6 @@ OPENSSL_EXPORT int PEM_read_bio(BIO *bio, char **out_name, char **out_header,
 OPENSSL_EXPORT int PEM_read(FILE *fp, char **out_name, char **out_header,
                             uint8_t **out_data, long *out_len);
 
-// PEM_decrypt handles `header` as `PEM_bytes_read_bio` does, for the outputs of
-// `PEM_read_bio`. It decrypts the `*len` bytes at `data` in place, if they are
-// encrypted, and sets `*len` to the new length. It returns one on success and
-// zero on error.
-OPENSSL_EXPORT int PEM_decrypt(const char *header, uint8_t *data, long *len,
-                               pem_password_cb *cb, void *userdata);
-
 // PEM_write_bio writes a PEM block to `bio`, containing `len` bytes from `data`
 // as data. `name` and `hdr` are NUL-terminated C strings containing the PEM
 // type and header block, respectively. This function returns zero on error and

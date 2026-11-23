@@ -15,7 +15,6 @@
 #include <string.h>
 
 #include <openssl/asn1.h>
-#include <openssl/bytestring.h>
 #include <openssl/digest.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
@@ -289,30 +288,6 @@ static bool sig_alg_reject(const X509 *issuer, const X509 *subject) {
          !(sig_nid == NID_rsassaPss && issuer_nid == NID_rsassaPss);
 }
 
-// parse_ns_cert_type sets `*out` to the first eight bits of the BIT STRING that
-// `value` starts with. As in OpenSSL, it does not have to be DER.
-static bool parse_ns_cert_type(const ASN1_OCTET_STRING *value, uint8_t *out) {
-  CBS cbs, bits;
-  CBS_ASN1_TAG tag;
-  size_t header_len;
-  int indefinite;
-  uint8_t unused;
-  CBS_init(&cbs, value->data, value->length);
-  if (!CBS_get_any_ber_asn1_element(&cbs, &bits, &tag, &header_len,
-                                    /*out_ber_found=*/nullptr, &indefinite) ||
-      tag != CBS_ASN1_BITSTRING ||     //
-      !CBS_skip(&bits, header_len) ||  //
-      !CBS_get_u8(&bits, &unused) ||   //
-      unused > 7) {
-    return false;
-  }
-  *out = 0;
-  if (CBS_get_u8(&bits, out) && CBS_len(&bits) == 0) {
-    *out &= 0xff << unused;
-  }
-  return true;
-}
-
 int bssl::x509v3_cache_extensions(const X509 *x) {
   BASIC_CONSTRAINTS *bs;
   ASN1_BIT_STRING *usage;
@@ -434,14 +409,13 @@ int bssl::x509v3_cache_extensions(const X509 *x) {
   } else if (j != -1) {
     impl->ex_flags |= EXFLAG_INVALID;
   }
-  if ((j = X509_get_ext_by_NID(x, NID_netscape_cert_type, -1)) >= 0) {
-    if (X509_get_ext_by_NID(x, NID_netscape_cert_type, j) < 0 &&
-        parse_ns_cert_type(X509_EXTENSION_get_data(X509_get_ext(x, j)),
-                           &impl->ex_nscert)) {
-      impl->ex_flags |= EXFLAG_NSCERT;
-    } else {
-      impl->ex_flags |= EXFLAG_INVALID;
-    }
+  if ((usage = reinterpret_cast<ASN1_BIT_STRING *>(
+           X509_get_ext_d2i(x, NID_netscape_cert_type, &j, nullptr)))) {
+    impl->ex_nscert = usage->length > 0 ? usage->data[0] : 0;
+    impl->ex_flags |= EXFLAG_NSCERT;
+    ASN1_BIT_STRING_free(usage);
+  } else if (j != -1) {
+    impl->ex_flags |= EXFLAG_INVALID;
   }
 
   impl->skid.reset(reinterpret_cast<ASN1_OCTET_STRING *>(

@@ -1094,9 +1094,7 @@ static bool cert_in_time(const X509_STORE_CTX *ctx, const X509 *x509) {
 
 bool bssl::x509_consider_issuer(X509_STORE_CTX *ctx, const X509 *x,
                                 X509 *candidate, bool trusted, X509 **best) {
-  if (((ctx->param->flags & X509_V_FLAG_IGNORE_UNSIGNED_ISSUERS) &&
-       FromOpaque(candidate)->signature->length == 0) ||
-      !x509_check_issued_with_callback(ctx, x, candidate) ||
+  if (!x509_check_issued_with_callback(ctx, x, candidate) ||
       (!trusted && chain_contains(ctx, candidate))) {
     return false;
   }
@@ -1394,11 +1392,6 @@ int X509_verify_cert(X509_STORE_CTX *ctx) {
     ctx->no_detour = true;
     ERR_clear_error();
     ok = verify_cert(ctx);
-  }
-  if (ctx->lookup_failed) {
-    // What was not found may have withdrawn trust.
-    ctx->error = X509_V_ERR_OUT_OF_MEM;
-    return 0;
   }
   return ok;
 }
