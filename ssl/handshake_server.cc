@@ -208,17 +208,6 @@ static TLS12ServerParams choose_params(SSL_HANDSHAKE *hs,
           return TLS12ServerParams();
         }
       }
-
-      // Clients match ECDSA cipher suites to the key usage.
-      if (cred->type == SSLCredentialType::kX509) {
-        CBS leaf;
-        CRYPTO_BUFFER_init_CBS(sk_CRYPTO_BUFFER_value(cred->chain.get(), 0),
-                               &leaf);
-        if (!ssl_cert_check_key_usage(&leaf, key_usage_digital_signature)) {
-          sign_ok = false;
-          ERR_clear_error();
-        }
-      }
     }
 
     mask_a |= ssl_cipher_auth_mask_for_key(cred->pubkey.get(), sign_ok);
@@ -1496,6 +1485,18 @@ static enum ssl_hs_wait_t do_read_client_certificate_verify(SSL_HANDSHAKE *hs) {
 
   if (!ssl_check_message_type(ssl, msg, SSL3_MT_CERTIFICATE_VERIFY)) {
     return ssl_hs_error;
+  }
+
+  // The X.509 peer certificate must be valid for signing. (RPKs have no
+  // keyUsage to enforce.)
+  if (hs->new_session->peer_cert_type == TLSEXT_cert_type_x509) {
+    const CRYPTO_BUFFER *leaf =
+        sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), 0);
+    CBS leaf_cbs;
+    CRYPTO_BUFFER_init_CBS(leaf, &leaf_cbs);
+    if (!ssl_cert_check_key_usage(&leaf_cbs, key_usage_digital_signature)) {
+      return ssl_hs_error;
+    }
   }
 
   CBS certificate_verify = msg.body, signature;

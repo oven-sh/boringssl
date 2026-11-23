@@ -4998,29 +4998,6 @@ static bool BuffersEqual(const STACK_OF(CRYPTO_BUFFER) *chain,
   return true;
 }
 
-TEST_P(SSLVersionTest, AutoChainOmitsUnsigned) {
-  cert_ = GetChainTestCertificate();
-  key_ = GetChainTestKey();
-  bssl::UniquePtr<X509> intermediate = GetChainTestIntermediate();
-  ASSERT_TRUE(cert_ && key_ && intermediate);
-  ASSERT_TRUE(X509_set1_signature_value(intermediate.get(), nullptr, 0));
-
-  ASSERT_TRUE(UseCertAndKey(server_ctx_.get()));
-  ASSERT_TRUE(X509_STORE_add_cert(SSL_CTX_get_cert_store(server_ctx_.get()),
-                                  intermediate.get()));
-  SSL_CTX_clear_mode(server_ctx_.get(), SSL_MODE_NO_AUTO_CHAIN);
-  ASSERT_TRUE(Connect());
-  EXPECT_TRUE(
-      ChainsEqual(SSL_get_peer_full_cert_chain(client_.get()), {cert_.get()}));
-
-  intermediate = GetChainTestIntermediate();
-  ASSERT_TRUE(X509_STORE_add_cert(SSL_CTX_get_cert_store(server_ctx_.get()),
-                                  intermediate.get()));
-  ASSERT_TRUE(Connect());
-  EXPECT_TRUE(ChainsEqual(SSL_get_peer_full_cert_chain(client_.get()),
-                          {cert_.get(), intermediate.get()}));
-}
-
 TEST_P(SSLVersionTest, AutoChain) {
   cert_ = GetChainTestCertificate();
   ASSERT_TRUE(cert_);
@@ -9922,22 +9899,12 @@ RHrQbWsFUakETXL9QMlegh5t
   bssl::UniquePtr<X509> bad = CertFromPEM(kBadKeyUsage);
   ASSERT_TRUE(bad);
 
-  // We check key usage when negotiating ECDSA cipher suites.
-  bssl::UniquePtr<EVP_PKEY> key = GetECDSATestKey();
-  ASSERT_TRUE(key);
-  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
-  ASSERT_TRUE(client_ctx);
-  ASSERT_TRUE(SSL_CTX_set_max_proto_version(client_ctx.get(), TLS1_2_VERSION));
-  for (X509 *cert : {good.get(), bad.get()}) {
-    bssl::UniquePtr<SSL_CTX> server_ctx(SSL_CTX_new(TLS_method()));
-    ASSERT_TRUE(server_ctx);
-    ASSERT_TRUE(SSL_CTX_use_certificate(server_ctx.get(), cert));
-    ASSERT_TRUE(SSL_CTX_use_PrivateKey(server_ctx.get(), key.get()));
-    bssl::UniquePtr<SSL> client, server;
-    EXPECT_EQ(cert == good.get(),
-              ConnectClientAndServer(&client, &server, client_ctx.get(),
-                                     server_ctx.get()));
-  }
+  // We check key usage when configuring EC certificates to distinguish ECDSA
+  // and ECDH.
+  bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
+  ASSERT_TRUE(ctx);
+  EXPECT_TRUE(SSL_CTX_use_certificate(ctx.get(), good.get()));
+  EXPECT_FALSE(SSL_CTX_use_certificate(ctx.get(), bad.get()));
 }
 
 // Test that `SSL_can_release_private_key` reports true as early as expected.

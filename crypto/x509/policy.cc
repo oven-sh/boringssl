@@ -585,8 +585,7 @@ int asn1_object_cmp(const ASN1_OBJECT *const *a, const ASN1_OBJECT *const *b) {
 
 int X509_policy_check(const STACK_OF(X509) *certs,
                       const STACK_OF(ASN1_OBJECT) *user_policies,
-                      unsigned long flags, bool skip_trust_anchor,
-                      int *out_error_depth) {
+                      unsigned long flags, int *out_error_depth) {
   *out_error_depth = 0;
 
   // See RFC 5280, section 6.1.2, steps (d) through (f). Note that `n` in RFC
@@ -632,9 +631,6 @@ int X509_policy_check(const STACK_OF(X509) *certs,
       assert(is_trust_anchor);
       level.emplace();
       level->set_has_any_policy(true);
-      if (skip_trust_anchor) {
-        continue;
-      }
     }
 
     // RFC 5280, section 6.1.3, steps (d) and (e). `any_policy_allowed` is

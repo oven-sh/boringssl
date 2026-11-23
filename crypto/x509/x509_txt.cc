@@ -51,9 +51,9 @@ const char *X509_verify_cert_error_string(long err) {
     case X509_V_ERR_OUT_OF_MEM:
       return "out of memory";
     case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
-      return "self-signed certificate";
+      return "self signed certificate";
     case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
-      return "self-signed certificate in certificate chain";
+      return "self signed certificate in certificate chain";
     case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
       return "unable to get local issuer certificate";
     case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
@@ -73,7 +73,7 @@ const char *X509_verify_cert_error_string(long err) {
     case X509_V_ERR_PROXY_CERTIFICATES_NOT_ALLOWED:
       return "proxy certificates not allowed, please set the appropriate flag";
     case X509_V_ERR_INVALID_PURPOSE:
-      return "unsuitable certificate purpose";
+      return "unsupported certificate purpose";
     case X509_V_ERR_CERT_UNTRUSTED:
       return "certificate not trusted";
     case X509_V_ERR_CERT_REJECTED:
@@ -105,9 +105,9 @@ const char *X509_verify_cert_error_string(long err) {
     case X509_V_ERR_NO_EXPLICIT_POLICY:
       return "no explicit policy";
     case X509_V_ERR_DIFFERENT_CRL_SCOPE:
-      return "different CRL scope";
+      return "Different CRL scope";
     case X509_V_ERR_UNSUPPORTED_EXTENSION_FEATURE:
-      return "unsupported extension feature";
+      return "Unsupported extension feature";
     case X509_V_ERR_UNNESTED_RESOURCE:
       return "RFC 3779 resource not subset of parent's resources";
 
@@ -127,16 +127,16 @@ const char *X509_verify_cert_error_string(long err) {
       return "CRL path validation error";
 
     case X509_V_ERR_HOSTNAME_MISMATCH:
-      return "hostname mismatch";
+      return "Hostname mismatch";
     case X509_V_ERR_EMAIL_MISMATCH:
-      return "email address mismatch";
+      return "Email address mismatch";
     case X509_V_ERR_IP_ADDRESS_MISMATCH:
       return "IP address mismatch";
 
     case X509_V_ERR_INVALID_CALL:
-      return "invalid certificate verification context";
+      return "Invalid certificate verification context";
     case X509_V_ERR_STORE_LOOKUP:
-      return "issuer certificate lookup error";
+      return "Issuer certificate lookup error";
 
     case X509_V_ERR_NAME_CONSTRAINTS_WITHOUT_SANS:
       return "Issuer has name constraints but leaf has no SANs";
